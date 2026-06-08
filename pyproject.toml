@@ -27,4 +27,4 @@ markers = ["integration: hits the live k3s+kata cluster"]
 addopts = "-m 'not integration'"
 
 [dependency-groups]
-dev = ["pytest>=8.0.0", "pytest-asyncio>=0.24.0"]
+dev = ["pytest>=8.0.0", "pytest-asyncio>=0.24.0", "kubernetes-asyncio>=31.1.0"]
