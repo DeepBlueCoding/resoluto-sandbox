@@ -8,14 +8,12 @@ they rendezvous through the store. Reaping is the lease's (destroy on close)."""
 from __future__ import annotations
 
 import asyncio
-import json
 import time
 from typing import Awaitable, Callable
 
-from resoluto_sandbox.contracts import ObjectStore, SandboxLaunchSpec, SpanEvent
+from resoluto_sandbox.contracts import NodeResult, ObjectStore, SandboxLaunchSpec, SpanEvent
 from resoluto_sandbox.pool import SandboxPool
-from resoluto_sandbox.runner import RESULT_KEY
-from resoluto_sandbox.telemetry import ChunkReader
+from resoluto_sandbox.telemetry import ChunkReader, result_key
 
 OnEvent = Callable[[SpanEvent], None] | Callable[[SpanEvent], Awaitable[None]]
 
@@ -37,8 +35,9 @@ async def drive_node(
     poll_interval_s: float = 2.0,
     dead_after_s: float = 120.0,
     clock: Callable[[], float] = time.time,
-) -> dict:
+) -> NodeResult:
     runtime = pool.runtime
+    node_id = spec.labels.get("resoluto.node_id", "")
     async with await pool.acquire(spec) as lease:
         reader = ChunkReader(store, spec.store_prefix, dead_after_s=dead_after_s, clock=clock)
         phase = "unknown"
@@ -58,21 +57,20 @@ async def drive_node(
                     logs = await runtime.logs(lease.handle)
                 except Exception:  # noqa: BLE001 — forensic best-effort
                     logs = "(unavailable)"
-                return {
-                    "status": "failure",
-                    "reason": "substrate dead — no telemetry within death window",
-                    "phase": phase,
-                    "substrate_logs": logs[-4000:],
-                }
+                return NodeResult(
+                    node_id=node_id,
+                    status="failure",
+                    observed_phase=phase,
+                    reason="substrate dead — no telemetry within death window",
+                    substrate_logs=logs[-4000:],
+                )
             await asyncio.sleep(poll_interval_s)
 
         # result.json is the sandbox's WORK PRODUCT; the authoritative gate verdict
         # is derived orchestrator-side from observed signals (§12.12), not trusted here.
         try:
-            raw = await store.get(f"{spec.store_prefix.rstrip('/')}/{RESULT_KEY}")
-            result = json.loads(raw)
-        except Exception:  # noqa: BLE001
-            result = {"status": "failure", "reason": "no result.json in store"}
-        result.setdefault("phase", phase)
-        result["observed_phase"] = phase
+            result = NodeResult.model_validate_json(await store.get(result_key(spec.store_prefix)))
+        except Exception:  # noqa: BLE001 — no/garbled result is itself a failure verdict
+            result = NodeResult(node_id=node_id, status="failure", reason="no result.json in store")
+        result.observed_phase = phase
         return result

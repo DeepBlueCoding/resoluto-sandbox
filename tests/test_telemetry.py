@@ -5,7 +5,6 @@ from resoluto_sandbox import (
     ChunkShipper,
     LocalFsObjectStore,
     SpanEvent,
-    TerminalChunkGap,
 )
 
 
@@ -83,7 +82,7 @@ async def test_finished_run_is_never_dead(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_terminal_gap_raises_loud(tmp_path):
+async def test_terminal_gap_surfaces_as_dead(tmp_path):
     clock = {"t": 0.0}
     store = LocalFsObjectStore(tmp_path)
     prefix = "run/r/nodes/n"
@@ -92,7 +91,8 @@ async def test_terminal_gap_raises_loud(tmp_path):
     await store.put(f"{prefix}/events-000002.jsonl", b'{"run_id":"r","span_id":"b","kind":"node","event":"open","ts":0}\n')
     import json
     await store.put(f"{prefix}/_manifest.json", json.dumps({"total_chunks": 2}).encode())
-    await reader.poll()           # chunk 1 missing — still arriving
+    await reader.poll()           # chunk 1 missing → contiguous progress stalls at 0
+    assert reader.is_dead() is False  # still within the window
     clock["t"] = 100.0
-    with pytest.raises(TerminalChunkGap):
-        await reader.poll()       # past the window → loud terminal gap
+    await reader.poll()
+    assert reader.is_dead() is True   # past the window, never finished → dead (single signal)

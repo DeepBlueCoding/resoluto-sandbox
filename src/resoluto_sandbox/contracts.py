@@ -37,7 +37,6 @@ class SandboxLaunchSpec(BaseModel):
     cpu: str = "2"
     memory: str = "4Gi"
     ephemeral_storage: str = "8Gi"
-    pids_limit: int = 1024
     privileged: bool = False
     labels: dict[str, str] = Field(default_factory=dict)
     store_prefix: str  # run/<run_id>/nodes/<node_id> — where the sandbox self-reports
@@ -60,6 +59,25 @@ class SandboxStatus(BaseModel):
         return self.phase in ("succeeded", "failed")
 
 
+class NodeResult(BaseModel):
+    """The lane's typed work product — written by the in-sandbox runner to
+    `<prefix>/result.json`, read back by the orchestrator. Generic by design: it
+    carries NO gate/lane/git vocabulary (that mapping is the worker's, upstream).
+
+    The first block is the sandbox's self-report; the `observed_*` / `reason` /
+    `substrate_logs` block is filled by the ORCHESTRATOR from out-of-guest signals
+    (§12.12 — the in-guest verdict is work product, not a trust decision).
+    """
+
+    node_id: str = ""
+    status: Literal["success", "failure"] = "failure"
+    exit_code: int | None = None
+    output_archive: str | None = None
+    observed_phase: str = ""
+    reason: str = ""
+    substrate_logs: str = ""
+
+
 # ── object store ────────────────────────────────────────────────────────────
 
 
@@ -71,7 +89,7 @@ class ObjectInfo(BaseModel):
 class ObjectStore(ABC):
     """Durable key/value rendezvous. Backends: localfs, S3 (minio), GCS.
 
-    The reader uses `list_prefix` + ranged `get` to tail append-only chunk
+    The reader uses `list_prefix` + whole-object `get` to tail append-only chunk
     objects (telemetry.py). No append semantics needed — chunks are immutable.
     """
 
@@ -79,7 +97,7 @@ class ObjectStore(ABC):
     async def put(self, key: str, data: bytes) -> None: ...
 
     @abstractmethod
-    async def get(self, key: str, start: int = 0, end: int | None = None) -> bytes: ...
+    async def get(self, key: str) -> bytes: ...
 
     @abstractmethod
     async def list_prefix(self, prefix: str) -> list[ObjectInfo]: ...

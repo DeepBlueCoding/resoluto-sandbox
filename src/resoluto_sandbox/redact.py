@@ -25,17 +25,18 @@ def redact_text(s: str) -> str:
     return s
 
 
+def _redact_value(v):
+    if isinstance(v, str):
+        return redact_text(v)
+    if isinstance(v, dict):
+        return redact_data(v)
+    if isinstance(v, list):
+        return [_redact_value(x) for x in v]  # recurse fully — no shallow blind spot
+    return v
+
+
 def redact_data(data: dict) -> dict:
-    out: dict = {}
-    for k, v in data.items():
-        if _SECRET_KEY.search(k):
-            out[k] = _REDACTED
-        elif isinstance(v, str):
-            out[k] = redact_text(v)
-        elif isinstance(v, dict):
-            out[k] = redact_data(v)
-        elif isinstance(v, list):
-            out[k] = [redact_text(x) if isinstance(x, str) else x for x in v]
-        else:
-            out[k] = v
-    return out
+    return {
+        k: _REDACTED if _SECRET_KEY.search(k) else _redact_value(v)
+        for k, v in data.items()
+    }

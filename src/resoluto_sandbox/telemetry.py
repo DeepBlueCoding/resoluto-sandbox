@@ -9,6 +9,7 @@ RES-236 count-vs-time fix, now a property of object listing).
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import time
@@ -18,10 +19,17 @@ from resoluto_sandbox.contracts import ObjectStore, SpanEvent
 
 _CHUNK_RE = re.compile(r"events-(\d+)\.jsonl$")
 _MANIFEST = "_manifest.json"
+_RESULT = "result.json"
 
 
 def _chunk_key(prefix: str, index: int) -> str:
     return f"{prefix.rstrip('/')}/events-{index:06d}.jsonl"
+
+
+def result_key(prefix: str) -> str:
+    """The single source of truth for the result object key — shared by the
+    runner (writer) and driver (reader) so the rendezvous can't drift."""
+    return f"{prefix.rstrip('/')}/{_RESULT}"
 
 
 class ChunkShipper:
@@ -54,6 +62,7 @@ class ChunkShipper:
         self._index = 0
         self._last_flush = clock()
         self._closed = False
+        self._flush_lock = asyncio.Lock()  # emit/tick/close may flush concurrently
 
     async def emit(self, event: SpanEvent) -> None:
         line = event.model_dump_json()
@@ -74,14 +83,15 @@ class ChunkShipper:
             await self.flush()
 
     async def flush(self) -> None:
-        if not self._buf:
-            return
-        self._index += 1
-        body = ("\n".join(self._buf) + "\n").encode("utf-8")
-        await self._store.put(_chunk_key(self._prefix, self._index), body)
-        self._buf.clear()
-        self._buf_bytes = 0
-        self._last_flush = self._clock()
+        async with self._flush_lock:  # serialize: no interleaved _index / _buf
+            if not self._buf:
+                return
+            self._index += 1
+            body = ("\n".join(self._buf) + "\n").encode("utf-8")
+            await self._store.put(_chunk_key(self._prefix, self._index), body)
+            self._buf.clear()
+            self._buf_bytes = 0
+            self._last_flush = self._clock()
 
     async def close(self) -> None:
         """Final flush + a manifest naming the highest index — lets the reader
@@ -94,18 +104,15 @@ class ChunkShipper:
         self._closed = True
 
 
-class TerminalChunkGap(RuntimeError):
-    """A chunk index never materialized within the death window — loud, never
-    silently skipped (§11.2/E3)."""
-
-
 class ChunkReader:
     """Orchestrator: tail a run's chunk objects in contiguous index order.
 
     `poll()` returns newly-available events since the last call. `is_dead()` is
     true when no new chunk has arrived within `dead_after_s` AND the run isn't
-    cleanly finished — the substrate-death signal, time-bounded and distinct from
-    agent-work liveness.
+    cleanly finished — the SINGLE substrate-death signal, time-bounded and distinct
+    from agent-work liveness. A persistent non-contiguous gap (have chunk N+1, never
+    saw N) stalls contiguous progress, so it surfaces through that same `is_dead()`
+    window — no separate raise path to escape the driver's reap-on-death handling.
     """
 
     def __init__(
@@ -135,9 +142,9 @@ class ChunkReader:
             m = _CHUNK_RE.search(info.key)
             if m:
                 present.add(int(m.group(1)))
-            elif info.key.endswith(_MANIFEST):
-                raw = await self._store.get(info.key)
-                self._total = json.loads(raw).get("total_chunks")
+            elif info.key.endswith(_MANIFEST) and self._total is None:
+                # the manifest is written once and never changes — read it only once
+                self._total = json.loads(await self._store.get(info.key)).get("total_chunks")
 
         events: list[SpanEvent] = []
         nxt = self._seen + 1
@@ -151,14 +158,6 @@ class ChunkReader:
 
         if events:
             self._last_progress = self._clock()
-        # A non-contiguous gap that never closes is terminal once the run claims
-        # to be finished but we can't reach `total`.
-        if self._total is not None and self._seen < self._total and present and max(present) > self._seen:
-            if (self._clock() - self._last_progress) > self._dead_after_s:
-                raise TerminalChunkGap(
-                    f"chunk {self._seen + 1} missing past {self._dead_after_s}s "
-                    f"(have up to {max(present)}, manifest says {self._total})"
-                )
         return events
 
     def is_dead(self) -> bool:

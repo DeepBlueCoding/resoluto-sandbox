@@ -1,11 +1,10 @@
 """Runner self-report proof — real subprocess → real localfs store → readable telemetry."""
-import json
-
 import pytest
 
+from resoluto_sandbox.contracts import NodeResult
 from resoluto_sandbox.objectstore import LocalFsObjectStore
-from resoluto_sandbox.runner import RESULT_KEY, run_node_in_sandbox
-from resoluto_sandbox.telemetry import ChunkReader
+from resoluto_sandbox.runner import run_node_in_sandbox
+from resoluto_sandbox.telemetry import ChunkReader, result_key
 
 
 @pytest.fixture
@@ -23,10 +22,10 @@ async def test_runner_ships_spans_logs_and_result(store):
         workload_argv=["sh", "-c", "echo hello; echo world"],
     )
 
-    assert result == {"node_id": "compile", "status": "success", "exit_code": 0}
+    assert (result.node_id, result.status, result.exit_code) == ("compile", "success", 0)
 
-    raw = await store.get(f"{prefix}/{RESULT_KEY}")
-    assert json.loads(raw)["status"] == "success"
+    stored = NodeResult.model_validate_json(await store.get(result_key(prefix)))
+    assert stored.status == "success"
 
     reader = ChunkReader(store, prefix)
     events = await reader.poll()
@@ -47,10 +46,11 @@ async def test_runner_nonzero_exit_marks_failure_but_still_reports(store):
         workload_argv=["sh", "-c", "echo dying; exit 7"],
     )
 
-    assert result == {"node_id": "boom", "status": "failure", "exit_code": 7}
+    assert (result.node_id, result.status, result.exit_code) == ("boom", "failure", 7)
 
     reader = ChunkReader(store, prefix)
     events = await reader.poll()
     close = next(e for e in events if e.event == "close" and e.kind == "node")
     assert close.status == "success"  # span body didn't raise — verdict is in result, not span
-    assert json.loads(await store.get(f"{prefix}/{RESULT_KEY}"))["exit_code"] == 7
+    stored = NodeResult.model_validate_json(await store.get(result_key(prefix)))
+    assert stored.exit_code == 7

@@ -80,9 +80,9 @@ async def test_real_kata_lane_store_mediated_loop():
         await runtime.close()
 
     # the loop closed cleanly — pod reached terminal, result collected, reaped
-    assert result["status"] == "success", result
-    assert result["exit_code"] == 0
-    assert result["observed_phase"] == "succeeded"
+    assert result.status == "success", result
+    assert result.exit_code == 0
+    assert result.observed_phase == "succeeded"
     assert pool.live_count == 0
 
     # the host reconstructed the in-pod telemetry tree from the store alone
@@ -155,8 +155,8 @@ async def test_real_repo_stages_in_and_diff_comes_back_out(tmp_path):
     finally:
         await runtime.close()
 
-    assert result["status"] == "success", result
-    assert result.get("output_archive") == f"{prefix}/outbox/output.tar.gz"
+    assert result.status == "success", result
+    assert result.output_archive == f"{prefix}/outbox/output.tar.gz"
 
     logs = [e.data["line"] for e in seen if e.event == "log" and e.kind == "log"]
     assert any("ref: refs/heads/" in ln for ln in logs), "guest never saw .git → repo not staged"

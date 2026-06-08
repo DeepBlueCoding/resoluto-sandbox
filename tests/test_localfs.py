@@ -4,12 +4,10 @@ from resoluto_sandbox import LocalFsObjectStore
 
 
 @pytest.mark.asyncio
-async def test_put_get_range(tmp_path):
+async def test_put_get_roundtrip(tmp_path):
     s = LocalFsObjectStore(tmp_path)
     await s.put("run/r/a.txt", b"0123456789")
     assert await s.get("run/r/a.txt") == b"0123456789"
-    assert await s.get("run/r/a.txt", 3) == b"3456789"
-    assert await s.get("run/r/a.txt", 2, 5) == b"234"
 
 
 @pytest.mark.asyncio

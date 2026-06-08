@@ -33,14 +33,9 @@ class LocalFsObjectStore(ObjectStore):
             os.fsync(f.fileno())
         os.replace(tmp, path)  # atomic; readers never see a partial chunk
 
-    async def get(self, key: str, start: int = 0, end: int | None = None) -> bytes:
-        path = self._path(key)
-        with open(path, "rb") as f:
-            if start:
-                f.seek(start)
-            if end is None:
-                return f.read()
-            return f.read(end - start)
+    async def get(self, key: str) -> bytes:
+        with open(self._path(key), "rb") as f:
+            return f.read()
 
     async def list_prefix(self, prefix: str) -> list[ObjectInfo]:
         base = self._path(prefix)

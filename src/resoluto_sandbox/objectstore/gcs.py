@@ -1,10 +1,10 @@
 """GcsObjectStore — the cloud backend (GKE + GCS via Workload Identity).
 
 Same contract as LocalFs/S3. Uses gcloud-aio-storage (async); lazy import behind
-the [gcs] extra. Range reads via the HTTP Range header. NOTE: not locally
-integration-tested (no GCP creds in the spike env) — validated by contract parity
-with S3 (which IS minio-tested); the conformance suite should run against a real
-bucket before relying on it in production (audit §17 follow-up)."""
+the [gcs] extra. NOTE: not locally integration-tested (no GCP creds in the spike
+env) — validated by contract parity with S3 (which IS minio-tested); the
+conformance suite should run against a real bucket before relying on it in
+production (audit §17 follow-up)."""
 from __future__ import annotations
 
 from resoluto_sandbox.contracts import ObjectInfo, ObjectStore
@@ -26,12 +26,8 @@ class GcsObjectStore(ObjectStore):
     async def put(self, key: str, data: bytes) -> None:
         await self._client().upload(self._bucket, key, data)
 
-    async def get(self, key: str, start: int = 0, end: int | None = None) -> bytes:
-        headers = None
-        if start or end is not None:
-            rng = f"bytes={start}-" + ("" if end is None else str(end - 1))
-            headers = {"Range": rng}
-        return await self._client().download(self._bucket, key, headers=headers)
+    async def get(self, key: str) -> bytes:
+        return await self._client().download(self._bucket, key)
 
     async def list_prefix(self, prefix: str) -> list[ObjectInfo]:
         client = self._client()

@@ -22,13 +22,11 @@ async def _store():
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_s3_put_get_range_list():
+async def test_s3_put_get_list():
     s = await _store()
     pfx = f"t/{uuid.uuid4().hex}"
     await s.put(f"{pfx}/a.txt", b"0123456789")
     assert await s.get(f"{pfx}/a.txt") == b"0123456789"
-    assert await s.get(f"{pfx}/a.txt", 3) == b"3456789"
-    assert await s.get(f"{pfx}/a.txt", 2, 5) == b"234"
     await s.put(f"{pfx}/b.txt", b"xy")
     infos = await s.list_prefix(pfx)
     assert {i.key for i in infos} == {f"{pfx}/a.txt", f"{pfx}/b.txt"}

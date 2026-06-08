@@ -43,13 +43,9 @@ class S3ObjectStore(ObjectStore):
         async with self._client() as c:
             await c.put_object(Bucket=self._bucket, Key=key, Body=data)
 
-    async def get(self, key: str, start: int = 0, end: int | None = None) -> bytes:
-        kwargs = {"Bucket": self._bucket, "Key": key}
-        if start or end is not None:
-            rng = f"bytes={start}-" + ("" if end is None else str(end - 1))
-            kwargs["Range"] = rng
+    async def get(self, key: str) -> bytes:
         async with self._client() as c:
-            resp = await c.get_object(**kwargs)
+            resp = await c.get_object(Bucket=self._bucket, Key=key)
             async with resp["Body"] as body:
                 return await body.read()
 

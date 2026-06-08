@@ -53,7 +53,7 @@ async def _main() -> int:
         workspace_dir=os.environ.get("RESOLUTO_WORKSPACE_DIR"),
         output_paths=json.loads(output_paths_env) if output_paths_env else None,
     )
-    return 0 if result["status"] == "success" else 1
+    return 0 if result.status == "success" else 1
 
 
 if __name__ == "__main__":

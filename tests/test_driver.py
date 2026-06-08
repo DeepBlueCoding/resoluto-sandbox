@@ -45,8 +45,8 @@ class RunnerBackedRuntime(SandboxRuntime):
             return SandboxStatus(phase="running")
         res = task.result()
         return SandboxStatus(
-            phase="succeeded" if res["status"] == "success" else "failed",
-            exit_code=res["exit_code"],
+            phase="succeeded" if res.status == "success" else "failed",
+            exit_code=res.exit_code,
         )
 
     async def destroy(self, handle: SandboxHandle) -> None:
@@ -101,9 +101,9 @@ async def test_drive_node_full_loop(tmp_path):
         on_event=seen.append, poll_interval_s=0.01,
     )
 
-    assert result["status"] == "success"
-    assert result["exit_code"] == 0
-    assert result["observed_phase"] == "succeeded"
+    assert result.status == "success"
+    assert result.exit_code == 0
+    assert result.observed_phase == "succeeded"
     # The driver tailed REAL telemetry the runner shipped, in tree order.
     lines = [e.data["line"] for e in seen if e.event == "log" and e.kind == "log"]
     assert lines == ["building", "ok"]
@@ -131,7 +131,7 @@ async def test_drive_node_detects_silent_substrate_death(tmp_path):
         poll_interval_s=0, dead_after_s=30.0, clock=clock,
     )
 
-    assert result["status"] == "failure"
-    assert "substrate dead" in result["reason"]
-    assert "OOMKilled" in result["substrate_logs"]
+    assert result.status == "failure"
+    assert "substrate dead" in result.reason
+    assert "OOMKilled" in result.substrate_logs
     assert runtime.destroyed == ["dead/1"]  # reaped even on death path
