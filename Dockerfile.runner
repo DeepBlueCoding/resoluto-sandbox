@@ -1,0 +1,11 @@
+FROM python:3.12-slim
+
+WORKDIR /opt/resoluto-sandbox
+COPY pyproject.toml ./
+COPY src ./src
+RUN pip install --no-cache-dir ".[s3]"
+
+RUN useradd --uid 65532 --create-home --shell /usr/sbin/nologin nonroot
+USER 65532
+
+ENTRYPOINT ["python", "-m", "resoluto_sandbox.runner_main"]
