@@ -32,13 +32,20 @@ def result_key(prefix: str) -> str:
     return f"{prefix.rstrip('/')}/{_RESULT}"
 
 
-class ChunkShipper:
-    """In-sandbox: buffer SpanEvents, flush immutable chunks to the store.
+def _default_heartbeat(ts: float) -> str:
+    return SpanEvent(run_id="", span_id="hb", kind="heartbeat", event="log", ts=ts).model_dump_json()
 
-    Inputs: an `ObjectStore`, the run's `prefix`, flush thresholds, and an
-    injectable `clock` (tests pass a fake; no real sleeps). A heartbeat ensures a
-    chunk lands every `heartbeat_s` even when quiet, so the reader's liveness
-    signal keeps ticking.
+
+class ChunkShipper:
+    """In-sandbox: buffer JSONL lines, flush immutable chunks to the store.
+
+    The transport is payload-agnostic — `emit_line(str)` ships any JSONL record
+    (SpanEvents via `emit()`, or the worker's PipelineEvents). Inputs: an
+    `ObjectStore`, the run's `prefix`, flush thresholds, an injectable `clock`
+    (tests pass a fake; no real sleeps), and a `heartbeat_factory` building the
+    quiet-period heartbeat line so the carried vocabulary stays decodable. A
+    heartbeat ensures a chunk lands every `heartbeat_s` even when quiet, so the
+    reader's liveness signal keeps ticking.
     """
 
     def __init__(
@@ -49,6 +56,7 @@ class ChunkShipper:
         flush_bytes: int = 64 * 1024,
         flush_interval_s: float = 5.0,
         heartbeat_s: float = 30.0,
+        heartbeat_factory: Callable[[float], str] = _default_heartbeat,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self._store = store
@@ -56,6 +64,7 @@ class ChunkShipper:
         self._flush_bytes = flush_bytes
         self._flush_interval_s = flush_interval_s
         self._heartbeat_s = heartbeat_s
+        self._heartbeat_factory = heartbeat_factory
         self._clock = clock
         self._buf: list[str] = []
         self._buf_bytes = 0
@@ -64,12 +73,15 @@ class ChunkShipper:
         self._closed = False
         self._flush_lock = asyncio.Lock()  # emit/tick/close may flush concurrently
 
-    async def emit(self, event: SpanEvent) -> None:
-        line = event.model_dump_json()
+    async def emit_line(self, line: str) -> None:
+        """Ship one opaque JSONL record (the payload-agnostic core)."""
         self._buf.append(line)
         self._buf_bytes += len(line) + 1
         if self._buf_bytes >= self._flush_bytes:
             await self.flush()
+
+    async def emit(self, event: SpanEvent) -> None:
+        await self.emit_line(event.model_dump_json())
 
     async def tick(self) -> None:
         """Time-driven flush + heartbeat — called on an interval by the runner."""
@@ -77,9 +89,7 @@ class ChunkShipper:
         if self._buf and (now - self._last_flush) >= self._flush_interval_s:
             await self.flush()
         elif not self._buf and (now - self._last_flush) >= self._heartbeat_s:
-            await self.emit(SpanEvent(
-                run_id="", span_id="hb", kind="heartbeat", event="log", ts=now,
-            ))
+            await self.emit_line(self._heartbeat_factory(now))
             await self.flush()
 
     async def flush(self) -> None:
@@ -107,12 +117,13 @@ class ChunkShipper:
 class ChunkReader:
     """Orchestrator: tail a run's chunk objects in contiguous index order.
 
-    `poll()` returns newly-available events since the last call. `is_dead()` is
-    true when no new chunk has arrived within `dead_after_s` AND the run isn't
-    cleanly finished — the SINGLE substrate-death signal, time-bounded and distinct
-    from agent-work liveness. A persistent non-contiguous gap (have chunk N+1, never
-    saw N) stalls contiguous progress, so it surfaces through that same `is_dead()`
-    window — no separate raise path to escape the driver's reap-on-death handling.
+    `poll_lines()` returns newly-available JSONL records (the payload-agnostic
+    core); `poll()` is a typed SpanEvent view over it. `is_dead()` is true when no
+    new chunk has arrived within `dead_after_s` AND the run isn't cleanly finished —
+    the SINGLE substrate-death signal, time-bounded and distinct from agent-work
+    liveness. A persistent non-contiguous gap (have chunk N+1, never saw N) stalls
+    contiguous progress, so it surfaces through that same `is_dead()` window — no
+    separate raise path to escape the driver's reap-on-death handling.
     """
 
     def __init__(
@@ -135,7 +146,9 @@ class ChunkReader:
     def finished(self) -> bool:
         return self._total is not None and self._seen >= self._total
 
-    async def poll(self) -> list[SpanEvent]:
+    async def poll_lines(self) -> list[str]:
+        """Contiguous-index tail — the payload-agnostic core (carries the index,
+        manifest, and liveness logic the typed `poll()` and the worker both reuse)."""
         infos = await self._store.list_prefix(self._prefix)
         present: set[int] = set()
         for info in infos:
@@ -146,19 +159,20 @@ class ChunkReader:
                 # the manifest is written once and never changes — read it only once
                 self._total = json.loads(await self._store.get(info.key)).get("total_chunks")
 
-        events: list[SpanEvent] = []
+        lines: list[str] = []
         nxt = self._seen + 1
         while nxt in present:
             raw = await self._store.get(_chunk_key(self._prefix, nxt))
-            for line in raw.decode("utf-8").splitlines():
-                if line.strip():
-                    events.append(SpanEvent.model_validate_json(line))
+            lines.extend(line for line in raw.decode("utf-8").splitlines() if line.strip())
             self._seen = nxt
             nxt += 1
 
-        if events:
+        if lines:
             self._last_progress = self._clock()
-        return events
+        return lines
+
+    async def poll(self) -> list[SpanEvent]:
+        return [SpanEvent.model_validate_json(line) for line in await self.poll_lines()]
 
     def is_dead(self) -> bool:
         if self.finished:

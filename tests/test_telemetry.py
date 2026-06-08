@@ -82,6 +82,45 @@ async def test_finished_run_is_never_dead(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_emit_line_poll_lines_carry_opaque_jsonl(tmp_path):
+    # the transport is payload-agnostic — arbitrary JSONL (e.g. the worker's
+    # PipelineEvents) round-trips without going through SpanEvent.
+    store = LocalFsObjectStore(tmp_path)
+    prefix = "run/r/nodes/n"
+    ship = ChunkShipper(store, prefix, flush_bytes=10_000)
+    reader = ChunkReader(store, prefix)
+
+    await ship.emit_line('{"event_type":"node_started","x":1}')
+    await ship.emit_line('{"event_type":"gate_result","ok":true}')
+    await ship.flush()
+    assert await reader.poll_lines() == [
+        '{"event_type":"node_started","x":1}',
+        '{"event_type":"gate_result","ok":true}',
+    ]
+
+    await ship.emit_line('{"event_type":"node_completed"}')
+    await ship.close()
+    assert await reader.poll_lines() == ['{"event_type":"node_completed"}']
+    assert reader.finished is True
+
+
+@pytest.mark.asyncio
+async def test_injected_heartbeat_factory_ships_custom_line(tmp_path):
+    clock = {"t": 0.0}
+    store = LocalFsObjectStore(tmp_path)
+    prefix = "run/r/nodes/n"
+    ship = ChunkShipper(
+        store, prefix, heartbeat_s=10.0,
+        heartbeat_factory=lambda ts: '{"event_type":"lane_heartbeat"}',
+        clock=lambda: clock["t"],
+    )
+    reader = ChunkReader(store, prefix, clock=lambda: clock["t"])
+    clock["t"] = 20.0  # quiet past the heartbeat window
+    await ship.tick()
+    assert await reader.poll_lines() == ['{"event_type":"lane_heartbeat"}']
+
+
+@pytest.mark.asyncio
 async def test_terminal_gap_surfaces_as_dead(tmp_path):
     clock = {"t": 0.0}
     store = LocalFsObjectStore(tmp_path)
