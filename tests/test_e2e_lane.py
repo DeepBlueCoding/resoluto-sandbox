@@ -12,11 +12,18 @@ Needs: live k3s+Kata, the resoluto-sandbox-runner:dev image imported into k3s
 containerd, and spike-minio on the host (0.0.0.0:9100, minioadmin/minioadmin).
 """
 import platform
+import subprocess
 import uuid
 
 import pytest
 
-from resoluto_sandbox import SandboxLaunchSpec, SandboxPool, drive_node
+from resoluto_sandbox import (
+    SandboxLaunchSpec,
+    SandboxPool,
+    drive_node,
+    fetch_outputs,
+    put_dir,
+)
 from resoluto_sandbox.objectstore.s3 import S3ObjectStore
 from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
 
@@ -85,3 +92,78 @@ async def test_real_kata_lane_store_mediated_loop():
     assert any(e.kind == "node" and e.event == "close" and e.status == "success" for e in seen)
     # guest kernel != host kernel → the work really ran inside a Kata VM
     assert platform.release() not in logs, "guest kernel == host kernel (no VM boundary!)"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_real_repo_stages_in_and_diff_comes_back_out(tmp_path):
+    """A real git repo (incl. .git history) rides into the passive Kata pod as ONE
+    store object, the lane reads it + emits a patched artifact, and the host fetches
+    that artifact back — no git egress, no creds in guest, store as the only path."""
+    run_id = f"e2e{uuid.uuid4().hex[:8]}"
+    node_id = "edit"
+    bucket = "resoluto-e2e"
+    prefix = f"run/{run_id}/nodes/{node_id}"
+
+    # a REAL git repo on the host (history lives in .git, which the tar carries)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "README.md").write_text("ORIGINAL\n")
+    env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "init"], cwd=repo, check=True, env={**env, "PATH": "/usr/bin:/bin"})
+
+    store = S3ObjectStore(
+        bucket, endpoint_url=HOST_ENDPOINT, region_name="us-east-1",
+        aws_access_key_id=MINIO_KEY, aws_secret_access_key=MINIO_KEY,
+    )
+    await store.ensure_bucket()
+    # HOST pushes the worktree as the lane's single input object
+    await put_dir(store, prefix, str(repo))
+
+    spec = SandboxLaunchSpec(
+        image=RUNNER_IMAGE,
+        flavor="plain",
+        runtime_class="kata",
+        labels={"resoluto.run_id": run_id, "resoluto.node_id": node_id},
+        store_prefix=prefix,
+        deadline_seconds=300,
+        env={
+            "RESOLUTO_STORE_KIND": "s3",
+            "RESOLUTO_STORE_BUCKET": bucket,
+            "RESOLUTO_STORE_ENDPOINT": POD_ENDPOINT,
+            "RESOLUTO_STORE_REGION": "us-east-1",
+            "AWS_ACCESS_KEY_ID": MINIO_KEY,
+            "AWS_SECRET_ACCESS_KEY": MINIO_KEY,
+            "RESOLUTO_RUN_ID": run_id,
+            "RESOLUTO_NODE_ID": node_id,
+            "RESOLUTO_WORKSPACE_DIR": "/tmp/ws",  # writable by nonroot 65532
+            "RESOLUTO_OUTPUT_PATHS": '["patched.md"]',
+            # proves the repo (incl .git) was staged, then produces an artifact
+            "RESOLUTO_WORKLOAD_ARGV":
+                '["sh", "-c", "cat .git/HEAD; cat README.md; '
+                'sed s/ORIGINAL/PATCHED/ README.md > patched.md"]',
+        },
+    )
+
+    runtime = K8sSandboxRuntime(namespace=NS, image_pull_policy="Never")
+    pool = SandboxPool(runtime, max_concurrent=1)
+    seen = []
+    try:
+        result = await drive_node(pool, store, spec, on_event=seen.append, poll_interval_s=3.0, dead_after_s=240.0)
+    finally:
+        await runtime.close()
+
+    assert result["status"] == "success", result
+    assert result.get("output_archive") == f"{prefix}/outbox/output.tar.gz"
+
+    logs = [e.data["line"] for e in seen if e.event == "log" and e.kind == "log"]
+    assert any("ref: refs/heads/" in ln for ln in logs), "guest never saw .git → repo not staged"
+    assert "ORIGINAL" in logs, "guest never read README → worktree not staged"
+
+    # HOST fetches the artifact the adversarial guest produced (traversal-safe extract)
+    dest = tmp_path / "out"
+    fetched = await fetch_outputs(store, prefix, str(dest))
+    assert fetched == [f"{prefix}/outbox/output.tar.gz"]
+    assert (dest / "patched.md").read_text() == "PATCHED\n"

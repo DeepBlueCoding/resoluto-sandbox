@@ -43,12 +43,15 @@ def store_from_env() -> ObjectStore:
 
 async def _main() -> int:
     store = store_from_env()
+    output_paths_env = os.environ.get("RESOLUTO_OUTPUT_PATHS")
     result = await run_node_in_sandbox(
         store=store,
         prefix=os.environ["RESOLUTO_STORE_PREFIX"],
         run_id=os.environ["RESOLUTO_RUN_ID"],
         node_id=os.environ["RESOLUTO_NODE_ID"],
         workload_argv=json.loads(os.environ["RESOLUTO_WORKLOAD_ARGV"]),
+        workspace_dir=os.environ.get("RESOLUTO_WORKSPACE_DIR"),
+        output_paths=json.loads(output_paths_env) if output_paths_env else None,
     )
     return 0 if result["status"] == "success" else 1
 
