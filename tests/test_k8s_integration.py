@@ -42,7 +42,7 @@ async def _wait_terminal(rt, handle, tries=80):
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_kata_pod_lifecycle():
+async def test_kata_pod_lifecycle(dind_image):
     rt = K8sSandboxRuntime(namespace=NS, image_pull_policy="Never")
     handle = await rt.launch(_spec())
     try:
@@ -60,7 +60,7 @@ async def test_kata_pod_lifecycle():
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_sweep_by_label():
+async def test_sweep_by_label(dind_image):
     rt = K8sSandboxRuntime(namespace=NS, image_pull_policy="Never")
     try:
         await rt.launch(_spec(run_id="sweepme", node_id="a", args=["sleep 120"]))

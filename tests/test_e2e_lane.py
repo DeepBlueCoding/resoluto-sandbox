@@ -36,7 +36,7 @@ MINIO_KEY = "minioadmin"
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_real_kata_lane_store_mediated_loop():
+async def test_real_kata_lane_store_mediated_loop(runner_image):
     run_id = f"e2e{uuid.uuid4().hex[:8]}"
     node_id = "compile"
     bucket = "resoluto-e2e"
@@ -96,7 +96,7 @@ async def test_real_kata_lane_store_mediated_loop():
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_real_repo_stages_in_and_diff_comes_back_out(tmp_path):
+async def test_real_repo_stages_in_and_diff_comes_back_out(tmp_path, runner_image):
     """A real git repo (incl. .git history) rides into the passive Kata pod as ONE
     store object, the lane reads it + emits a patched artifact, and the host fetches
     that artifact back — no git egress, no creds in guest, store as the only path."""
