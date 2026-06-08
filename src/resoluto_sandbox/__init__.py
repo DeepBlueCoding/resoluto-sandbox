@@ -14,8 +14,11 @@ from resoluto_sandbox.contracts import (
     SandboxStatus,
     SpanEvent,
 )
+from resoluto_sandbox.driver import drive_node
 from resoluto_sandbox.objectstore import LocalFsObjectStore
 from resoluto_sandbox.pool import SandboxLease, SandboxPool
+from resoluto_sandbox.runner import run_node_in_sandbox
+from resoluto_sandbox.spans import SpanEmitter
 from resoluto_sandbox.telemetry import ChunkReader, ChunkShipper, TerminalChunkGap
 
 __all__ = [
@@ -23,4 +26,5 @@ __all__ = [
     "SandboxRuntime", "SandboxStatus", "SpanEvent",
     "LocalFsObjectStore", "SandboxLease", "SandboxPool",
     "ChunkReader", "ChunkShipper", "TerminalChunkGap",
+    "SpanEmitter", "run_node_in_sandbox", "drive_node",
 ]

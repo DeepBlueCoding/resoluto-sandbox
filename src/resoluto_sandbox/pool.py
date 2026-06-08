@@ -58,6 +58,10 @@ class SandboxPool:
         self._max = max_concurrent
 
     @property
+    def runtime(self) -> SandboxRuntime:
+        return self._runtime
+
+    @property
     def live_count(self) -> int:
         return len(self._live)
 
