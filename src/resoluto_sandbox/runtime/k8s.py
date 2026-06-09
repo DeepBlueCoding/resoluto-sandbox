@@ -73,7 +73,9 @@ class K8sSandboxRuntime(SandboxRuntime):
     def _security_context(self, spec: SandboxLaunchSpec) -> dict:
         if spec.flavor == "dind":
             # privileged is GUEST-scoped under Kata; host pod is not host-privileged.
-            return {"privileged": spec.privileged}
+            # runAsUser 0 lets the entrypoint start the inner dockerd, then it drops to
+            # the lane user (uid 1000) for the workload itself.
+            return {"privileged": spec.privileged, "runAsUser": 0}
         return {
             "privileged": False,
             "allowPrivilegeEscalation": False,
