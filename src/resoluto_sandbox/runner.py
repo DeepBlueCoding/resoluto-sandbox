@@ -27,6 +27,22 @@ async def _heartbeat(shipper: ChunkShipper, interval_s: float) -> None:
         await shipper.tick()
 
 
+async def _exec_logged(em, parent_sid, kind, name, argv, cwd) -> int:
+    """Run one command, streaming its merged stdout/stderr as redacted log events
+    under its own span, and return the exit code. The unit of in-sandbox work AND
+    the lifecycle-hook injection point (setup/workload/cleanup all go through here),
+    so every injected step is observable in the §13 span tree."""
+    async with em.span(parent_sid, kind, name, inputs={"argv": argv}) as sid:
+        proc = await asyncio.create_subprocess_exec(
+            *argv, cwd=cwd,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+        )
+        assert proc.stdout is not None
+        async for raw in proc.stdout:
+            await em.log(sid, raw.decode("utf-8", "replace").rstrip("\n"))
+        return await proc.wait()
+
+
 async def run_node_in_sandbox(
     *,
     store: ObjectStore,
@@ -36,6 +52,8 @@ async def run_node_in_sandbox(
     workload_argv: list[str],
     workspace_dir: str | None = None,
     output_paths: list[str] | None = None,
+    setup_argv: list[str] | None = None,
+    cleanup_argv: list[str] | None = None,
     heartbeat_interval_s: float = 5.0,
     clock: Callable[[], float] = time.time,
 ) -> NodeResult:
@@ -46,6 +64,16 @@ async def run_node_in_sandbox(
     archives under `<prefix>/inbox/` are staged into it (§15 — the repo arrives as
     a store object, never a runtime git-clone) and the workload runs there; on
     success the declared `output_paths` are tarred back to `<prefix>/outbox/`.
+
+    Lifecycle hooks (orchestrator/project-descriptor injectable, observable spans):
+      - `setup_argv`  runs BEFORE the workload (inside the node span). Non-zero exit
+        aborts the node — a failed setup is a failed node, not a silent skip.
+      - `cleanup_argv` runs AFTER the workload, ALWAYS (success, failure, or staging
+        error), as a sibling span. This is the "free temp/resources after a gate"
+        hook — e.g. `docker builder prune -f`, `docker compose down -v`, `rm -rf
+        scratch` — so the tmpfs graph / disk doesn't accrue across steps in a reused
+        sandbox. Its own exit code never changes the node verdict (best-effort).
+
     Returns the `NodeResult` (also written to `<prefix>/result.json`). NOTE the
     verdict here is the OBSERVED exit code — the authoritative gate verdict is still
     derived orchestrator-side (§12.12); this is work product, not a trust decision.
@@ -60,22 +88,26 @@ async def run_node_in_sandbox(
                 Path(workspace_dir).mkdir(parents=True, exist_ok=True)
                 staged = await stage_inputs(store, prefix, workspace_dir)
                 await em.log(node_sid, f"staged {len(staged)} input archive(s) → {workspace_dir}")
-            proc = await asyncio.create_subprocess_exec(
-                *workload_argv,
-                cwd=workspace_dir,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-            )
-            assert proc.stdout is not None
-            async for raw in proc.stdout:
-                await em.log(node_sid, raw.decode("utf-8", "replace").rstrip("\n"))
-            rc = await proc.wait()
-            result.exit_code = rc
-            result.status = "success" if rc == 0 else "failure"
-            if rc == 0 and workspace_dir is not None and output_paths:
-                result.output_archive = await collect_outputs(store, prefix, workspace_dir, output_paths)
-                await em.log(node_sid, f"collected outputs → {result.output_archive}")
+            setup_ok = True
+            if setup_argv:
+                src = await _exec_logged(em, node_sid, "setup", "setup", setup_argv, workspace_dir)
+                if src != 0:
+                    # a failed setup is a failed node — record it and skip the workload
+                    result.exit_code, result.status, setup_ok = src, "failure", False
+                    await em.log(node_sid, f"setup hook failed (exit {src}) — skipping workload")
+            if setup_ok:
+                rc = await _exec_logged(em, node_sid, "workload", node_id, workload_argv, workspace_dir)
+                result.exit_code = rc
+                result.status = "success" if rc == 0 else "failure"
+                if rc == 0 and workspace_dir is not None and output_paths:
+                    result.output_archive = await collect_outputs(store, prefix, workspace_dir, output_paths)
+                    await em.log(node_sid, f"collected outputs → {result.output_archive}")
     finally:
+        if cleanup_argv:
+            try:
+                await _exec_logged(em, "", "cleanup", "cleanup", cleanup_argv, workspace_dir)
+            except Exception:  # noqa: BLE001 — cleanup is best-effort, never masks the verdict
+                pass
         hb.cancel()
         await store.put(result_key(prefix), result.model_dump_json().encode("utf-8"))
         await shipper.close()

@@ -41,6 +41,11 @@ def store_from_env() -> ObjectStore:
     raise RuntimeError(f"unknown RESOLUTO_STORE_KIND={kind!r}")
 
 
+def _argv_env(name: str) -> list[str] | None:
+    raw = os.environ.get(name)
+    return json.loads(raw) if raw else None
+
+
 async def _main() -> int:
     store = store_from_env()
     output_paths_env = os.environ.get("RESOLUTO_OUTPUT_PATHS")
@@ -52,6 +57,8 @@ async def _main() -> int:
         workload_argv=json.loads(os.environ["RESOLUTO_WORKLOAD_ARGV"]),
         workspace_dir=os.environ.get("RESOLUTO_WORKSPACE_DIR"),
         output_paths=json.loads(output_paths_env) if output_paths_env else None,
+        setup_argv=_argv_env("RESOLUTO_SETUP_ARGV"),
+        cleanup_argv=_argv_env("RESOLUTO_CLEANUP_ARGV"),
     )
     return 0 if result.status == "success" else 1
 

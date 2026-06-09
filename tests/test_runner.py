@@ -39,6 +39,38 @@ async def test_runner_ships_spans_logs_and_result(store):
     assert logs == ["hello", "world"]
 
 
+async def test_cleanup_hook_always_runs_even_on_workload_failure(store, tmp_path):
+    prefix = "run/r1/nodes/gate"
+    marker = tmp_path / "cleaned"
+    result = await run_node_in_sandbox(
+        store=store, prefix=prefix, run_id="r1", node_id="gate",
+        workload_argv=["sh", "-c", "echo working; exit 3"],
+        cleanup_argv=["sh", "-c", f"echo pruning; touch {marker}"],
+    )
+
+    # workload verdict is preserved; cleanup ran regardless and is observable
+    assert (result.status, result.exit_code) == ("failure", 3)
+    assert marker.exists()  # cleanup fired despite the failing workload
+
+    events = await ChunkReader(store, prefix).poll()
+    cleanup = [e for e in events if e.kind == "cleanup"]
+    assert any(e.event == "open" for e in cleanup) and any(e.event == "close" for e in cleanup)
+    assert "pruning" in [e.data.get("line") for e in events if e.event == "log"]
+
+
+async def test_setup_hook_failure_aborts_node_before_workload(store, tmp_path):
+    prefix = "run/r1/nodes/staged"
+    ran = tmp_path / "workload_ran"
+    result = await run_node_in_sandbox(
+        store=store, prefix=prefix, run_id="r1", node_id="staged",
+        setup_argv=["sh", "-c", "echo bad-setup; exit 2"],
+        workload_argv=["sh", "-c", f"touch {ran}"],
+    )
+
+    assert result.status == "failure"
+    assert not ran.exists()  # workload never ran because setup failed
+
+
 async def test_runner_nonzero_exit_marks_failure_but_still_reports(store):
     prefix = "run/r1/nodes/boom"
     result = await run_node_in_sandbox(

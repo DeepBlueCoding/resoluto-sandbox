@@ -112,11 +112,18 @@ class K8sSandboxRuntime(SandboxRuntime):
 
         volumes: list[dict] = []
         if spec.flavor == "dind":
+            # The inner dockerd graph MUST be a RAM-backed tmpfs (medium: Memory),
+            # not the default emptyDir: on Kata that default lands on the guest's
+            # virtiofs (FUSE) rootfs, where kernel overlay2 is unsupported and vfs
+            # exhausts virtiofsd's host-side file handles ("too many open files").
+            # tmpfs is a real in-guest fs → overlay2 works, no FUSE. The size counts
+            # against the pod's memory; the image bytes must fit (scale note §14).
             container.setdefault("volumeMounts", []).append(
                 {"name": "docker-graph", "mountPath": "/var/lib/docker"}
             )
             volumes.append(
-                {"name": "docker-graph", "emptyDir": {"sizeLimit": spec.ephemeral_storage}}
+                {"name": "docker-graph",
+                 "emptyDir": {"medium": "Memory", "sizeLimit": spec.docker_graph_size}}
             )
 
         return {

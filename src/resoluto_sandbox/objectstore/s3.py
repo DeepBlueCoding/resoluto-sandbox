@@ -32,12 +32,24 @@ class S3ObjectStore(ObjectStore):
 
     def _client(self):
         import aioboto3
+        from botocore.config import Config
 
         if self._session is None:
             self._session = aioboto3.Session()
+        # A 20-min lane is tailed by polling this store every few seconds; a
+        # transient connection blip under load must be absorbed, not abort the
+        # drive (§11.2 liveness is time-bounded by the death-window, not by one
+        # failed read). Standard mode retries the connection-error family with
+        # backoff; bounded timeouts fail a hung socket fast so the retry fires.
+        cfg = Config(
+            retries={"max_attempts": 10, "mode": "standard"},
+            connect_timeout=10,
+            read_timeout=30,
+        )
         # aioboto3 clients are async context managers — one per call (robust;
         # avoids a long-lived connection, consistent with the no-stream principle).
-        return self._session.client("s3", **{k: v for k, v in self._client_kwargs.items() if v is not None})
+        kwargs = {k: v for k, v in self._client_kwargs.items() if v is not None}
+        return self._session.client("s3", config=cfg, **kwargs)
 
     async def put(self, key: str, data: bytes) -> None:
         async with self._client() as c:

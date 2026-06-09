@@ -37,6 +37,7 @@ class SandboxLaunchSpec(BaseModel):
     cpu: str = "2"
     memory: str = "4Gi"
     ephemeral_storage: str = "8Gi"
+    docker_graph_size: str = "16Gi"  # dind only: tmpfs RAM budget for /var/lib/docker
     privileged: bool = False
     labels: dict[str, str] = Field(default_factory=dict)
     store_prefix: str  # run/<run_id>/nodes/<node_id> — where the sandbox self-reports
