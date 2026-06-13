@@ -11,10 +11,30 @@ in-sandbox server, no long-lived stream — the RES-236 wedge cannot exist here.
 """
 from __future__ import annotations
 
+import logging
+import os
 from abc import ABC, abstractmethod
 from typing import Literal
 
 from pydantic import BaseModel, Field
+
+_logger = logging.getLogger(__name__)
+
+
+def check_runtime_class_guard(runtime_class: str) -> None:
+    """Refuse non-Kata runtime classes unless RESOLUTO_TRUSTED_LOCAL is set.
+
+    Args: runtime_class — value from SandboxLaunchSpec.runtime_class.
+    Raises RuntimeError when runtime_class is not 'kata' and trusted-local flag absent.
+    """
+    if runtime_class.strip().lower() == "kata":
+        return
+    if "RESOLUTO_TRUSTED_LOCAL" not in os.environ:
+        raise RuntimeError(
+            f"Isolation downgrade refused: runtime_class={runtime_class!r}. "
+            "Set RESOLUTO_TRUSTED_LOCAL to permit non-Kata runtimes."
+        )
+    _logger.warning("[sandbox-guard] trusted-local: non-Kata runtime_class=%r permitted", runtime_class)
 
 # ── launch / handle / status ────────────────────────────────────────────────
 

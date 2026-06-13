@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 
-from resoluto_sandbox.contracts import SandboxHandle, SandboxLaunchSpec, SandboxRuntime
+from resoluto_sandbox.contracts import SandboxHandle, SandboxLaunchSpec, SandboxRuntime, check_runtime_class_guard
 
 
 class SandboxLease:
@@ -80,6 +80,7 @@ class SandboxPool:
     async def acquire(self, spec: SandboxLaunchSpec) -> SandboxLease:
         """Admit (FIFO, bounded) then launch. Raises on acquire-timeout (substrate
         starvation) or launch failure — fail-loud, no degraded fallback."""
+        check_runtime_class_guard(spec.runtime_class)
         # The admission lock serialises waiters so launches start in FIFO order;
         # they then proceed concurrently up to the cap once admitted.
         async with self._admit:

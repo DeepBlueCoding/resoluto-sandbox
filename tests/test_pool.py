@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 import pytest
 
@@ -27,8 +28,8 @@ class _FakeRuntime(SandboxRuntime):
         return 0
 
 
-def _spec(prefix="run/x/nodes/n"):
-    return SandboxLaunchSpec(image="img", store_prefix=prefix)
+def _spec(prefix="run/x/nodes/n", **kwargs):
+    return SandboxLaunchSpec(image="img", store_prefix=prefix, **kwargs)
 
 
 @pytest.mark.asyncio
@@ -146,3 +147,37 @@ async def test_semaphore_still_used_without_gate():
     await a.release()
     b = await asyncio.wait_for(blocked, timeout=1)
     await b.release()
+
+
+# ── Runtime class admission guard ────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("rc", ["", "runc"])
+@pytest.mark.asyncio
+async def test_acquire_refuses_non_kata_without_flag(rc, monkeypatch):
+    monkeypatch.delenv("RESOLUTO_TRUSTED_LOCAL", raising=False)
+    rt = _FakeRuntime()
+    pool = SandboxPool(rt, max_concurrent=2)
+    with pytest.raises(RuntimeError, match="RESOLUTO_TRUSTED_LOCAL"):
+        await pool.acquire(_spec(runtime_class=rc))
+
+
+@pytest.mark.parametrize("rc", ["", "runc"])
+@pytest.mark.asyncio
+async def test_acquire_permits_non_kata_with_trusted_local_flag(rc, monkeypatch, caplog):
+    monkeypatch.setenv("RESOLUTO_TRUSTED_LOCAL", "1")
+    rt = _FakeRuntime()
+    pool = SandboxPool(rt, max_concurrent=2)
+    with caplog.at_level(logging.WARNING):
+        async with await pool.acquire(_spec(runtime_class=rc)):
+            pass
+    assert any("trusted-local" in r.message for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_acquire_default_kata_always_passes(monkeypatch):
+    monkeypatch.delenv("RESOLUTO_TRUSTED_LOCAL", raising=False)
+    rt = _FakeRuntime()
+    pool = SandboxPool(rt, max_concurrent=2)
+    async with await pool.acquire(_spec()) as lease:  # runtime_class defaults to "kata"
+        assert lease.handle is not None

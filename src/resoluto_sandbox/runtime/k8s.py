@@ -22,6 +22,7 @@ from resoluto_sandbox.contracts import (
     SandboxLaunchSpec,
     SandboxRuntime,
     SandboxStatus,
+    check_runtime_class_guard,
 )
 
 logger = logging.getLogger(__name__)
@@ -343,6 +344,7 @@ class K8sSandboxRuntime(SandboxRuntime):
         }
 
     async def launch(self, spec: SandboxLaunchSpec) -> SandboxHandle:
+        check_runtime_class_guard(spec.runtime_class)
         api = await self._client()
         rid = spec.labels.get("resoluto.run_id", "")
         nid = spec.labels.get("resoluto.node_id", "")
