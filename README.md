@@ -221,12 +221,45 @@ new one is a single `ObjectStore` subclass.
 
 ## Storage on Kata (read before touching the `dind` path)
 
-The Kata guest's `/var/lib/docker` sits on **virtiofs (FUSE)**. For `dind` lanes the inner dockerd
-**must** use kernel **`overlay2` on a RAM-backed tmpfs graph** — `K8sSandboxRuntime` mounts the graph
-as `emptyDir{medium: Memory, sizeLimit: spec.docker_graph_size}`, and the image sets
-`{"storage-driver":"overlay2"}`.
+`dind` lanes need `/var/lib/docker` on a **real (non-virtiofs) filesystem** so the inner dockerd can
+use `overlay2`. Two backends are supported, selected by `SandboxLaunchSpec.graph_backend`:
 
-The obvious alternatives are **proven dead ends** on a real multi-image build:
+### `block` (production path — recommended)
+
+`graph_backend="block"` emits `emptyDir: {sizeLimit: docker_graph_block_size}` (no `medium` key). Kata
+maps this to a **virtio-blk block device** inside the guest. The `lane-entrypoint.sh` detects the raw
+block device via `findmnt`/`blkid`, formats it `ext4` (idempotent — skipped if already formatted), and
+remounts it before starting `dockerd`. Overlay2 on ext4/virtio-blk is **proven in Spike #1** (2026-06-08):
+full compose build + `docker compose up --wait` healthy, Playwright e2e green. This path does **not**
+count against pod memory — the block device is outside the guest's RAM budget, so compose stacks that
+exceed available RAM no longer OOM silently.
+
+**Required Kata host configuration** (`/opt/kata/share/defaults/kata-containers/configuration.toml`):
+```toml
+[hypervisor.qemu]
+# Allow Kata to present non-Memory emptyDirs as virtio-blk block devices in the guest.
+# Without this, emptyDir without medium falls back to virtiofs (FUSE), which fails overlay2.
+block_device_driver = "virtio-blk"
+enable_block_device_use = true
+```
+Verify the installed Kata version supports `enable_block_device_use` (Kata 3.x+). The k3s + Kata 3.31.0
+setup on this host is confirmed working.
+
+**Activation**: set `RESOLUTO_LANE_GRAPH_BACKEND=block` in the worker environment. Defaults to `tmpfs`.
+Block size defaults to `50Gi`; override with `RESOLUTO_LANE_DIND_BLOCK_SIZE`.
+
+**Why in-guest loop files don't work**: `mount -o loop` needs `/dev/loop*` device nodes, which
+`privileged_without_host_devices` withholds — confirmed dead end in Spike #1. The block device must be
+Kata-attached (virtio-blk), not created inside the guest.
+
+### `tmpfs` (fallback / default)
+
+`graph_backend="tmpfs"` (default) emits `emptyDir: {medium: Memory, sizeLimit: docker_graph_size}`.
+This is RAM-backed — overlay2 works, but the graph counts against pod memory. The default `docker_graph_size`
+is `16Gi` (overridden to `18Gi` via `RESOLUTO_LANE_DIND_GRAPH`); a 24Gi pod leaves only 6Gi for the
+workload, and on boxes with ~11Gi available RAM this OOMs silently.
+
+The virtiofs alternatives are **proven dead ends** on a real multi-image build:
 
 | Driver | Failure on the Kata virtiofs guest |
 |--------|------------------------------------|
@@ -234,10 +267,7 @@ The obvious alternatives are **proven dead ends** on a real multi-image build:
 | `overlay2` directly on virtiofs | `failed to mount overlay: invalid argument` — unsupported |
 | `fuse-overlayfs` | initializes, then **deadlocks the guest** (D-state on FUSE) |
 
-`tmpfs` is the only non-virtiofs filesystem available in the guest today, and tmpfs is RAM — so a
-`dind` lane's graph counts against pod memory and the image bytes must fit. Only `dind` lanes pay this;
-pure-compute lanes use no Docker. A block-backed (virtio-blk) graph to lift the RAM ceiling is on the
-[roadmap](#roadmap).
+Only `dind` lanes pay the storage cost; pure-compute lanes use no Docker.
 
 ---
 
@@ -321,9 +351,10 @@ real test suite **inside one Kata sandbox**, self-reported through MinIO.
 
 ## Caveats & limitations
 
-- **`dind` lanes are RAM-bound.** Because the inner Docker graph is `overlay2`-on-tmpfs, the image bytes
-  must fit in pod RAM, and an over-budget graph can OOM. Size `docker_graph_size` against real
-  node-allocatable memory; a fail-loud preflight and a block-backed graph are on the roadmap.
+- **`dind` lanes are RAM-bound when using the default `tmpfs` backend.** The image bytes must fit in
+  pod RAM, and an over-budget graph can OOM. Use `RESOLUTO_LANE_GRAPH_BACKEND=block` (the
+  block-backed virtio-blk path) to lift the RAM ceiling — the block device is outside the guest's
+  RAM budget. See [Storage on Kata](#storage-on-kata-read-before-touching-the-dind-path).
 - **Single backend, real today.** `K8sSandboxRuntime` (Kata) is the only shipped `SandboxRuntime`; the
   three-interface design makes ECS/Fly/Docker adapters straightforward, but they aren't written yet.
   "Cloud-agnostic" describes the *seam*, not multiple shipped backends.
@@ -343,7 +374,7 @@ real test suite **inside one Kata sandbox**, self-reported through MinIO.
 - [ ] Prefix-scoped / write-only / expiring store-credential minting + in-guest consumption
 - [ ] k8s-native orphan GC (`ownerReferences` + TTL) and a deployment-wide concurrency cap
 - [ ] Fail-closed admission guard (reject non-Kata `runtime_class` outside trusted-local)
-- [ ] Block-backed (virtio-blk) Docker graph to lift the `dind` RAM ceiling
+- [x] Block-backed (virtio-blk) Docker graph to lift the `dind` RAM ceiling (shipped — `graph_backend="block"` in `SandboxLaunchSpec`; opt-in via `RESOLUTO_LANE_GRAPH_BACKEND=block`)
 - [ ] Additional `SandboxRuntime` adapters (ECS / Fly / plain Docker)
 - [ ] OSS-clean base image: substrate + this runner only, with the consuming stack layered on top
 
