@@ -12,16 +12,24 @@ from resoluto_sandbox.contracts import ObjectInfo, ObjectStore
 
 
 def _build_scoped_policy(bucket: str, prefix: str) -> str:
-    """Build an IAM policy JSON that grants PutObject + GetObject on <bucket>/<prefix>/* only."""
-    resource = f"arn:aws:s3:::{bucket}/{prefix}/*"
+    """Build an IAM policy JSON scoped to <bucket>/<prefix>/*: object read/write PLUS
+    prefix-scoped ListBucket. ListBucket is required because the sandbox's stage_inputs
+    lists `<prefix>/inbox/` (ListObjectsV2) before fetching — without it the pod gets
+    AccessDenied and crashes before shipping any telemetry (a silent lane death)."""
     return json.dumps({
         "Version": "2012-10-17",
         "Statement": [
             {
                 "Effect": "Allow",
                 "Action": ["s3:PutObject", "s3:GetObject"],
-                "Resource": resource,
-            }
+                "Resource": f"arn:aws:s3:::{bucket}/{prefix}/*",
+            },
+            {
+                "Effect": "Allow",
+                "Action": ["s3:ListBucket"],
+                "Resource": f"arn:aws:s3:::{bucket}",
+                "Condition": {"StringLike": {"s3:prefix": [f"{prefix}/*"]}},
+            },
         ],
     })
 
