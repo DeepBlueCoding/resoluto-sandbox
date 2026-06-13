@@ -1,5 +1,7 @@
 """The pod manifest must carry activeDeadlineSeconds ONLY when the spec sets one —
 no hidden wall-clock deadline on lanes (liveness is the watchdog, not a timer)."""
+import logging
+
 import pytest
 
 from resoluto_sandbox.contracts import SandboxLaunchSpec
@@ -211,3 +213,45 @@ def test_limit_range_manifest_env_override(monkeypatch):
     lr = rt._limit_range_manifest()
     assert lr["spec"]["limits"][0]["max"]["memory"] == "48Gi"
     assert lr["spec"]["limits"][0]["max"]["cpu"] == "8"
+
+
+# ── Runtime class admission guard (direct launch bypass protection) ───────────
+
+
+@pytest.mark.parametrize("rc", ["", "runc"])
+@pytest.mark.asyncio
+async def test_launch_refuses_non_kata_without_flag(rc, monkeypatch):
+    monkeypatch.delenv("RESOLUTO_TRUSTED_LOCAL", raising=False)
+    rt = K8sSandboxRuntime()
+    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n", runtime_class=rc)
+    with pytest.raises(RuntimeError, match="RESOLUTO_TRUSTED_LOCAL"):
+        await rt.launch(spec)
+
+
+@pytest.mark.parametrize("rc", ["", "runc"])
+@pytest.mark.asyncio
+async def test_launch_permits_non_kata_with_trusted_local_flag(rc, monkeypatch, caplog):
+    monkeypatch.setenv("RESOLUTO_TRUSTED_LOCAL", "1")
+    rt = K8sSandboxRuntime()
+    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n", runtime_class=rc)
+    with caplog.at_level(logging.WARNING):
+        try:
+            await rt.launch(spec)
+        except RuntimeError as exc:
+            assert "RESOLUTO_TRUSTED_LOCAL" not in str(exc), f"Guard should not have blocked: {exc}"
+        except Exception:
+            pass  # expected: no k8s cluster in test environment
+    assert any("trusted-local" in r.message for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_launch_default_kata_passes_guard(monkeypatch):
+    monkeypatch.delenv("RESOLUTO_TRUSTED_LOCAL", raising=False)
+    rt = K8sSandboxRuntime()
+    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")  # kata default
+    try:
+        await rt.launch(spec)
+    except RuntimeError as exc:
+        assert "RESOLUTO_TRUSTED_LOCAL" not in str(exc), f"Guard should not have blocked: {exc}"
+    except Exception:
+        pass  # expected: no k8s cluster in test environment
