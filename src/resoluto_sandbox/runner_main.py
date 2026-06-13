@@ -60,6 +60,7 @@ def _argv_env(name: str) -> list[str] | None:
 async def _main() -> int:
     store = store_from_env()
     output_paths_env = os.environ.get("RESOLUTO_OUTPUT_PATHS")
+    canary_port_env = os.environ.get("RESOLUTO_CANARY_PROBE_PORT")
     result = await run_node_in_sandbox(
         store=store,
         prefix=os.environ["RESOLUTO_STORE_PREFIX"],
@@ -70,6 +71,9 @@ async def _main() -> int:
         output_paths=json.loads(output_paths_env) if output_paths_env else None,
         setup_argv=_argv_env("RESOLUTO_SETUP_ARGV"),
         cleanup_argv=_argv_env("RESOLUTO_CLEANUP_ARGV"),
+        skip_egress_canary="RESOLUTO_TRUSTED_LOCAL" in os.environ,
+        canary_probe_host=os.environ.get("RESOLUTO_CANARY_PROBE_HOST", "1.1.1.1"),
+        canary_probe_port=int(canary_port_env) if canary_port_env else 80,
     )
     return 0 if result.status == "success" else 1
 
