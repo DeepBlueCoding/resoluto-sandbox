@@ -58,6 +58,8 @@ class SandboxLaunchSpec(BaseModel):
     memory: str = "4Gi"
     ephemeral_storage: str = "8Gi"
     docker_graph_size: str = "16Gi"  # dind only: tmpfs RAM budget for /var/lib/docker
+    graph_backend: Literal["tmpfs", "block"] = "tmpfs"  # dind only: storage backend for /var/lib/docker
+    docker_graph_block_size: str = "50Gi"  # dind + block only: emptyDir sizeLimit for the virtio-blk volume
     privileged: bool = False
     labels: dict[str, str] = Field(default_factory=dict)
     store_prefix: str  # run/<run_id>/nodes/<node_id> — where the sandbox self-reports

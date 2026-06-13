@@ -8,6 +8,46 @@ from resoluto_sandbox.contracts import SandboxLaunchSpec
 from resoluto_sandbox.runtime.k8s import EgressConfig, K8sSandboxRuntime
 
 
+# ── docker graph backend ─────────────────────────────────────────────────────
+
+
+def test_dind_tmpfs_emits_memory_medium():
+    rt = K8sSandboxRuntime()
+    spec = SandboxLaunchSpec(
+        image="img:dev", store_prefix="run/r/nodes/n",
+        flavor="dind", graph_backend="tmpfs", docker_graph_size="16Gi",
+    )
+    manifest = rt._manifest(spec, "sbx-test")
+    volumes = manifest["spec"]["volumes"]
+    graph_vol = next(v for v in volumes if v["name"] == "docker-graph")
+    assert graph_vol["emptyDir"]["medium"] == "Memory"
+    assert graph_vol["emptyDir"]["sizeLimit"] == "16Gi"
+
+
+def test_dind_block_emits_no_medium():
+    rt = K8sSandboxRuntime()
+    spec = SandboxLaunchSpec(
+        image="img:dev", store_prefix="run/r/nodes/n",
+        flavor="dind", graph_backend="block", docker_graph_block_size="50Gi",
+    )
+    manifest = rt._manifest(spec, "sbx-test")
+    volumes = manifest["spec"]["volumes"]
+    graph_vol = next(v for v in volumes if v["name"] == "docker-graph")
+    assert "medium" not in graph_vol["emptyDir"]
+    assert graph_vol["emptyDir"]["sizeLimit"] == "50Gi"
+
+
+def test_plain_flavor_has_no_docker_graph_volume():
+    rt = K8sSandboxRuntime()
+    spec = SandboxLaunchSpec(
+        image="img:dev", store_prefix="run/r/nodes/n",
+        flavor="plain", graph_backend="block",
+    )
+    manifest = rt._manifest(spec, "sbx-test")
+    graph_vols = [v for v in manifest["spec"]["volumes"] if v["name"] == "docker-graph"]
+    assert graph_vols == []
+
+
 def test_launch_spec_default_has_no_deadline():
     spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
     assert spec.deadline_seconds is None

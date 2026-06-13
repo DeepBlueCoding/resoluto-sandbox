@@ -226,19 +226,27 @@ class K8sSandboxRuntime(SandboxRuntime):
 
         volumes: list[dict] = []
         if spec.flavor == "dind":
-            # The inner dockerd graph MUST be a RAM-backed tmpfs (medium: Memory),
-            # not the default emptyDir: on Kata that default lands on the guest's
-            # virtiofs (FUSE) rootfs, where kernel overlay2 is unsupported and vfs
-            # exhausts virtiofsd's host-side file handles ("too many open files").
-            # tmpfs is a real in-guest fs → overlay2 works, no FUSE. The size counts
-            # against the pod's memory; the image bytes must fit (scale note §14).
             container.setdefault("volumeMounts", []).append(
                 {"name": "docker-graph", "mountPath": "/var/lib/docker"}
             )
-            volumes.append(
-                {"name": "docker-graph",
-                 "emptyDir": {"medium": "Memory", "sizeLimit": spec.docker_graph_size}}
-            )
+            if spec.graph_backend == "block":
+                # Kata maps emptyDir without medium to a virtio-blk block device inside the
+                # guest. The lane-entrypoint formats it ext4 and remounts before dockerd starts.
+                # overlay2 on ext4/virtio-blk is proven (spike #1); no RAM tax (not counted
+                # against pod memory unlike the tmpfs path).
+                volumes.append(
+                    {"name": "docker-graph",
+                     "emptyDir": {"sizeLimit": spec.docker_graph_block_size}}
+                )
+            else:
+                # Default tmpfs path: RAM-backed (medium: Memory) — overlay2 proven on tmpfs.
+                # The size counts against the pod's memory; the image bytes must fit (§14).
+                # On Kata the virtiofs rootfs does NOT work: vfs exhausts host-side fd handles
+                # and overlay2/fuse-overlayfs fail — tmpfs is the only non-virtiofs fallback.
+                volumes.append(
+                    {"name": "docker-graph",
+                     "emptyDir": {"medium": "Memory", "sizeLimit": spec.docker_graph_size}}
+                )
 
         pod_spec: dict = {
             "runtimeClassName": spec.runtime_class or None,
