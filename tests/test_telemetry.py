@@ -121,6 +121,51 @@ async def test_injected_heartbeat_factory_ships_custom_line(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_chunk_reader_progress_filter(tmp_path):
+    clock = {"t": 0.0}
+    store = LocalFsObjectStore(tmp_path)
+    prefix = "run/r/nodes/n"
+    ship = ChunkShipper(store, prefix, flush_bytes=10_000, clock=lambda: clock["t"])
+    reader = ChunkReader(
+        store, prefix, dead_after_s=100.0, clock=lambda: clock["t"],
+        progress_filter=lambda line: '"engine_heartbeat"' not in line,
+    )
+
+    await ship.emit_line('{"event_type": "engine_heartbeat"}')
+    await ship.flush()
+    clock["t"] = 150.0
+    await ship.emit_line('{"event_type": "engine_heartbeat"}')
+    await ship.flush()
+    await reader.poll_lines()
+    assert reader.is_dead() is True  # only filtered-out heartbeats → work-silent
+    assert reader.seconds_since_arrival < 100.0  # but chunks ARE arriving
+    assert reader.seconds_since_progress > 100.0
+
+    await ship.emit_line('{"event_type": "gate_result"}')
+    await ship.flush()
+    await reader.poll_lines()
+    assert reader.is_dead() is False  # real work line resets the window
+    assert reader.seconds_since_progress == 0.0
+
+
+@pytest.mark.asyncio
+async def test_chunk_reader_default_filter_unchanged(tmp_path):
+    clock = {"t": 0.0}
+    store = LocalFsObjectStore(tmp_path)
+    prefix = "run/r/nodes/n"
+    ship = ChunkShipper(store, prefix, flush_bytes=10_000, clock=lambda: clock["t"])
+    reader = ChunkReader(store, prefix, dead_after_s=100.0, clock=lambda: clock["t"])
+
+    clock["t"] = 150.0
+    await ship.emit_line('{"event_type": "lane_heartbeat"}')
+    await ship.flush()
+    await reader.poll_lines()
+    assert reader.is_dead() is False  # no filter → any line is progress (drive_node regression guard)
+    assert reader.seconds_since_progress == 0.0
+    assert reader.seconds_since_arrival == 0.0
+
+
+@pytest.mark.asyncio
 async def test_terminal_gap_surfaces_as_dead(tmp_path):
     clock = {"t": 0.0}
     store = LocalFsObjectStore(tmp_path)

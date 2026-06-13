@@ -42,7 +42,7 @@ class SandboxLaunchSpec(BaseModel):
     labels: dict[str, str] = Field(default_factory=dict)
     store_prefix: str  # run/<run_id>/nodes/<node_id> — where the sandbox self-reports
     store_write_token: str = ""  # prefix-scoped, write-only, expiring (§12.3)
-    deadline_seconds: int = 1800  # SUBSTRATE cap (never agent-work, §5.2)
+    deadline_seconds: int | None = None  # optional pod cap; None = no wall-clock deadline
 
 
 class SandboxHandle(BaseModel):

@@ -119,11 +119,15 @@ class ChunkReader:
 
     `poll_lines()` returns newly-available JSONL records (the payload-agnostic
     core); `poll()` is a typed SpanEvent view over it. `is_dead()` is true when no
-    new chunk has arrived within `dead_after_s` AND the run isn't cleanly finished —
-    the SINGLE substrate-death signal, time-bounded and distinct from agent-work
-    liveness. A persistent non-contiguous gap (have chunk N+1, never saw N) stalls
-    contiguous progress, so it surfaces through that same `is_dead()` window — no
-    separate raise path to escape the driver's reap-on-death handling.
+    PROGRESS line has arrived within `dead_after_s` AND the run isn't cleanly
+    finished — the SINGLE death signal. With no `progress_filter` (the default)
+    every arriving line is progress, so the window means substrate-silence; with a
+    `progress_filter` installed only lines the filter accepts reset the window, so
+    it becomes WORK-silence — unconditional heartbeats keep `seconds_since_arrival`
+    fresh but cannot mask a hung workload. A persistent non-contiguous gap (have
+    chunk N+1, never saw N) stalls contiguous progress, so it surfaces through that
+    same `is_dead()` window — no separate raise path to escape the driver's
+    reap-on-death handling.
     """
 
     def __init__(
@@ -133,13 +137,16 @@ class ChunkReader:
         *,
         dead_after_s: float = 120.0,
         clock: Callable[[], float] = time.time,
+        progress_filter: Callable[[str], bool] | None = None,
     ) -> None:
         self._store = store
         self._prefix = prefix.rstrip("/")
         self._dead_after_s = dead_after_s
         self._clock = clock
+        self._progress_filter = progress_filter
         self._seen = 0  # highest CONTIGUOUS index consumed
         self._last_progress = clock()
+        self._last_arrival = clock()
         self._total: int | None = None
 
     @property
@@ -168,11 +175,27 @@ class ChunkReader:
             nxt += 1
 
         if lines:
-            self._last_progress = self._clock()
+            self._last_arrival = self._clock()
+            if self._progress_filter is None:
+                self._last_progress = self._clock()
+            else:
+                # Feed EVERY line to the (stateful) filter — a short-circuiting
+                # any() would hide later heartbeat digests from it.
+                verdicts = [self._progress_filter(line) for line in lines]
+                if any(verdicts):
+                    self._last_progress = self._clock()
         return lines
 
     async def poll(self) -> list[SpanEvent]:
         return [SpanEvent.model_validate_json(line) for line in await self.poll_lines()]
+
+    @property
+    def seconds_since_progress(self) -> float:
+        return self._clock() - self._last_progress
+
+    @property
+    def seconds_since_arrival(self) -> float:
+        return self._clock() - self._last_arrival
 
     def is_dead(self) -> bool:
         if self.finished:

@@ -23,15 +23,36 @@ INBOX = "inbox"
 OUTBOX = "outbox"
 _ARCHIVE_SUFFIXES = (".tar.gz", ".tgz")
 
+# Dependency / build / cache trees that must NEVER ship in a worktree archive:
+# they bloat the tar by orders of magnitude (a Resoluto worktree is ~490MB WITH
+# them, a few MB without) AND they hold absolute symlinks (e.g. `.venv/bin/python`
+# → /usr/bin/python) that the safe-extract `data` filter rejects with
+# AbsoluteLinkError, failing the whole stage. `.git` is deliberately KEPT (history
+# travels in the tar; the lane commits with zero git egress).
+_DEFAULT_EXCLUDES = frozenset({
+    ".venv", "venv", "node_modules", "__pycache__", ".mypy_cache", ".pytest_cache",
+    ".ruff_cache", ".tox", ".hypothesis", "dist", "build", "htmlcov", ".coverage",
+    ".next", ".turbo", ".cache", "resoluto.old", ".claude",
+})
 
-def _archive(root: Path, paths: list[str] | None) -> bytes:
+
+def _archive(root: Path, paths: list[str] | None, exclude: frozenset[str] = frozenset()) -> bytes:
+    def _filter(ti: tarfile.TarInfo) -> tarfile.TarInfo | None:
+        if exclude and exclude.intersection(Path(ti.name).parts):
+            return None
+        # An absolute symlink can never be safely re-extracted (AbsoluteLinkError),
+        # so dropping it at archive time is the only non-crashing option.
+        if (ti.issym() or ti.islnk()) and ti.linkname.startswith("/"):
+            return None
+        return ti
+
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:
         if paths is None:
-            tar.add(root, arcname=".")  # whole worktree incl. .git
+            tar.add(root, arcname=".", filter=_filter)  # whole worktree incl. .git
         else:
             for p in paths:
-                tar.add(root / p, arcname=p)  # missing path → loud OSError, no fallback
+                tar.add(root / p, arcname=p, filter=_filter)  # missing path → loud OSError
     return buf.getvalue()
 
 
@@ -41,11 +62,16 @@ def _extract(data: bytes, dest: Path) -> None:
         tar.extractall(dest, filter="data")  # rejects traversal / absolute / device entries
 
 
-async def put_dir(store: ObjectStore, prefix: str, local_dir: str, *, name: str = "workspace") -> str:
+async def put_dir(
+    store: ObjectStore, prefix: str, local_dir: str, *,
+    name: str = "workspace", exclude: frozenset[str] = _DEFAULT_EXCLUDES,
+) -> str:
     """HOST side: tar a local worktree and PUT it as the sandbox's input. Returns
-    the object key. Inputs: store, the lane prefix, the worktree path."""
+    the object key. Inputs: store, the lane prefix, the worktree path. Dependency/
+    build/cache trees (`exclude`) are dropped — they bloat the archive and carry
+    absolute symlinks that break safe extraction."""
     key = f"{prefix.rstrip('/')}/{INBOX}/{name}.tar.gz"
-    await store.put(key, _archive(Path(local_dir), None))
+    await store.put(key, _archive(Path(local_dir), None, exclude))
     return key
 
 
