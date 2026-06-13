@@ -81,3 +81,68 @@ async def test_launch_failure_releases_slot():
         await pool.acquire(_spec())
     # slot was released — a subsequent acquire (against a good runtime) wouldn't deadlock
     assert pool.available == 1
+
+
+# ── Deployment-wide admission gate ──────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_admission_gate_blocks_when_at_cap():
+    rt = _FakeRuntime()
+    calls = [0]
+
+    async def _gate():
+        calls[0] += 1
+        return 4  # always at cap
+
+    pool = SandboxPool(rt, max_concurrent=4, admission_gate=_gate, acquire_timeout_s=0.12)
+    with pytest.raises(RuntimeError, match="acquire timed out"):
+        await pool.acquire(_spec())
+    assert calls[0] >= 1
+
+
+@pytest.mark.asyncio
+async def test_admission_gate_allows_when_below_cap():
+    rt = _FakeRuntime()
+
+    async def _gate():
+        return 2  # below cap of 4
+
+    pool = SandboxPool(rt, max_concurrent=4, admission_gate=_gate)
+    async with await pool.acquire(_spec()) as lease:
+        assert lease.handle.id == "ns/pod-1"
+    assert rt.destroyed == ["ns/pod-1"]
+
+
+@pytest.mark.asyncio
+async def test_admission_gate_fifo_ordering():
+    rt = _FakeRuntime()
+    count = [3]  # start at cap
+
+    async def _gate():
+        return count[0]
+
+    pool = SandboxPool(rt, max_concurrent=4, admission_gate=_gate, acquire_timeout_s=2.0)
+
+    # First acquire blocks because count==cap; release a slot after a short wait
+    async def _open_slot():
+        await asyncio.sleep(0.05)
+        count[0] = 2  # below cap
+
+    asyncio.create_task(_open_slot())
+    async with await pool.acquire(_spec()) as lease:
+        assert lease.handle.id == "ns/pod-1"
+
+
+@pytest.mark.asyncio
+async def test_semaphore_still_used_without_gate():
+    rt = _FakeRuntime()
+    pool = SandboxPool(rt, max_concurrent=1)
+    a = await pool.acquire(_spec())
+    assert pool.available == 0
+    blocked = asyncio.create_task(pool.acquire(_spec()))
+    await asyncio.sleep(0.02)
+    assert not blocked.done()
+    await a.release()
+    b = await asyncio.wait_for(blocked, timeout=1)
+    await b.release()

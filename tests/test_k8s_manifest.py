@@ -114,3 +114,100 @@ def test_egress_config_requires_cidrs():
 
     with pytest.raises(ValueError, match="CIDR"):
         EgressConfig(store_cidr="10.0.0.1/32", llm_cidr="10.0.0.2/32", git_cidrs=["github.com"])
+
+
+# ── ownerReferences on pod manifest ─────────────────────────────────────────
+
+
+def test_manifest_with_owner_has_configmap_owner_reference():
+    rt = K8sSandboxRuntime()
+    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
+    manifest = rt._manifest(spec, "sbx-test", owner_name="run-owner-abc", owner_uid="cm-uid-123")
+    refs = manifest["metadata"]["ownerReferences"]
+    assert len(refs) == 1
+    assert refs[0]["apiVersion"] == "v1"
+    assert refs[0]["kind"] == "ConfigMap"
+    assert refs[0]["name"] == "run-owner-abc"
+    assert refs[0]["uid"] == "cm-uid-123"
+    assert refs[0]["blockOwnerDeletion"] is True
+
+
+def test_manifest_without_owner_has_no_owner_references():
+    rt = K8sSandboxRuntime()
+    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
+    manifest = rt._manifest(spec, "sbx-test")
+    assert "ownerReferences" not in manifest["metadata"]
+
+
+def test_manifest_always_carries_sandbox_label():
+    rt = K8sSandboxRuntime()
+    spec = SandboxLaunchSpec(
+        image="img:dev", store_prefix="run/r/nodes/n",
+        labels={"resoluto.run_id": "abc", "resoluto.node_id": "n1"},
+    )
+    manifest = rt._manifest(spec, "sbx-test")
+    assert manifest["metadata"]["labels"]["resoluto.sandbox"] == "true"
+    assert manifest["metadata"]["labels"]["resoluto.run_id"] == "abc"
+
+
+# ── NetworkPolicy: ConfigMap owner reference ─────────────────────────────────
+
+
+def test_network_policy_with_configmap_owner():
+    rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32", llm_cidr="10.0.0.2/32"))
+    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
+    policy = rt._network_policy(
+        spec, "my-pod", "pod-uid",
+        owner_name="run-owner-abc", owner_uid="cm-uid-123",
+    )
+    refs = policy["metadata"]["ownerReferences"]
+    assert len(refs) == 1
+    assert refs[0]["apiVersion"] == "v1"
+    assert refs[0]["kind"] == "ConfigMap"
+    assert refs[0]["name"] == "run-owner-abc"
+    assert refs[0]["uid"] == "cm-uid-123"
+    assert refs[0]["blockOwnerDeletion"] is True
+
+
+# ── ResourceQuota and LimitRange manifests ───────────────────────────────────
+
+
+def test_quota_manifest_defaults():
+    rt = K8sSandboxRuntime()
+    quota = rt._quota_manifest()
+    assert quota["apiVersion"] == "v1"
+    assert quota["kind"] == "ResourceQuota"
+    assert quota["metadata"]["name"] == "resoluto-sandbox-quota"
+    assert quota["spec"]["hard"]["pods"] == "20"
+    assert quota["spec"]["hard"]["limits.memory"] == "96Gi"
+
+
+def test_quota_manifest_env_override(monkeypatch):
+    monkeypatch.setenv("RESOLUTO_SANDBOX_MAX_PODS", "50")
+    monkeypatch.setenv("RESOLUTO_SANDBOX_MAX_MEMORY", "200Gi")
+    rt = K8sSandboxRuntime()
+    quota = rt._quota_manifest()
+    assert quota["spec"]["hard"]["pods"] == "50"
+    assert quota["spec"]["hard"]["limits.memory"] == "200Gi"
+
+
+def test_limit_range_manifest_defaults():
+    rt = K8sSandboxRuntime()
+    lr = rt._limit_range_manifest()
+    assert lr["apiVersion"] == "v1"
+    assert lr["kind"] == "LimitRange"
+    assert lr["metadata"]["name"] == "resoluto-sandbox-limits"
+    limits = lr["spec"]["limits"]
+    assert len(limits) == 1
+    assert limits[0]["type"] == "Pod"
+    assert limits[0]["max"]["memory"] == "24Gi"
+    assert limits[0]["max"]["cpu"] == "4"
+
+
+def test_limit_range_manifest_env_override(monkeypatch):
+    monkeypatch.setenv("RESOLUTO_SANDBOX_POD_MAX_MEMORY", "48Gi")
+    monkeypatch.setenv("RESOLUTO_SANDBOX_POD_MAX_CPU", "8")
+    rt = K8sSandboxRuntime()
+    lr = rt._limit_range_manifest()
+    assert lr["spec"]["limits"][0]["max"]["memory"] == "48Gi"
+    assert lr["spec"]["limits"][0]["max"]["cpu"] == "8"
