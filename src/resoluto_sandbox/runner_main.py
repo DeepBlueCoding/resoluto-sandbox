@@ -24,6 +24,17 @@ def store_from_env() -> ObjectStore:
     if kind == "s3":
         from resoluto_sandbox.objectstore.s3 import S3ObjectStore
 
+        write_token = os.environ.get("RESOLUTO_STORE_WRITE_TOKEN")
+        if write_token:
+            tok = json.loads(write_token)
+            return S3ObjectStore(
+                tok["bucket"],
+                endpoint_url=tok.get("endpoint_url"),
+                region_name=tok.get("region", "us-east-1"),
+                aws_access_key_id=tok["access_key_id"],
+                aws_secret_access_key=tok["secret_access_key"],
+                aws_session_token=tok.get("session_token"),
+            )
         return S3ObjectStore(
             os.environ["RESOLUTO_STORE_BUCKET"],
             endpoint_url=os.environ.get("RESOLUTO_STORE_ENDPOINT") or None,

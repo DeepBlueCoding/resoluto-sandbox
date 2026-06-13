@@ -6,7 +6,68 @@ sandbox; the orchestrator-side reader uses fuller creds. Lazy aioboto3 import
 (behind the [s3] extra)."""
 from __future__ import annotations
 
+import json
+
 from resoluto_sandbox.contracts import ObjectInfo, ObjectStore
+
+
+def _build_scoped_policy(bucket: str, prefix: str) -> str:
+    """Build an IAM policy JSON that grants PutObject + GetObject on <bucket>/<prefix>/* only."""
+    resource = f"arn:aws:s3:::{bucket}/{prefix}/*"
+    return json.dumps({
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": ["s3:PutObject", "s3:GetObject"],
+                "Resource": resource,
+            }
+        ],
+    })
+
+
+async def mint_scoped_credential(
+    bucket: str,
+    prefix: str,
+    endpoint_url: str | None,
+    region: str,
+    access_key_id: str,
+    secret_access_key: str,
+    *,
+    ttl_seconds: int = 3600,
+    sts_role_arn: str,
+) -> dict:
+    """Mint a prefix-scoped, expiring STS credential for bucket/prefix.
+
+    Returns dict with access_key_id, secret_access_key, session_token, bucket,
+    endpoint_url, region.
+    """
+    import aioboto3
+
+    session = aioboto3.Session()
+    session_name = f"resoluto-lane-{prefix.replace('/', '-')}"[:64]
+    async with session.client(
+        "sts",
+        endpoint_url=endpoint_url,
+        region_name=region,
+        aws_access_key_id=access_key_id,
+        aws_secret_access_key=secret_access_key,
+    ) as sts:
+        resp = await sts.assume_role(
+            RoleArn=sts_role_arn,
+            RoleSessionName=session_name,
+            Policy=_build_scoped_policy(bucket, prefix),
+            DurationSeconds=ttl_seconds,
+        )
+    creds = resp["Credentials"]
+    return {
+        "access_key_id": creds["AccessKeyId"],
+        "secret_access_key": creds["SecretAccessKey"],
+        "session_token": creds["SessionToken"],
+        "bucket": bucket,
+        "endpoint_url": endpoint_url,
+        "region": region,
+    }
 
 
 class S3ObjectStore(ObjectStore):

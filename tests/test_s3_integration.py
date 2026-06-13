@@ -2,13 +2,22 @@
 telemetry works over a real object store, not just localfs).
 
 Run:  uv run pytest -m integration   (needs minio on :9100, see test setup)
+
+STS / prefix-isolation test (test_cross_prefix_isolation) additionally requires
+minio started with STS AssumeRole support, e.g.:
+    minio server /data --console-address :9101
+
+And a role ARN reachable from the minio STS endpoint. For local dev, you can
+set the role ARN to the minio wildcard: "arn:aws:iam::123456789012:role/test".
+Set MINIO_STS_ROLE_ARN env var to override the default used in the test.
 """
+import os
 import uuid
 
 import pytest
 
 from resoluto_sandbox import ChunkReader, ChunkShipper, SpanEvent
-from resoluto_sandbox.objectstore.s3 import S3ObjectStore
+from resoluto_sandbox.objectstore.s3 import S3ObjectStore, mint_scoped_credential
 
 ENDPOINT = "http://localhost:9100"
 CREDS = dict(aws_access_key_id="minioadmin", aws_secret_access_key="minioadmin", region_name="us-east-1")
@@ -31,6 +40,66 @@ async def test_s3_put_get_list():
     infos = await s.list_prefix(pfx)
     assert {i.key for i in infos} == {f"{pfx}/a.txt", f"{pfx}/b.txt"}
     assert {i.key: i.size for i in infos}[f"{pfx}/b.txt"] == 2
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_cross_prefix_isolation():
+    """Mint two scoped tokens for different prefixes; each can write to its own
+    prefix but is denied on the other's prefix (cross-run isolation, §12.3).
+
+    Requires minio with STS AssumeRole enabled and MINIO_STS_ROLE_ARN set.
+    """
+    from botocore.exceptions import ClientError
+
+    role_arn = os.environ.get("MINIO_STS_ROLE_ARN", "arn:aws:iam::123456789012:role/resoluto-test")
+    bucket = "resoluto-spike"
+    run_a = f"run/{uuid.uuid4().hex}/nodes/a"
+    run_b = f"run/{uuid.uuid4().hex}/nodes/b"
+
+    # Ensure bucket exists using admin creds
+    admin_store = S3ObjectStore(bucket, endpoint_url=ENDPOINT, **CREDS)
+    await admin_store.ensure_bucket()
+
+    # Mint two scoped tokens for different prefixes
+    tok_a = await mint_scoped_credential(
+        bucket, run_a, ENDPOINT, "us-east-1",
+        CREDS["aws_access_key_id"], CREDS["aws_secret_access_key"],
+        sts_role_arn=role_arn,
+    )
+    tok_b = await mint_scoped_credential(
+        bucket, run_b, ENDPOINT, "us-east-1",
+        CREDS["aws_access_key_id"], CREDS["aws_secret_access_key"],
+        sts_role_arn=role_arn,
+    )
+
+    store_a = S3ObjectStore(
+        tok_a["bucket"], endpoint_url=tok_a["endpoint_url"],
+        region_name=tok_a["region"],
+        aws_access_key_id=tok_a["access_key_id"],
+        aws_secret_access_key=tok_a["secret_access_key"],
+        aws_session_token=tok_a["session_token"],
+    )
+    store_b = S3ObjectStore(
+        tok_b["bucket"], endpoint_url=tok_b["endpoint_url"],
+        region_name=tok_b["region"],
+        aws_access_key_id=tok_b["access_key_id"],
+        aws_secret_access_key=tok_b["secret_access_key"],
+        aws_session_token=tok_b["session_token"],
+    )
+
+    # Each store can write to its own prefix
+    await store_a.put(f"{run_a}/result.json", b'{"status":"ok"}')
+    await store_b.put(f"{run_b}/result.json", b'{"status":"ok"}')
+
+    # Cross-prefix write must be denied
+    with pytest.raises(ClientError) as exc_a:
+        await store_a.put(f"{run_b}/evil.json", b"injected")
+    assert exc_a.value.response["Error"]["Code"] in ("AccessDenied", "403")
+
+    with pytest.raises(ClientError) as exc_b:
+        await store_b.put(f"{run_a}/evil.json", b"injected")
+    assert exc_b.value.response["Error"]["Code"] in ("AccessDenied", "403")
 
 
 @pytest.mark.integration
