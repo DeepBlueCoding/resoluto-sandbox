@@ -13,6 +13,7 @@ the full restricted profile (runAsNonRoot, drop ALL caps, no privilege escalatio
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from dataclasses import dataclass, field
 
@@ -131,6 +132,50 @@ class K8sSandboxRuntime(SandboxRuntime):
             if exc.status != 409:  # already exists
                 raise
 
+        quota = self._quota_manifest()
+        try:
+            await self._api.create_namespaced_resource_quota(namespace=self._ns, body=quota)
+        except ApiException as exc:
+            if exc.status == 409:
+                await self._api.patch_namespaced_resource_quota(
+                    name="resoluto-sandbox-quota", namespace=self._ns, body=quota
+                )
+            else:
+                raise
+
+        lr = self._limit_range_manifest()
+        try:
+            await self._api.create_namespaced_limit_range(namespace=self._ns, body=lr)
+        except ApiException as exc:
+            if exc.status == 409:
+                await self._api.patch_namespaced_limit_range(
+                    name="resoluto-sandbox-limits", namespace=self._ns, body=lr
+                )
+            else:
+                raise
+
+    def _quota_manifest(self) -> dict:
+        max_pods = os.environ.get("RESOLUTO_SANDBOX_MAX_PODS", "20")
+        max_memory = os.environ.get("RESOLUTO_SANDBOX_MAX_MEMORY", "96Gi")
+        return {
+            "apiVersion": "v1",
+            "kind": "ResourceQuota",
+            "metadata": {"name": "resoluto-sandbox-quota", "namespace": self._ns},
+            "spec": {"hard": {"pods": max_pods, "limits.memory": max_memory}},
+        }
+
+    def _limit_range_manifest(self) -> dict:
+        pod_max_memory = os.environ.get("RESOLUTO_SANDBOX_POD_MAX_MEMORY", "24Gi")
+        pod_max_cpu = os.environ.get("RESOLUTO_SANDBOX_POD_MAX_CPU", "4")
+        return {
+            "apiVersion": "v1",
+            "kind": "LimitRange",
+            "metadata": {"name": "resoluto-sandbox-limits", "namespace": self._ns},
+            "spec": {
+                "limits": [{"type": "Pod", "max": {"memory": pod_max_memory, "cpu": pod_max_cpu}}]
+            },
+        }
+
     def _security_context(self, spec: SandboxLaunchSpec) -> dict:
         if spec.flavor == "dind":
             # privileged is GUEST-scoped under Kata; host pod is not host-privileged.
@@ -145,7 +190,14 @@ class K8sSandboxRuntime(SandboxRuntime):
             "seccompProfile": {"type": "RuntimeDefault"},
         }
 
-    def _manifest(self, spec: SandboxLaunchSpec, name: str) -> dict:
+    def _manifest(
+        self,
+        spec: SandboxLaunchSpec,
+        name: str,
+        *,
+        owner_name: str | None = None,
+        owner_uid: str | None = None,
+    ) -> dict:
         env = [{"name": k, "value": v} for k, v in spec.env.items()]
         # store wiring the sandbox self-reports through (object store + write-only token)
         env.append({"name": "RESOLUTO_STORE_PREFIX", "value": spec.store_prefix})
@@ -197,14 +249,34 @@ class K8sSandboxRuntime(SandboxRuntime):
         if spec.deadline_seconds is not None:
             pod_spec["activeDeadlineSeconds"] = spec.deadline_seconds
 
+        # All sandbox pods carry resoluto.sandbox=true for deployment-wide counting.
+        pod_labels = {"resoluto.sandbox": "true", **dict(spec.labels)}
+        metadata: dict = {"name": name, "namespace": self._ns, "labels": pod_labels}
+        if owner_name and owner_uid:
+            metadata["ownerReferences"] = [{
+                "apiVersion": "v1",
+                "kind": "ConfigMap",
+                "name": owner_name,
+                "uid": owner_uid,
+                "blockOwnerDeletion": True,
+            }]
+
         return {
             "apiVersion": "v1",
             "kind": "Pod",
-            "metadata": {"name": name, "namespace": self._ns, "labels": dict(spec.labels)},
+            "metadata": metadata,
             "spec": pod_spec,
         }
 
-    def _network_policy(self, spec: SandboxLaunchSpec, pod_name: str, pod_uid: str) -> dict:
+    def _network_policy(
+        self,
+        spec: SandboxLaunchSpec,
+        pod_name: str,
+        pod_uid: str,
+        *,
+        owner_name: str | None = None,
+        owner_uid: str | None = None,
+    ) -> dict:
         """Build the NetworkPolicy manifest for a lane pod.
 
         Creates a default-deny egress policy that allows only:
@@ -216,7 +288,9 @@ class K8sSandboxRuntime(SandboxRuntime):
         Every ipBlock rule includes except=[_IMDS_CIDR] to block the cloud
         metadata endpoint regardless of the allowed CIDR range.
 
-        ownerReferences to the pod ensures GC on pod deletion.
+        When owner_name/owner_uid are provided the ownerReference points to the
+        per-run ConfigMap (so GC from ConfigMap deletion cascades here too);
+        otherwise falls back to the pod as the owner.
         """
         assert self._egress is not None
 
@@ -236,21 +310,30 @@ class K8sSandboxRuntime(SandboxRuntime):
             },
         ]
 
+        if owner_name and owner_uid:
+            owner_ref = {
+                "apiVersion": "v1",
+                "kind": "ConfigMap",
+                "name": owner_name,
+                "uid": owner_uid,
+                "blockOwnerDeletion": True,
+            }
+        else:
+            owner_ref = {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": pod_name,
+                "uid": pod_uid,
+                "blockOwnerDeletion": True,
+            }
+
         return {
             "apiVersion": "networking.k8s.io/v1",
             "kind": "NetworkPolicy",
             "metadata": {
                 "name": f"np-{pod_name}",
                 "namespace": self._ns,
-                "ownerReferences": [
-                    {
-                        "apiVersion": "v1",
-                        "kind": "Pod",
-                        "name": pod_name,
-                        "uid": pod_uid,
-                        "blockOwnerDeletion": True,
-                    }
-                ],
+                "ownerReferences": [owner_ref],
             },
             "spec": {
                 "podSelector": {"matchLabels": dict(spec.labels)},
@@ -264,12 +347,24 @@ class K8sSandboxRuntime(SandboxRuntime):
         rid = spec.labels.get("resoluto.run_id", "")
         nid = spec.labels.get("resoluto.node_id", "")
         name = _dns_safe(f"sbx-{rid}-{nid}-{uuid.uuid4().hex[:8]}")
-        pod = await api.create_namespaced_pod(namespace=self._ns, body=self._manifest(spec, name))
+
+        owner_name: str | None = None
+        owner_uid: str | None = None
+        if rid:
+            owner_name, owner_uid = await self.ensure_run_owner(rid)
+
+        pod = await api.create_namespaced_pod(
+            namespace=self._ns,
+            body=self._manifest(spec, name, owner_name=owner_name, owner_uid=owner_uid),
+        )
         if self._egress is not None:
             net_api = await self._networking_client()
             await net_api.create_namespaced_network_policy(
                 namespace=self._ns,
-                body=self._network_policy(spec, name, pod.metadata.uid),
+                body=self._network_policy(
+                    spec, name, pod.metadata.uid,
+                    owner_name=owner_name, owner_uid=owner_uid,
+                ),
             )
         return SandboxHandle(id=f"{self._ns}/{name}", labels=spec.labels)
 
@@ -326,6 +421,63 @@ class K8sSandboxRuntime(SandboxRuntime):
             return await api.read_namespaced_pod_log(name=name, namespace=ns, tail_lines=tail)
         except ApiException as exc:
             return f"(logs unavailable: {exc.status})"
+
+    async def ensure_run_owner(self, run_id: str) -> tuple[str, str]:
+        """Create-or-get the per-run owner ConfigMap; return (name, uid).
+
+        The ConfigMap is the k8s GC anchor: pods and NetworkPolicies that carry
+        an ownerReference to it are cascade-deleted when it is deleted, even if
+        the dispatcher process that spawned them is long dead.
+        """
+        from kubernetes_asyncio.client.exceptions import ApiException
+
+        api = await self._client()
+        name = f"run-owner-{_dns_safe(run_id)}"
+        body = {
+            "apiVersion": "v1",
+            "kind": "ConfigMap",
+            "metadata": {
+                "name": name,
+                "namespace": self._ns,
+                "labels": {"resoluto.run_id": run_id[:63]},
+            },
+        }
+        try:
+            cm = await api.create_namespaced_config_map(namespace=self._ns, body=body)
+            return (name, cm.metadata.uid)
+        except ApiException as exc:
+            if exc.status == 409:
+                cm = await api.read_namespaced_config_map(name=name, namespace=self._ns)
+                return (name, cm.metadata.uid)
+            raise
+
+    async def delete_run_owner(self, run_id: str) -> None:
+        """Delete the per-run owner ConfigMap, triggering k8s cascade GC.
+
+        404-safe: a prior fast-path sweep may have already cleaned it up.
+        """
+        from kubernetes_asyncio.client.exceptions import ApiException
+
+        api = await self._client()
+        name = f"run-owner-{_dns_safe(run_id)}"
+        try:
+            await api.delete_namespaced_config_map(name=name, namespace=self._ns)
+        except ApiException as exc:
+            if exc.status != 404:
+                raise
+
+    async def count_active_pods(self) -> int:
+        """Count non-terminal pods in the sandbox namespace (deployment-wide).
+
+        Used as the k8s-API-backed admission gate: all replicas see the same
+        count, giving cross-replica coordination without Redis or etcd.
+        """
+        api = await self._client()
+        pods = await api.list_namespaced_pod(
+            namespace=self._ns, label_selector="resoluto.sandbox=true"
+        )
+        terminal = {"Succeeded", "Failed"}
+        return sum(1 for pod in pods.items if (pod.status.phase or "") not in terminal)
 
     async def close(self) -> None:
         if self._api is not None:
