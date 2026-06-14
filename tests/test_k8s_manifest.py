@@ -295,3 +295,126 @@ async def test_launch_default_kata_passes_guard(monkeypatch):
         assert "RESOLUTO_TRUSTED_LOCAL" not in str(exc), f"Guard should not have blocked: {exc}"
     except Exception:
         pass  # expected: no k8s cluster in test environment
+
+
+# ── dind tmpfs memory preflight ──────────────────────────────────────────────
+
+
+from resoluto_sandbox.runtime.k8s import _parse_k8s_memory  # noqa: E402
+
+
+@pytest.mark.parametrize("s,expected", [
+    ("1Ki", 1024),
+    ("1Mi", 1024 ** 2),
+    ("1Gi", 1024 ** 3),
+    ("24Gi", 24 * 1024 ** 3),
+    ("4096Mi", 4096 * 1024 ** 2),
+    ("512", 512),
+    ("2K", 2000),
+    ("2M", 2_000_000),
+    ("2G", 2_000_000_000),
+    ("16Ti", 16 * 1024 ** 4),
+])
+def test_parse_k8s_memory_strings(s, expected):
+    assert _parse_k8s_memory(s) == expected
+
+
+def test_parse_k8s_memory_invalid():
+    with pytest.raises(ValueError, match="Cannot parse"):
+        _parse_k8s_memory("24xyz")
+
+
+def _dind_spec(**kwargs):
+    defaults = dict(
+        image="img:dev",
+        store_prefix="run/r/nodes/n",
+        flavor="dind",
+        graph_backend="tmpfs",
+        memory="24Gi",
+        docker_graph_size="18Gi",
+    )
+    return SandboxLaunchSpec(**{**defaults, **kwargs})
+
+
+@pytest.mark.asyncio
+async def test_dind_tmpfs_preflight_raises_when_budget_exceeded():
+    # 24Gi pod + 18Gi graph = 42Gi > 32Gi node RAM
+    rt = K8sSandboxRuntime(node_allocatable_memory="32Gi")
+    with pytest.raises(RuntimeError, match="memory budget exceeded"):
+        await rt._preflight_memory(_dind_spec(memory="24Gi", docker_graph_size="18Gi"))
+
+
+@pytest.mark.asyncio
+async def test_dind_tmpfs_preflight_passes_when_within_budget():
+    # 8Gi + 16Gi = 24Gi <= 32Gi
+    rt = K8sSandboxRuntime(node_allocatable_memory="32Gi")
+    await rt._preflight_memory(_dind_spec(memory="8Gi", docker_graph_size="16Gi"))  # must not raise
+
+
+@pytest.mark.asyncio
+async def test_dind_tmpfs_preflight_passes_at_exact_budget():
+    # 14Gi + 18Gi = 32Gi == 32Gi — equal is allowed
+    rt = K8sSandboxRuntime(node_allocatable_memory="32Gi")
+    await rt._preflight_memory(_dind_spec(memory="14Gi", docker_graph_size="18Gi"))
+
+
+@pytest.mark.asyncio
+async def test_preflight_error_message_names_env_var_knobs():
+    rt = K8sSandboxRuntime(node_allocatable_memory="16Gi")
+    with pytest.raises(RuntimeError) as exc_info:
+        await rt._preflight_memory(_dind_spec(memory="10Gi", docker_graph_size="10Gi"))
+    msg = str(exc_info.value)
+    assert "RESOLUTO_LANE_DIND_MEMORY" in msg
+    assert "RESOLUTO_LANE_DIND_GRAPH" in msg
+    assert "RESOLUTO_LANE_GRAPH_BACKEND" in msg
+
+
+@pytest.mark.asyncio
+async def test_preflight_env_var_overrides_node_query(monkeypatch):
+    monkeypatch.setenv("RESOLUTO_NODE_ALLOCATABLE_MEMORY", "16Gi")
+    rt = K8sSandboxRuntime()  # no constructor injection; env var is the source
+    with pytest.raises(RuntimeError, match="memory budget exceeded"):
+        await rt._preflight_memory(_dind_spec(memory="10Gi", docker_graph_size="10Gi"))
+
+
+@pytest.mark.asyncio
+async def test_preflight_fires_in_launch_for_dind_tmpfs(monkeypatch):
+    monkeypatch.delenv("RESOLUTO_TRUSTED_LOCAL", raising=False)
+    rt = K8sSandboxRuntime(node_allocatable_memory="8Gi")
+    spec = _dind_spec(memory="6Gi", docker_graph_size="6Gi")  # 12Gi > 8Gi
+    with pytest.raises(RuntimeError, match="memory budget exceeded"):
+        await rt.launch(spec)
+
+
+@pytest.mark.asyncio
+async def test_preflight_noop_for_plain_flavor(monkeypatch):
+    """Plain flavor has no docker graph — preflight must not fire."""
+    monkeypatch.delenv("RESOLUTO_TRUSTED_LOCAL", raising=False)
+    rt = K8sSandboxRuntime(node_allocatable_memory="1Gi")  # impossibly small node
+    spec = SandboxLaunchSpec(
+        image="img:dev", store_prefix="run/r/nodes/n", flavor="plain", memory="8Gi"
+    )
+    try:
+        await rt.launch(spec)
+    except RuntimeError as exc:
+        assert "memory budget" not in str(exc), f"Preflight should not fire for plain: {exc}"
+    except Exception:
+        pass  # expected: no k8s cluster
+
+
+@pytest.mark.asyncio
+async def test_preflight_noop_for_dind_block_backend(monkeypatch):
+    """Block-backed graph is NOT RAM — preflight must not fire."""
+    monkeypatch.delenv("RESOLUTO_TRUSTED_LOCAL", raising=False)
+    rt = K8sSandboxRuntime(node_allocatable_memory="1Gi")  # impossibly small node
+    spec = SandboxLaunchSpec(
+        image="img:dev", store_prefix="run/r/nodes/n",
+        flavor="dind", graph_backend="block",
+        memory="24Gi", docker_graph_size="18Gi",
+    )
+    try:
+        await rt.launch(spec)
+    except RuntimeError as exc:
+        assert "memory budget" not in str(exc), f"Preflight should not fire for block: {exc}"
+    except Exception:
+        pass  # expected: no k8s cluster

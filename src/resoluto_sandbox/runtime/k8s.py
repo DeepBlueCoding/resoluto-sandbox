@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import uuid
 from dataclasses import dataclass, field
 
@@ -26,6 +27,27 @@ from resoluto_sandbox.contracts import (
 )
 
 logger = logging.getLogger(__name__)
+
+_MEMORY_FACTORS: dict[str, int] = {
+    "Ki": 1024, "Mi": 1024**2, "Gi": 1024**3, "Ti": 1024**4, "Pi": 1024**5,
+    "K": 1000, "M": 1000**2, "G": 1000**3, "T": 1000**4, "P": 1000**5,
+}
+_MEMORY_RE = re.compile(r"^(\d+)(Ki|Mi|Gi|Ti|Pi|K|M|G|T|P)?$")
+
+
+def _parse_k8s_memory(s: str) -> int:
+    """Parse a k8s memory quantity string to bytes.
+
+    Args: s — e.g. '24Gi', '4096Mi', '1000000K', '536870912'.
+    Returns: integer number of bytes.
+    Raises ValueError for unrecognised format.
+    """
+    m = _MEMORY_RE.match(s.strip())
+    if not m:
+        raise ValueError(f"Cannot parse k8s memory quantity: {s!r}")
+    factor = _MEMORY_FACTORS.get(m.group(2) or "", 1)
+    return int(m.group(1)) * factor
+
 
 _PHASE_MAP = {
     "Pending": "pending",
@@ -78,6 +100,7 @@ class K8sSandboxRuntime(SandboxRuntime):
         context: str | None = None,
         image_pull_policy: str = "IfNotPresent",
         egress: EgressConfig | None = None,
+        node_allocatable_memory: str | None = None,
     ) -> None:
         self._ns = namespace
         self._kubeconfig = kubeconfig
@@ -87,6 +110,10 @@ class K8sSandboxRuntime(SandboxRuntime):
         self._context = context
         self._ipp = image_pull_policy
         self._egress = egress
+        # node_allocatable_memory: explicit bytes-string override for the dind tmpfs
+        # preflight (bypasses node API query — used in tests and offline envs).
+        # Falls back to RESOLUTO_NODE_ALLOCATABLE_MEMORY env var, then the k8s API.
+        self._node_allocatable_memory = node_allocatable_memory
         self._api = None  # lazy CoreV1Api
         self._net_api = None  # lazy NetworkingV1Api
 
@@ -351,8 +378,74 @@ class K8sSandboxRuntime(SandboxRuntime):
             },
         }
 
+    async def _get_node_allocatable_ram(self) -> int:
+        """Return minimum allocatable RAM in bytes across all Ready nodes.
+
+        Resolution order: constructor override → RESOLUTO_NODE_ALLOCATABLE_MEMORY
+        env var → k8s node list API. Returns 0 when no schedulable nodes are found
+        (caller skips preflight with a warning rather than rejecting).
+        """
+        if self._node_allocatable_memory is not None:
+            return _parse_k8s_memory(self._node_allocatable_memory)
+        env_val = os.environ.get("RESOLUTO_NODE_ALLOCATABLE_MEMORY")
+        if env_val:
+            return _parse_k8s_memory(env_val)
+        api = await self._client()
+        nodes = await api.list_node()
+        if not nodes.items:
+            return 0
+        ram_values = []
+        for node in nodes.items:
+            conditions = node.status.conditions or []
+            ready = any(c.type == "Ready" and c.status == "True" for c in conditions)
+            if not ready:
+                continue
+            alloc = (node.status.allocatable or {})
+            mem_str = alloc.get("memory") if isinstance(alloc, dict) else getattr(alloc, "memory", None)
+            if mem_str:
+                ram_values.append(_parse_k8s_memory(str(mem_str)))
+        return min(ram_values) if ram_values else 0
+
+    async def _preflight_memory(self, spec: SandboxLaunchSpec) -> None:
+        """Refuse a dind+tmpfs launch whose RAM footprint exceeds node-allocatable.
+
+        The tmpfs docker graph (medium: Memory emptyDir) counts against the pod's
+        cgroup RAM — pod_memory + graph_size must fit within a single node's
+        allocatable RAM or the pod will OOM silently.
+
+        Args: spec — SandboxLaunchSpec with flavor='dind' and graph_backend='tmpfs'.
+        Raises RuntimeError with actionable env-var guidance when the budget is exceeded.
+        """
+        node_ram = await self._get_node_allocatable_ram()
+        if node_ram == 0:
+            logger.warning(
+                "[k8s-runtime] node allocatable RAM unknown — skipping dind tmpfs preflight"
+            )
+            return
+        pod_mem = _parse_k8s_memory(spec.memory)
+        graph_mem = _parse_k8s_memory(spec.docker_graph_size)
+        total = pod_mem + graph_mem
+        if total <= node_ram:
+            return
+        over = total - node_ram
+
+        def _gib(b: int) -> str:
+            return f"{b / (1024 ** 3):.1f}Gi"
+
+        raise RuntimeError(
+            f"dind tmpfs preflight: memory budget exceeded — "
+            f"pod {spec.memory} + graph {spec.docker_graph_size} = {_gib(total)}, "
+            f"node allocatable = {_gib(node_ram)}, "
+            f"over by {_gib(over)}. "
+            f"Fix: lower RESOLUTO_LANE_DIND_MEMORY (currently {spec.memory}) "
+            f"or RESOLUTO_LANE_DIND_GRAPH (currently {spec.docker_graph_size}), "
+            f"or switch to block-backed docker graph with RESOLUTO_LANE_GRAPH_BACKEND=block."
+        )
+
     async def launch(self, spec: SandboxLaunchSpec) -> SandboxHandle:
         check_runtime_class_guard(spec.runtime_class)
+        if spec.flavor == "dind" and spec.graph_backend == "tmpfs":
+            await self._preflight_memory(spec)
         api = await self._client()
         rid = spec.labels.get("resoluto.run_id", "")
         nid = spec.labels.get("resoluto.node_id", "")
