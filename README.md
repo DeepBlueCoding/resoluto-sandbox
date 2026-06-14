@@ -330,9 +330,23 @@ What the substrate gives you **today**, honestly scoped:
 >   The caller resolves hostnames to IPs and passes CIDR strings (e.g. `"1.2.3.4/32"`) to
 >   `EgressConfig`. Passing a bare hostname raises `ValueError` at construction time.
 >
-> **Remaining gap:** `SandboxLaunchSpec.store_write_token` is plumbed but the guest currently
-> receives the broad store credential. A short-lived, write-only token scoped to the run's own prefix
-> (so one lane can't read or overwrite another's objects) is on the roadmap.
+> **Shipped credential scoping** — for S3/MinIO backends the host mints a **per-lane STS credential**
+> scoped to the run's own prefix (`PutObject`/`GetObject` on `<prefix>/*` plus prefix-scoped
+> `ListBucket`), ~1h TTL, injected as `RESOLUTO_STORE_WRITE_TOKEN`; the in-guest `store_from_env`
+> consumes it and the broad `AWS_*` credentials are **no longer forwarded** to the guest. One lane can
+> neither read nor overwrite another lane's objects. Fail-closed: an S3 backend with no
+> `RESOLUTO_STORE_STS_ROLE_ARN` configured refuses to launch rather than fall back to broad creds.
+> (The `localfs` dev backend has no credentials and is unaffected.)
+>
+> **Shipped fail-closed controls** —
+> - **Acquire-time egress canary:** before the workload runs, the guest verifies a known
+>   non-allowlisted host and IMDS are unreachable while the store is reachable; on failure the lane
+>   refuses to run (reported over the store channel — no long-lived stream).
+> - **Isolation-floor admission guard:** `SandboxPool`/`K8sSandboxRuntime` refuse to launch a
+>   non-Kata `runtime_class` (`''`/`runc`) unless `RESOLUTO_TRUSTED_LOCAL` is explicitly set, so a
+>   silent microVM→shared-kernel downgrade can't happen against adversarial code.
+> - **k8s-native orphan GC:** lane pods carry `ownerReferences` (+ a namespace `ResourceQuota` /
+>   `LimitRange`), so the cluster garbage-collects leaked pods even if the orchestrator dies.
 
 ---
 
@@ -358,7 +372,12 @@ real test suite **inside one Kata sandbox**, self-reported through MinIO.
 - **Single backend, real today.** `K8sSandboxRuntime` (Kata) is the only shipped `SandboxRuntime`; the
   three-interface design makes ECS/Fly/Docker adapters straightforward, but they aren't written yet.
   "Cloud-agnostic" describes the *seam*, not multiple shipped backends.
-- **Egress and scoped creds are not enforced yet** — see [Security model](#security-model).
+- **Egress enforcement depends on the CNI.** Default-deny egress + IMDS block ship as a declarative
+  NetworkPolicy, but a non-enforcing CNI (plain Flannel) silently no-ops it — the acquire-time egress
+  canary is what turns "policy applied" into "enforcement verified". See [Security model](#security-model).
+- **Scoped store creds require STS on the backend.** The per-lane prefix-scoped token needs an
+  S3/MinIO that supports `AssumeRole` + a configured `RESOLUTO_STORE_STS_ROLE_ARN`; without it an s3
+  backend fails closed (the `localfs` dev path is unaffected).
 - **Latency, not interactivity.** Store-mediated comms trade a few seconds of polling latency for
   wedge-resistance. This substrate is built for batch/lane workloads that run for minutes, not for
   sub-second interactive sessions.
