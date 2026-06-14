@@ -1,0 +1,106 @@
+# syntax=docker/dockerfile:1.7
+#
+# resoluto-sandbox base image — OSS-clean substrate layer.
+#
+# Contains ONLY the generic runtime substrate:
+#   - python 3.12, docker-ce + compose (for dind), node 20, tini, gh
+#   - overlay2-on-tmpfs daemon.json
+#   - non-root lane user (uid 1000) + pam_limits fd drop-in
+#   - git safe.directory config
+#   - lane-entrypoint.sh (dind startup + runuser drop)
+#   - resoluto-sandbox wheel (the passive store runner)
+#
+# No agent-vendor tooling (no claude, no pnpm, no playwright).
+# No factory wheels (core/pipeline/worker/agent-claude).
+# No factory git identity (user.email / user.name).
+#
+# Build context: workspace root (so resoluto-sandbox/ is resolvable)
+#   docker build -f resoluto-sandbox/Dockerfile.base -t resoluto-sandbox-base:dev .
+
+# ── Stage 1: build the resoluto-sandbox wheel only ──
+FROM python:3.12-slim AS builder
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+WORKDIR /src
+COPY resoluto-sandbox/ resoluto-sandbox/
+RUN mkdir -p /wheels && uv build --wheel --out-dir /wheels resoluto-sandbox || exit 1
+
+# ── Stage 2: OSS runtime substrate ──
+FROM python:3.12-slim AS runtime
+
+# system tools + docker-ce (daemon for dind) + gh
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl gnupg openssh-client git iptables tini procps e2fsprogs \
+    && install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/debian/gpg \
+        | gpg --dearmor -o /etc/apt/keyrings/docker.gpg && chmod go+r /etc/apt/keyrings/docker.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo \"$VERSION_CODENAME\") stable" \
+        > /etc/apt/sources.list.d/docker.list \
+    && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+        | dd of=/etc/apt/keyrings/githubcli-archive-keyring.gpg && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+        > /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update && apt-get install -y --no-install-recommends \
+        docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin gh \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# inner dockerd: overlay2 requires a non-virtiofs filesystem
+# (the runtime mounts a tmpfs emptyDir at /var/lib/docker)
+RUN mkdir -p /etc/docker && printf '{"storage-driver":"overlay2"}\n' > /etc/docker/daemon.json
+
+# resoluto-sandbox passive runner (only this wheel — no factory code)
+COPY --from=builder /wheels /wheels
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir /wheels/*.whl \
+    && rm -rf /wheels
+
+# non-root lane user: uid 1000, docker group, workspace dir
+# No ~/.claude wiring — that is agent-vendor credential injection, not substrate
+RUN useradd -m -s /bin/bash -u 1000 user \
+    && usermod -aG docker user \
+    && mkdir -p /workspace \
+    && chown user:user /workspace
+
+# pam_limits: raise fd soft limit for `runuser -u user`
+# (default 1024 kills docker compose builds with "too many open files")
+RUN printf 'user soft nofile 524288\nuser hard nofile 1048576\n' \
+        > /etc/security/limits.d/resoluto-nofile.conf
+
+# git: allow any directory (generic safety config, not factory identity)
+RUN git config --system safe.directory "*"
+
+# entrypoint: dind brings up dockerd as root then drops to the lane user
+COPY <<'EOF' /usr/local/bin/lane-entrypoint.sh
+#!/bin/sh
+set -e
+if [ "$(id -u)" = "0" ]; then
+    # Block-backed graph path (RESOLUTO_LANE_GRAPH_BACKEND=block): when Kata maps
+    # the emptyDir (no medium) to a virtio-blk device, /var/lib/docker is mounted
+    # on a raw block device. Format it ext4 (idempotent: skip if already ext4) and
+    # remount so overlay2 works. The findmnt/blkid check is a no-op on the default
+    # tmpfs path (source is "tmpfs", not a block device).
+    _GRAPH_DEV=$(findmnt -n -o SOURCE /var/lib/docker 2>/dev/null || true)
+    if [ -n "$_GRAPH_DEV" ] && [ -b "$_GRAPH_DEV" ]; then
+        _FS=$(blkid -o value -s TYPE "$_GRAPH_DEV" 2>/dev/null || true)
+        if [ "$_FS" != "ext4" ]; then
+            mkfs.ext4 -F "$_GRAPH_DEV"
+        fi
+        umount /var/lib/docker
+        mount -t ext4 "$_GRAPH_DEV" /var/lib/docker
+    fi
+    if ! pgrep -x dockerd >/dev/null 2>&1; then
+        # dockerd self-raises its own fd limit to the hard ceiling; the user-side
+        # compose limit is handled by the pam_limits drop-in (see above).
+        dockerd >/var/log/dockerd.log 2>&1 &
+        for _ in $(seq 1 30); do [ -S /var/run/docker.sock ] && break; sleep 0.5; done
+    fi
+    exec runuser -u user -- "$@"
+fi
+exec "$@"
+EOF
+RUN chmod +x /usr/local/bin/lane-entrypoint.sh
+
+USER 1000
+WORKDIR /workspace
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/lane-entrypoint.sh"]
