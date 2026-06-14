@@ -368,6 +368,63 @@ real test suite **inside one Kata sandbox**, self-reported through MinIO.
 
 ---
 
+## Image layers
+
+The runtime image is split into three tiers so `resoluto-sandbox` is usable as a standalone OSS project
+without any Anthropic/Claude tooling baked in:
+
+```
+resoluto-sandbox-base:dev          (resoluto-sandbox/Dockerfile.base)
+  └── substrate only
+      python 3.12, docker-ce + compose, node 20, tini, gh
+      overlay2 daemon.json, lane user (uid 1000), pam_limits
+      resoluto-sandbox wheel (passive store runner)
+      lane-entrypoint.sh (dind startup + runuser drop)
+
+resoluto-lane:dev                  (resoluto-worker/Dockerfile.lane)
+  └── FROM resoluto-sandbox-base:dev
+      factory wheels (core/pipeline/agent-claude/sandbox-cube/worker)
+      provider npm globals (from PROVIDER_NPM_GLOBALS build-arg)
+      playwright + chromium (behavioral_gate)
+      gate-runner (baked Playwright harness)
+      ~/.claude credential wiring
+      factory git identity (user.email / user.name)
+```
+
+### Standalone OSS usage
+
+The base image alone is a valid `resoluto-sandbox` runtime. Any container built `FROM
+resoluto-sandbox-base:dev` that runs `runner_main` as its entrypoint is a fully functional sandbox:
+
+```bash
+docker build -f resoluto-sandbox/Dockerfile.base -t resoluto-sandbox-base:dev .
+docker run --rm resoluto-sandbox-base:dev python -m resoluto_sandbox.runner_main --help
+```
+
+### Adding a new agent vendor
+
+No Dockerfile edit required. Implement `system_deps` on your `AgentProviderInterface` subclass to
+declare the npm globals your provider needs, then pass the package names as a `PROVIDER_NPM_GLOBALS`
+build-arg when building the extension layer:
+
+```python
+# resoluto-agent-myprovider/src/resoluto_agent_myprovider/provider.py
+@property
+def system_deps(self) -> SystemDeps:
+    return SystemDeps(npm_globals=[
+        NpmGlobal(package="my-provider-cli", expected_binary="my-cli"),
+    ])
+```
+
+```bash
+docker build -f resoluto-worker/Dockerfile.lane \
+    --build-arg BASE_IMAGE=resoluto-sandbox-base:dev \
+    --build-arg PROVIDER_NPM_GLOBALS="my-provider-cli" \
+    -t resoluto-lane-myprovider:dev .
+```
+
+---
+
 ## Roadmap
 
 - [x] Default-deny egress NetworkPolicy + IMDS drop (shipped — `EgressConfig` in `runtime/k8s.py`)
@@ -376,7 +433,7 @@ real test suite **inside one Kata sandbox**, self-reported through MinIO.
 - [ ] Fail-closed admission guard (reject non-Kata `runtime_class` outside trusted-local)
 - [x] Block-backed (virtio-blk) Docker graph to lift the `dind` RAM ceiling (shipped — `graph_backend="block"` in `SandboxLaunchSpec`; opt-in via `RESOLUTO_LANE_GRAPH_BACKEND=block`)
 - [ ] Additional `SandboxRuntime` adapters (ECS / Fly / plain Docker)
-- [ ] OSS-clean base image: substrate + this runner only, with the consuming stack layered on top
+- [x] OSS-clean base image: substrate + this runner only, with the consuming stack layered on top (shipped — `resoluto-sandbox/Dockerfile.base`)
 
 ---
 
