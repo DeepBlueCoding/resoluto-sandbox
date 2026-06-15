@@ -449,7 +449,11 @@ class K8sSandboxRuntime(SandboxRuntime):
         api = await self._client()
         rid = spec.labels.get("resoluto.run_id", "")
         nid = spec.labels.get("resoluto.node_id", "")
-        name = _dns_safe(f"sbx-{rid}-{nid}-{uuid.uuid4().hex[:8]}")
+        # Append the unique uuid8 AFTER truncation — `_dns_safe` caps at 40 chars and
+        # `sbx-`+a 36-char run_id already hits that, so embedding the suffix inside the
+        # truncated string drops it and two pods sharing a run_id (lane + per-gate dind
+        # pod) collide on `sbx-<run_id>` (409 AlreadyExists). Keep the suffix outside.
+        name = f"{_dns_safe(f'sbx-{rid}-{nid}')}-{uuid.uuid4().hex[:8]}"
 
         owner_name: str | None = None
         owner_uid: str | None = None
