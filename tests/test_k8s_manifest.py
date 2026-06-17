@@ -337,52 +337,82 @@ def _dind_spec(**kwargs):
 
 
 @pytest.mark.asyncio
-async def test_dind_tmpfs_preflight_raises_when_budget_exceeded():
-    # 24Gi pod + 18Gi graph = 42Gi > 32Gi node RAM
+async def test_dind_tmpfs_preflight_raises_when_graph_fills_pod():
+    # graph == pod memory: nothing left for dockerd/build — check (a) must fire
     rt = K8sSandboxRuntime(node_allocatable_memory="32Gi")
-    with pytest.raises(RuntimeError, match="memory budget exceeded"):
-        await rt._preflight_memory(_dind_spec(memory="24Gi", docker_graph_size="18Gi"))
+    with pytest.raises(RuntimeError, match="graph does not fit inside pod"):
+        await rt._preflight_memory(_dind_spec(memory="24Gi", docker_graph_size="24Gi"))
 
 
 @pytest.mark.asyncio
-async def test_dind_tmpfs_preflight_passes_when_within_budget():
-    # 8Gi + 16Gi = 24Gi <= 32Gi
+async def test_dind_tmpfs_preflight_raises_when_graph_exceeds_pod():
+    # graph > pod memory — check (a) must fire
     rt = K8sSandboxRuntime(node_allocatable_memory="32Gi")
-    await rt._preflight_memory(_dind_spec(memory="8Gi", docker_graph_size="16Gi"))  # must not raise
+    with pytest.raises(RuntimeError, match="graph does not fit inside pod"):
+        await rt._preflight_memory(_dind_spec(memory="16Gi", docker_graph_size="20Gi"))
 
 
 @pytest.mark.asyncio
-async def test_dind_tmpfs_preflight_passes_at_exact_budget():
-    # 14Gi + 18Gi = 32Gi == 32Gi — equal is allowed
+async def test_dind_tmpfs_preflight_raises_when_pod_exceeds_node_allocatable():
+    # pod > node allocatable: unschedulable — check (b) must fire
     rt = K8sSandboxRuntime(node_allocatable_memory="32Gi")
-    await rt._preflight_memory(_dind_spec(memory="14Gi", docker_graph_size="18Gi"))
+    with pytest.raises(RuntimeError, match="pod does not fit on node"):
+        await rt._preflight_memory(_dind_spec(memory="36Gi", docker_graph_size="18Gi"))
 
 
 @pytest.mark.asyncio
-async def test_preflight_error_message_names_env_var_knobs():
+async def test_dind_tmpfs_preflight_passes_for_valid_k8s_profile():
+    # 24Gi pod / 18Gi graph / 32Gi node — the RES-275..280 working profile must not raise
+    rt = K8sSandboxRuntime(node_allocatable_memory="32Gi")
+    await rt._preflight_memory(_dind_spec(memory="24Gi", docker_graph_size="18Gi"))
+
+
+@pytest.mark.asyncio
+async def test_dind_tmpfs_preflight_passes_when_pod_equals_node_allocatable():
+    # pod == node allocatable: equal is allowed (pod is still schedulable)
+    rt = K8sSandboxRuntime(node_allocatable_memory="24Gi")
+    await rt._preflight_memory(_dind_spec(memory="24Gi", docker_graph_size="18Gi"))
+
+
+@pytest.mark.asyncio
+async def test_preflight_graph_error_message_names_env_var_knobs():
+    # check (a) error: operator must know to shrink graph or switch to block backend
+    rt = K8sSandboxRuntime(node_allocatable_memory="32Gi")
+    with pytest.raises(RuntimeError) as exc_info:
+        await rt._preflight_memory(_dind_spec(memory="10Gi", docker_graph_size="12Gi"))
+    msg = str(exc_info.value)
+    assert "RESOLUTO_LANE_DIND_GRAPH" in msg
+    assert "RESOLUTO_LANE_DIND_MEMORY" in msg
+    assert "RESOLUTO_LANE_GRAPH_BACKEND" in msg
+
+
+@pytest.mark.asyncio
+async def test_preflight_node_error_message_names_env_var_knobs():
+    # check (b) error: operator must know to shrink pod or provision a larger node
     rt = K8sSandboxRuntime(node_allocatable_memory="16Gi")
     with pytest.raises(RuntimeError) as exc_info:
-        await rt._preflight_memory(_dind_spec(memory="10Gi", docker_graph_size="10Gi"))
+        await rt._preflight_memory(_dind_spec(memory="24Gi", docker_graph_size="18Gi"))
     msg = str(exc_info.value)
     assert "RESOLUTO_LANE_DIND_MEMORY" in msg
-    assert "RESOLUTO_LANE_DIND_GRAPH" in msg
-    assert "RESOLUTO_LANE_GRAPH_BACKEND" in msg
+    assert "pod does not fit on node" in msg
 
 
 @pytest.mark.asyncio
 async def test_preflight_env_var_overrides_node_query(monkeypatch):
     monkeypatch.setenv("RESOLUTO_NODE_ALLOCATABLE_MEMORY", "16Gi")
     rt = K8sSandboxRuntime()  # no constructor injection; env var is the source
-    with pytest.raises(RuntimeError, match="memory budget exceeded"):
-        await rt._preflight_memory(_dind_spec(memory="10Gi", docker_graph_size="10Gi"))
+    # pod 20Gi > node 16Gi → check (b) fires
+    with pytest.raises(RuntimeError, match="pod does not fit on node"):
+        await rt._preflight_memory(_dind_spec(memory="20Gi", docker_graph_size="8Gi"))
 
 
 @pytest.mark.asyncio
 async def test_preflight_fires_in_launch_for_dind_tmpfs(monkeypatch):
     monkeypatch.delenv("RESOLUTO_TRUSTED_LOCAL", raising=False)
     rt = K8sSandboxRuntime(node_allocatable_memory="8Gi")
-    spec = _dind_spec(memory="6Gi", docker_graph_size="6Gi")  # 12Gi > 8Gi
-    with pytest.raises(RuntimeError, match="memory budget exceeded"):
+    # pod 10Gi > node 8Gi → check (b) fires; graph 4Gi < pod 10Gi so check (a) does not fire
+    spec = _dind_spec(memory="10Gi", docker_graph_size="4Gi")
+    with pytest.raises(RuntimeError, match="pod does not fit on node"):
         await rt.launch(spec)
 
 
