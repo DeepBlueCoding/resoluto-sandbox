@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 import uuid
 from dataclasses import dataclass, field
 
@@ -24,29 +23,14 @@ from resoluto_sandbox.contracts import (
     SandboxRuntime,
     SandboxStatus,
     check_runtime_class_guard,
+    parse_k8s_memory,
 )
 
 logger = logging.getLogger(__name__)
 
-_MEMORY_FACTORS: dict[str, int] = {
-    "Ki": 1024, "Mi": 1024**2, "Gi": 1024**3, "Ti": 1024**4, "Pi": 1024**5,
-    "K": 1000, "M": 1000**2, "G": 1000**3, "T": 1000**4, "P": 1000**5,
-}
-_MEMORY_RE = re.compile(r"^(\d+)(Ki|Mi|Gi|Ti|Pi|K|M|G|T|P)?$")
-
-
-def _parse_k8s_memory(s: str) -> int:
-    """Parse a k8s memory quantity string to bytes.
-
-    Args: s — e.g. '24Gi', '4096Mi', '1000000K', '536870912'.
-    Returns: integer number of bytes.
-    Raises ValueError for unrecognised format.
-    """
-    m = _MEMORY_RE.match(s.strip())
-    if not m:
-        raise ValueError(f"Cannot parse k8s memory quantity: {s!r}")
-    factor = _MEMORY_FACTORS.get(m.group(2) or "", 1)
-    return int(m.group(1)) * factor
+# Shared, canonical parser (lives in contracts so the pool budget and this runtime's
+# pod-memory accounting use ONE implementation). Aliased to keep existing call sites.
+_parse_k8s_memory = parse_k8s_memory
 
 
 _PHASE_MAP = {
@@ -603,38 +587,6 @@ class K8sSandboxRuntime(SandboxRuntime):
         )
         terminal = {"Succeeded", "Failed"}
         return sum(1 for pod in pods.items if (pod.status.phase or "") not in terminal)
-
-    async def count_active_memory(self, kind: str | None = None) -> int:
-        """Sum committed pod-memory (bytes) of non-terminal sandbox pods, kind-scoped.
-
-        The k8s-API-backed memory equivalent of count_active_pods: the resource-aware
-        admission budget reads cluster truth (containers[].resources.limits.memory),
-        so it is correct across worker replicas and survives a restart.
-
-        IMPORTANT: this is the POD memory limit ONLY. `docker_graph_size` is a
-        medium:Memory emptyDir that lives INSIDE the pod cgroup (already within
-        limits.memory) — adding it would double-count every dind pod and collapse the
-        budget. The graph never appears in resources.limits, so summing limits is
-        correct by construction.
-
-        kind: optional resoluto.kind label filter ("lane" / "gate"); None = all.
-        """
-        api = await self._client()
-        label_selector = "resoluto.sandbox=true"
-        if kind is not None:
-            label_selector += f",resoluto.kind={kind}"
-        pods = await api.list_namespaced_pod(namespace=self._ns, label_selector=label_selector)
-        terminal = {"Succeeded", "Failed"}
-        total = 0
-        for pod in pods.items:
-            if (pod.status.phase or "") in terminal:
-                continue
-            for c in (getattr(pod.spec, "containers", None) or []):
-                limits = getattr(getattr(c, "resources", None), "limits", None)
-                mem = limits.get("memory") if isinstance(limits, dict) else None
-                if mem:
-                    total += _parse_k8s_memory(str(mem))
-        return total
 
     async def close(self) -> None:
         if self._api is not None:

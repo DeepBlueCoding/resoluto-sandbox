@@ -13,10 +13,32 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from abc import ABC, abstractmethod
 from typing import Literal
 
 from pydantic import BaseModel, Field
+
+# Canonical k8s memory-quantity parser, shared by the admission pool (byte budget) and
+# the k8s runtime (pod-memory accounting) — they MUST agree byte-for-byte, so there is
+# exactly ONE parser. Lives here (dep-light contracts) so neither the pool nor the heavy
+# platform runtime owns it.
+_MEMORY_FACTORS: dict[str, int] = {
+    "Ki": 1024, "Mi": 1024**2, "Gi": 1024**3, "Ti": 1024**4, "Pi": 1024**5,
+    "K": 1000, "M": 1000**2, "G": 1000**3, "T": 1000**4, "P": 1000**5,
+}
+_MEMORY_RE = re.compile(r"^(\d+)(Ki|Mi|Gi|Ti|Pi|K|M|G|T|P)?$")
+
+
+def parse_k8s_memory(s: str) -> int:
+    """Parse a k8s memory quantity ('4Gi', '512Mi', '536870912') to bytes.
+
+    Fail-loud on garbage (anchored regex), so a malformed budget/limit is caught at
+    the source rather than silently mis-parsed."""
+    m = _MEMORY_RE.match(s.strip())
+    if not m:
+        raise ValueError(f"Cannot parse k8s memory quantity: {s!r}")
+    return int(m.group(1)) * _MEMORY_FACTORS.get(m.group(2) or "", 1)
 
 _logger = logging.getLogger(__name__)
 

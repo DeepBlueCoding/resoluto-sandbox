@@ -9,7 +9,13 @@ from __future__ import annotations
 
 import asyncio
 
-from resoluto_sandbox.contracts import SandboxHandle, SandboxLaunchSpec, SandboxRuntime, check_runtime_class_guard
+from resoluto_sandbox.contracts import (
+    SandboxHandle,
+    SandboxLaunchSpec,
+    SandboxRuntime,
+    check_runtime_class_guard,
+    parse_k8s_memory,
+)
 from resoluto_sandbox.resource_semaphore import ResourceSemaphore
 
 
@@ -35,20 +41,6 @@ class SandboxLease:
 
 
 _ADMISSION_POLL_INTERVAL = 3.0  # seconds between k8s API count checks
-
-_MEM_FACTORS = {
-    "Ki": 1024, "Mi": 1024**2, "Gi": 1024**3, "Ti": 1024**4,
-    "K": 1000, "M": 1000**2, "G": 1000**3, "T": 1000**4,
-}
-
-
-def _parse_mem(s: str) -> int:
-    """Parse a k8s memory quantity ('4Gi', '512Mi', '536870912') to bytes."""
-    s = s.strip()
-    for suffix, factor in _MEM_FACTORS.items():
-        if s.endswith(suffix):
-            return int(s[: -len(suffix)]) * factor
-    return int(s)
 
 
 class SandboxPool:
@@ -88,7 +80,6 @@ class SandboxPool:
         # no-deadlock guarantee; the semaphore is FIFO-head-reserving (no starvation) and
         # grants atomically on release (no race). In-process (per worker) — cross-replica
         # coordination is the k8s ResourceQuota backstop (deferred per the advisor).
-        self._mem_budget_bytes = mem_budget_bytes
         self._mem_sem = ResourceSemaphore(mem_budget_bytes) if mem_budget_bytes else None
         self._handle_mem: dict[str, int] = {}  # handle.id → reserved bytes (for release)
 
@@ -104,6 +95,12 @@ class SandboxPool:
     def available(self) -> int:
         return self._max - len(self._live)
 
+    def _starvation_error(self) -> RuntimeError:
+        return RuntimeError(
+            f"sandbox pool acquire timed out after {self._acquire_timeout_s}s "
+            "(substrate starvation — distinct from agent-work liveness)"
+        )
+
     async def acquire(self, spec: SandboxLaunchSpec, *, on_wait=None) -> SandboxLease:
         """Reserve resources (RAM budget + count), then launch. Fail-loud on count
         timeout / launch failure.
@@ -114,7 +111,7 @@ class SandboxPool:
         woken event-driven when a release frees enough budget (FIFO, no starvation).
         Cancellation (a stop) cleanly drops it from the queue."""
         check_runtime_class_guard(spec.runtime_class)
-        spec_mem = _parse_mem(spec.memory) if self._mem_sem is not None else 0
+        spec_mem = parse_k8s_memory(spec.memory) if self._mem_sem is not None else 0
         # 1. RAM budget — the heavy, event-driven gate. Parks holding nothing.
         if self._mem_sem is not None:
             await self._mem_sem.acquire(spec_mem, on_wait=on_wait)
@@ -127,19 +124,13 @@ class SandboxPool:
                     deadline = loop.time() + self._acquire_timeout_s
                     while (await self._admission_gate()) >= self._max:
                         if loop.time() >= deadline:
-                            raise RuntimeError(
-                                f"sandbox pool acquire timed out after {self._acquire_timeout_s}s "
-                                "(substrate starvation — distinct from agent-work liveness)"
-                            )
+                            raise self._starvation_error()
                         await asyncio.sleep(_ADMISSION_POLL_INTERVAL)
                 else:
                     try:
                         await asyncio.wait_for(self._sem.acquire(), timeout=self._acquire_timeout_s)
                     except asyncio.TimeoutError as exc:
-                        raise RuntimeError(
-                            f"sandbox pool acquire timed out after {self._acquire_timeout_s}s "
-                            "(substrate starvation — distinct from agent-work liveness)"
-                        ) from exc
+                        raise self._starvation_error() from exc
             # 3. Launch — only now is RAM actually consumed.
             try:
                 handle = await self._runtime.launch(spec)
