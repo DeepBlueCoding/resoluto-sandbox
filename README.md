@@ -58,7 +58,7 @@ Three small contracts (`contracts.py`) are the entire surface area:
 |-----------|------|-----------------|
 | `SandboxRuntime` | the ONE platform-specific surface — `launch` / `status` / `destroy` / `sweep` / `logs` | `K8sSandboxRuntime` (Kata via k8s `runtimeClassName`) |
 | `ObjectStore`    | the durable rendezvous — `put` / `get` / `list_prefix` | `LocalFsObjectStore`, `S3ObjectStore` (minio / any S3), `GcsObjectStore` |
-| `SandboxPool`    | platform-independent FIFO admission + a concurrency cap | `SandboxPool` |
+| `SandboxPool`    | platform-independent admission — count cap + [resource-aware RAM budget](#resource-aware-admission) (queue/park, no starvation) | `SandboxPool` |
 
 ```mermaid
 flowchart LR
@@ -296,6 +296,43 @@ substrate_logs: str            # host-side forensics on silent death
 
 ---
 
+## Resource-aware admission
+
+A finite cluster can't launch sandboxes freely: a plain lane pod is small (e.g. 4Gi)
+but a `dind` gate pod is large (e.g. 12Gi). `SandboxPool` therefore admits by **real
+memory cost against a budget**, not just a pod count.
+
+```python
+pool = SandboxPool(runtime, max_concurrent=4, mem_budget_bytes=parse_k8s_memory("16Gi"))
+```
+
+- **Budget, not count.** A spec is admitted only when its `spec.memory` fits within the
+  pool's remaining byte budget. The count cap (`max_concurrent`) remains as a secondary
+  ceiling.
+- **Queued holds nothing.** When a spec doesn't fit it **parks on a fair
+  `ResourceSemaphore`** — the pod is *not launched* until budget frees, so a pipeline
+  waiting for resources consumes **no RAM** (just a parked future, no spin, no held
+  thread). It is woken event-driven the instant a release frees enough budget.
+- **No starvation, no race.** The semaphore grants the FIFO **head** first and never
+  skips it for a smaller waiter behind it (a heavy step always eventually runs);
+  allocation is atomic on `release` (two waiters can't both claim the same freed bytes).
+- **Fail-loud on the impossible.** A spec larger than the whole budget raises rather
+  than parking forever; a count-cap that can't clear within `acquire_timeout_s` raises
+  *substrate starvation* (distinct from agent-work liveness — no wall-clock kill of work).
+- **`on_wait` surfaces the state.** `acquire(spec, on_wait=...)` fires the callback once
+  when the caller parks, so the orchestrator can mark the execution **"queued for
+  resources"** (Resoluto emits a `resource_queued` event for both lanes and gate pods).
+
+> **Per-kind budgets, never shared.** In Resoluto the lane pool and the (independent)
+> gate pool each carry their **own** budget (`RESOLUTO_LANE_MEM_BUDGET` /
+> `RESOLUTO_GATE_MEM_BUDGET`). A *shared* cluster-wide budget would let a full lane fleet
+> starve gate admission while each lane waits on a gate verdict — a deadlock. Separate
+> per-kind budgets keep the two independent. The budget is in-process per worker;
+> cross-replica coordination is the k8s `ResourceQuota` backstop. Unset budget → the
+> memory gate is off (count cap only).
+
+---
+
 ## Security model
 
 What the substrate gives you **today**, honestly scoped:
@@ -447,10 +484,13 @@ docker build -f resoluto-worker/Dockerfile.lane \
 ## Roadmap
 
 - [x] Default-deny egress NetworkPolicy + IMDS drop (shipped — `EgressConfig` in `runtime/k8s.py`)
-- [ ] Prefix-scoped / write-only / expiring store-credential minting + in-guest consumption
-- [ ] k8s-native orphan GC (`ownerReferences` + TTL) and a deployment-wide concurrency cap
-- [ ] Fail-closed admission guard (reject non-Kata `runtime_class` outside trusted-local)
+- [x] Prefix-scoped / write-only / expiring store-credential minting + in-guest consumption (shipped — per-lane STS token via `mint_scoped_credential`)
+- [x] k8s-native orphan GC (`ownerReferences` + TTL) and a deployment-wide cap (shipped — owner refs + `ResourceQuota`/`LimitRange`; kind-scoped per-pool admission)
+- [x] Fail-closed admission guard (reject non-Kata `runtime_class` outside trusted-local) (shipped — `check_runtime_class_guard`)
 - [x] Block-backed (virtio-blk) Docker graph to lift the `dind` RAM ceiling (shipped — `graph_backend="block"` in `SandboxLaunchSpec`; opt-in via `RESOLUTO_LANE_GRAPH_BACKEND=block`)
+- [x] Per-gate flavor — the lane runs plain; only a compose gate spawns an ephemeral `dind` gate pod (shipped — gate offload via the store protocol)
+- [x] Resource-aware admission — per-kind RAM budget via a fair `ResourceSemaphore`; a queued lane/gate holds no RAM (shipped — see [Resource-aware admission](#resource-aware-admission))
+- [ ] Per-step pausable pipeline — release the **lane** pod between gates and resume from the store checkpoint (the semaphore foundation is shipped; lane-release + resume is the remaining deep step)
 - [ ] Additional `SandboxRuntime` adapters (ECS / Fly / plain Docker)
 - [x] OSS-clean base image: substrate + this runner only, with the consuming stack layered on top (shipped — `resoluto-sandbox/Dockerfile.base`)
 
