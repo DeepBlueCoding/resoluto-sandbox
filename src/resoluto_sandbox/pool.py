@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 
 from resoluto_sandbox.contracts import SandboxHandle, SandboxLaunchSpec, SandboxRuntime, check_runtime_class_guard
+from resoluto_sandbox.resource_semaphore import ResourceSemaphore
 
 
 class SandboxLease:
@@ -69,7 +70,6 @@ class SandboxPool:
         acquire_timeout_s: float = 600.0,
         admission_gate=None,
         mem_budget_bytes: int | None = None,
-        committed_mem_gate=None,
     ) -> None:
         if max_concurrent < 1:
             raise ValueError("max_concurrent must be >= 1")
@@ -80,17 +80,17 @@ class SandboxPool:
         self._admission_gate = admission_gate
         self._live: set[str] = set()
         self._max = max_concurrent
-        # Resource-aware admission (RES-290). When mem_budget_bytes + committed_mem_gate
-        # are set, a spec is admitted only when committed(kind) + spec.memory fits the
-        # budget. The budget is PER-KIND (the gate pool and lane pool each get their own
-        # gate counting only their kind) — a SHARED budget would re-introduce the RES-287
-        # lane↔gate deadlock. The strict-FIFO _admit lock means the head waiter holds
-        # admission while it polls, so freed budget flows to it first (automatic head
-        # reservation → no heavy-step starvation); within a kind pods are ~homogeneous in
-        # size so this never head-of-lines a pod that would fit. No new timer is added —
-        # the wait reuses acquire_timeout_s exactly like the count gate.
+        # Resource-aware admission (RES-290/291) via a fair byte-budgeted SEMAPHORE.
+        # When mem_budget_bytes is set, a spec must reserve its memory from a per-kind
+        # ResourceSemaphore BEFORE the pod is launched — so a waiter parks event-driven
+        # (no spin, no held thread) and holds NO RAM while queued (the pod isn't launched
+        # until granted). PER-KIND budget (lane vs gate each own one) keeps the RES-287
+        # no-deadlock guarantee; the semaphore is FIFO-head-reserving (no starvation) and
+        # grants atomically on release (no race). In-process (per worker) — cross-replica
+        # coordination is the k8s ResourceQuota backstop (deferred per the advisor).
         self._mem_budget_bytes = mem_budget_bytes
-        self._committed_mem_gate = committed_mem_gate
+        self._mem_sem = ResourceSemaphore(mem_budget_bytes) if mem_budget_bytes else None
+        self._handle_mem: dict[str, int] = {}  # handle.id → reserved bytes (for release)
 
     @property
     def runtime(self) -> SandboxRuntime:
@@ -104,55 +104,55 @@ class SandboxPool:
     def available(self) -> int:
         return self._max - len(self._live)
 
-    async def acquire(self, spec: SandboxLaunchSpec) -> SandboxLease:
-        """Admit (FIFO, bounded) then launch. Raises on acquire-timeout (substrate
-        starvation) or launch failure — fail-loud, no degraded fallback."""
+    async def acquire(self, spec: SandboxLaunchSpec, *, on_wait=None) -> SandboxLease:
+        """Reserve resources (RAM budget + count), then launch. Fail-loud on count
+        timeout / launch failure.
+
+        on_wait(amount, available) fires ONCE if the caller must PARK on the memory
+        budget — i.e. the execution is now 'queued for resources'. A parked caller
+        holds NO RAM (the pod is not launched until granted) and no spin/thread; it is
+        woken event-driven when a release frees enough budget (FIFO, no starvation).
+        Cancellation (a stop) cleanly drops it from the queue."""
         check_runtime_class_guard(spec.runtime_class)
-        # The admission lock serialises waiters so launches start in FIFO order;
-        # they then proceed concurrently up to the cap once admitted.
-        async with self._admit:
-            if self._admission_gate is not None or self._mem_budget_bytes is not None:
-                loop = asyncio.get_event_loop()
-                deadline = loop.time() + self._acquire_timeout_s
-                spec_mem = _parse_mem(spec.memory) if self._mem_budget_bytes is not None else 0
-                while True:
-                    count_ok = True
-                    if self._admission_gate is not None:
-                        count_ok = (await self._admission_gate()) < self._max
-                    mem_ok = True
-                    if self._mem_budget_bytes is not None:
-                        committed = await self._committed_mem_gate() if self._committed_mem_gate else 0
-                        # A spec larger than the whole budget could never fit — fail loud
-                        # rather than wait the full timeout for the impossible.
-                        if spec_mem > self._mem_budget_bytes:
+        spec_mem = _parse_mem(spec.memory) if self._mem_sem is not None else 0
+        # 1. RAM budget — the heavy, event-driven gate. Parks holding nothing.
+        if self._mem_sem is not None:
+            await self._mem_sem.acquire(spec_mem, on_wait=on_wait)
+        try:
+            # 2. Count cap — a fast secondary ceiling (kind-scoped, RES-287). With a RAM
+            #    budget this rarely blocks (memory is the binding constraint).
+            async with self._admit:
+                if self._admission_gate is not None:
+                    loop = asyncio.get_event_loop()
+                    deadline = loop.time() + self._acquire_timeout_s
+                    while (await self._admission_gate()) >= self._max:
+                        if loop.time() >= deadline:
                             raise RuntimeError(
-                                f"spec memory {spec.memory} exceeds the pool memory budget "
-                                f"({self._mem_budget_bytes} bytes) — cannot ever be admitted"
+                                f"sandbox pool acquire timed out after {self._acquire_timeout_s}s "
+                                "(substrate starvation — distinct from agent-work liveness)"
                             )
-                        mem_ok = committed + spec_mem <= self._mem_budget_bytes
-                    if count_ok and mem_ok:
-                        break
-                    if loop.time() >= deadline:
+                        await asyncio.sleep(_ADMISSION_POLL_INTERVAL)
+                else:
+                    try:
+                        await asyncio.wait_for(self._sem.acquire(), timeout=self._acquire_timeout_s)
+                    except asyncio.TimeoutError as exc:
                         raise RuntimeError(
                             f"sandbox pool acquire timed out after {self._acquire_timeout_s}s "
                             "(substrate starvation — distinct from agent-work liveness)"
-                        )
-                    await asyncio.sleep(_ADMISSION_POLL_INTERVAL)
-            else:
-                try:
-                    await asyncio.wait_for(self._sem.acquire(), timeout=self._acquire_timeout_s)
-                except asyncio.TimeoutError as exc:
-                    raise RuntimeError(
-                        f"sandbox pool acquire timed out after {self._acquire_timeout_s}s "
-                        "(substrate starvation — distinct from agent-work liveness)"
-                    ) from exc
-        try:
-            handle = await self._runtime.launch(spec)
+                        ) from exc
+            # 3. Launch — only now is RAM actually consumed.
+            try:
+                handle = await self._runtime.launch(spec)
+            except BaseException:
+                if self._admission_gate is None:
+                    self._sem.release()
+                raise
         except BaseException:
-            if self._admission_gate is None:
-                self._sem.release()
+            if self._mem_sem is not None:
+                self._mem_sem.release(spec_mem)  # give the reserved budget back
             raise
         self._live.add(handle.id)
+        self._handle_mem[handle.id] = spec_mem
         return SandboxLease(self, handle)
 
     async def _release(self, handle: SandboxHandle) -> None:
@@ -162,3 +162,7 @@ class SandboxPool:
             self._live.discard(handle.id)
             if self._admission_gate is None:
                 self._sem.release()
+            # Return the RAM budget → wakes the next queued waiter (event-driven).
+            mem = self._handle_mem.pop(handle.id, 0)
+            if self._mem_sem is not None and mem:
+                self._mem_sem.release(mem)
