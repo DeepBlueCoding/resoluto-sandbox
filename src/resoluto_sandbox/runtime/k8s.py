@@ -407,14 +407,19 @@ class K8sSandboxRuntime(SandboxRuntime):
         return min(ram_values) if ram_values else 0
 
     async def _preflight_memory(self, spec: SandboxLaunchSpec) -> None:
-        """Refuse a dind+tmpfs launch whose RAM footprint exceeds node-allocatable.
+        """Refuse a dind+tmpfs launch that violates Kubernetes memory accounting.
 
-        The tmpfs docker graph (medium: Memory emptyDir) counts against the pod's
-        cgroup RAM — pod_memory + graph_size must fit within a single node's
-        allocatable RAM or the pod will OOM silently.
+        A `medium: Memory` emptyDir (tmpfs docker graph) is counted WITHIN the pod's
+        memory cgroup limit — not additively on top of it. Therefore two independent
+        constraints must hold:
+          (a) graph_size < pod_memory — the graph must fit inside the pod cgroup, leaving
+              headroom for dockerd, layer cache, and build processes.
+          (b) pod_memory <= node_allocatable — the pod must be schedulable on a node.
+
+        Raises RuntimeError with a distinct, actionable message for each failure mode so
+        the operator knows whether to shrink the graph or shrink the pod.
 
         Args: spec — SandboxLaunchSpec with flavor='dind' and graph_backend='tmpfs'.
-        Raises RuntimeError with actionable env-var guidance when the budget is exceeded.
         """
         node_ram = await self._get_node_allocatable_ram()
         if node_ram == 0:
@@ -424,23 +429,30 @@ class K8sSandboxRuntime(SandboxRuntime):
             return
         pod_mem = _parse_k8s_memory(spec.memory)
         graph_mem = _parse_k8s_memory(spec.docker_graph_size)
-        total = pod_mem + graph_mem
-        if total <= node_ram:
-            return
-        over = total - node_ram
 
         def _gib(b: int) -> str:
             return f"{b / (1024 ** 3):.1f}Gi"
 
-        raise RuntimeError(
-            f"dind tmpfs preflight: memory budget exceeded — "
-            f"pod {spec.memory} + graph {spec.docker_graph_size} = {_gib(total)}, "
-            f"node allocatable = {_gib(node_ram)}, "
-            f"over by {_gib(over)}. "
-            f"Fix: lower RESOLUTO_LANE_DIND_MEMORY (currently {spec.memory}) "
-            f"or RESOLUTO_LANE_DIND_GRAPH (currently {spec.docker_graph_size}), "
-            f"or switch to block-backed docker graph with RESOLUTO_LANE_GRAPH_BACKEND=block."
-        )
+        if graph_mem >= pod_mem:
+            raise RuntimeError(
+                f"dind tmpfs preflight: graph does not fit inside pod — "
+                f"graph {spec.docker_graph_size} ({_gib(graph_mem)}) >= pod memory {spec.memory} ({_gib(pod_mem)}); "
+                f"a medium:Memory emptyDir is counted within the pod cgroup so the graph must be "
+                f"smaller than pod memory to leave room for dockerd and build processes. "
+                f"Fix: lower RESOLUTO_LANE_DIND_GRAPH (currently {spec.docker_graph_size}) "
+                f"to less than RESOLUTO_LANE_DIND_MEMORY (currently {spec.memory}), "
+                f"or switch to block-backed docker graph with RESOLUTO_LANE_GRAPH_BACKEND=block."
+            )
+
+        if pod_mem > node_ram:
+            over = pod_mem - node_ram
+            raise RuntimeError(
+                f"dind tmpfs preflight: pod does not fit on node — "
+                f"pod memory {spec.memory} ({_gib(pod_mem)}) > node allocatable {_gib(node_ram)}, "
+                f"over by {_gib(over)}. "
+                f"Fix: lower RESOLUTO_LANE_DIND_MEMORY (currently {spec.memory}) "
+                f"to at most {_gib(node_ram)}, or provision a larger node."
+            )
 
     async def launch(self, spec: SandboxLaunchSpec) -> SandboxHandle:
         check_runtime_class_guard(spec.runtime_class)
