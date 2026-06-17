@@ -604,6 +604,38 @@ class K8sSandboxRuntime(SandboxRuntime):
         terminal = {"Succeeded", "Failed"}
         return sum(1 for pod in pods.items if (pod.status.phase or "") not in terminal)
 
+    async def count_active_memory(self, kind: str | None = None) -> int:
+        """Sum committed pod-memory (bytes) of non-terminal sandbox pods, kind-scoped.
+
+        The k8s-API-backed memory equivalent of count_active_pods: the resource-aware
+        admission budget reads cluster truth (containers[].resources.limits.memory),
+        so it is correct across worker replicas and survives a restart.
+
+        IMPORTANT: this is the POD memory limit ONLY. `docker_graph_size` is a
+        medium:Memory emptyDir that lives INSIDE the pod cgroup (already within
+        limits.memory) — adding it would double-count every dind pod and collapse the
+        budget. The graph never appears in resources.limits, so summing limits is
+        correct by construction.
+
+        kind: optional resoluto.kind label filter ("lane" / "gate"); None = all.
+        """
+        api = await self._client()
+        label_selector = "resoluto.sandbox=true"
+        if kind is not None:
+            label_selector += f",resoluto.kind={kind}"
+        pods = await api.list_namespaced_pod(namespace=self._ns, label_selector=label_selector)
+        terminal = {"Succeeded", "Failed"}
+        total = 0
+        for pod in pods.items:
+            if (pod.status.phase or "") in terminal:
+                continue
+            for c in (getattr(pod.spec, "containers", None) or []):
+                limits = getattr(getattr(c, "resources", None), "limits", None)
+                mem = limits.get("memory") if isinstance(limits, dict) else None
+                if mem:
+                    total += _parse_k8s_memory(str(mem))
+        return total
+
     async def close(self) -> None:
         if self._api is not None:
             await self._api.api_client.close()
