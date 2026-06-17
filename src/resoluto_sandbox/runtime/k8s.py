@@ -585,15 +585,21 @@ class K8sSandboxRuntime(SandboxRuntime):
             if exc.status != 404:
                 raise
 
-    async def count_active_pods(self) -> int:
+    async def count_active_pods(self, kind: str | None = None) -> int:
         """Count non-terminal pods in the sandbox namespace (deployment-wide).
 
         Used as the k8s-API-backed admission gate: all replicas see the same
         count, giving cross-replica coordination without Redis or etcd.
+
+        kind: optional resoluto.kind label value to filter by (e.g. "lane" or
+        "gate"). When None, counts all sandbox pods regardless of kind.
         """
         api = await self._client()
+        label_selector = "resoluto.sandbox=true"
+        if kind is not None:
+            label_selector += f",resoluto.kind={kind}"
         pods = await api.list_namespaced_pod(
-            namespace=self._ns, label_selector="resoluto.sandbox=true"
+            namespace=self._ns, label_selector=label_selector
         )
         terminal = {"Succeeded", "Failed"}
         return sum(1 for pod in pods.items if (pod.status.phase or "") not in terminal)
