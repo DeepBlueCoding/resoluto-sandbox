@@ -148,6 +148,7 @@ class ChunkReader:
         self._last_progress = clock()
         self._last_arrival = clock()
         self._total: int | None = None
+        self._armed = False  # silence counts only once arm()ed (pod reached RUNNING)
 
     @property
     def finished(self) -> bool:
@@ -190,14 +191,18 @@ class ChunkReader:
         return [SpanEvent.model_validate_json(line) for line in await self.poll_lines()]
 
     def arm(self) -> None:
-        """(Re)start the silence window NOW.
+        """Start the silence window NOW — call the moment the pod reaches RUNNING.
 
-        The window is armed at construction, but the caller should re-arm it the moment
-        the pod actually reaches RUNNING — because a pod sitting Pending / SchedulingGated
-        (waiting to schedule, pulling a multi-GB Kata image, or held by an EXTERNAL
-        admission gate like Kueue) legitimately ships no chunks, and counting that time as
-        silence would false-positive a perfectly healthy pod as substrate-dead. Liveness
-        must measure silence-while-running, not time-since-pod-created."""
+        IDEMPOTENT: only the FIRST call arms (and rebases the window); later calls are
+        no-ops, so a driver loop can call it every running poll without ever masking a
+        real silence. Until armed, BOTH death signals (`is_dead`, `substrate_silent`)
+        return false: a pod sitting Pending / SchedulingGated (waiting to schedule,
+        pulling a multi-GB Kata image, or held by an EXTERNAL admission gate like Kueue)
+        legitimately ships no chunks, and counting that as silence would false-positive a
+        healthy pod as dead. Liveness measures silence-WHILE-RUNNING, not since-created."""
+        if self._armed:
+            return
+        self._armed = True
         self._last_progress = self._last_arrival = self._clock()
 
     @property
@@ -209,6 +214,14 @@ class ChunkReader:
         return self._clock() - self._last_arrival
 
     def is_dead(self) -> bool:
-        if self.finished:
+        """WORK-silence (progress window) death — false until armed/finished."""
+        if not self._armed or self.finished:
             return False
         return (self._clock() - self._last_progress) > self._dead_after_s
+
+    @property
+    def substrate_silent(self) -> bool:
+        """SUBSTRATE-silence death — no chunk has ARRIVED within the death window. The
+        ONLY kill signal the worker acts on (heartbeats keep arrival fresh while alive).
+        False until armed: pre-RUNNING quiet is legitimate, not a dead substrate."""
+        return self._armed and self.seconds_since_arrival > self._dead_after_s

@@ -15,7 +15,8 @@ import logging
 import os
 import re
 from abc import ABC, abstractmethod
-from typing import AsyncContextManager, Literal, Protocol, runtime_checkable
+from contextlib import AbstractAsyncContextManager
+from typing import Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
@@ -206,7 +207,7 @@ class Admission(Protocol):
     substrate (`SandboxRuntime`) never imports or depends on any admitter — the only thing
     that connects them is the `SandboxLaunchSpec`'s opaque pod metadata."""
 
-    async def acquire(self, spec: SandboxLaunchSpec) -> AsyncContextManager[Lease]: ...
+    async def acquire(self, spec: SandboxLaunchSpec) -> AbstractAsyncContextManager[Lease]: ...
 
 
 # ── observability span event (§13) ──────────────────────────────────────────

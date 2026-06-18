@@ -216,29 +216,23 @@ class K8sSandboxRuntime(SandboxRuntime):
         if spec.store_write_token:
             env.append({"name": "RESOLUTO_STORE_WRITE_TOKEN", "value": spec.store_write_token})
 
+        resource_qty = {
+            "cpu": spec.cpu,
+            "memory": spec.memory,
+            "ephemeral-storage": spec.ephemeral_storage,
+        }
         container: dict = {
             "name": "lane",
             "image": spec.image,
             "imagePullPolicy": self._ipp,
             "securityContext": self._security_context(spec),
             "env": env,
-            "resources": {
-                # Honest requests == limits: the pod reserves what it will use, so the
-                # kube-scheduler (and any external quota layer like Kueue) right-sizes it
-                # correctly rather than over- or under-reserving. The dind tmpfs graph is a
-                # medium:Memory emptyDir already counted WITHIN spec.memory (not added); the
-                # block/virtio-blk graph is off-RAM and correctly not requested here.
-                "requests": {
-                    "cpu": spec.cpu,
-                    "memory": spec.memory,
-                    "ephemeral-storage": spec.ephemeral_storage,
-                },
-                "limits": {
-                    "cpu": spec.cpu,
-                    "memory": spec.memory,
-                    "ephemeral-storage": spec.ephemeral_storage,
-                },
-            },
+            # Honest requests == limits: the pod reserves what it will use, so the
+            # kube-scheduler (and any external quota layer like Kueue) right-sizes it
+            # correctly rather than over- or under-reserving. The dind tmpfs graph is a
+            # medium:Memory emptyDir already counted WITHIN spec.memory (not added); the
+            # block/virtio-blk graph is off-RAM and correctly not requested here.
+            "resources": {"requests": dict(resource_qty), "limits": dict(resource_qty)},
         }
         if spec.command is not None:
             container["command"] = spec.command

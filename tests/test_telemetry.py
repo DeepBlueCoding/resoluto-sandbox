@@ -55,6 +55,7 @@ async def test_liveness_is_chunk_arrival(tmp_path):
     prefix = "run/r/nodes/n"
     ship = ChunkShipper(store, prefix, flush_bytes=10_000, clock=lambda: clock["t"])
     reader = ChunkReader(store, prefix, dead_after_s=100.0, clock=lambda: clock["t"])
+    reader.arm()  # pod is RUNNING — silence now counts (death signals are inert until armed)
 
     await ship.emit(_ev("x")); await ship.flush()
     await reader.poll()
@@ -65,6 +66,23 @@ async def test_liveness_is_chunk_arrival(tmp_path):
     clock["t"] = 200.0
     await reader.poll()
     assert reader.is_dead() is True  # no new chunk → substrate dead
+
+
+@pytest.mark.asyncio
+async def test_unarmed_reader_is_never_dead(tmp_path):
+    # The death signals are inert until arm() (pod RUNNING): a pod sitting Pending past
+    # the window must NOT read as dead — this is the latch that lets every drive loop call
+    # arm() on RUNNING instead of each re-implementing a "don't count yet" flag.
+    clock = {"t": 0.0}
+    store = LocalFsObjectStore(tmp_path)
+    reader = ChunkReader(store, "run/r/nodes/n", dead_after_s=30.0, clock=lambda: clock["t"])
+    clock["t"] = 10_000.0  # far past the window, but never armed
+    assert reader.is_dead() is False
+    assert reader.substrate_silent is False
+    reader.arm()
+    clock["t"] = 10_031.0  # 31s of silence AFTER arming
+    assert reader.is_dead() is True
+    assert reader.substrate_silent is True
 
 
 @pytest.mark.asyncio
@@ -130,6 +148,7 @@ async def test_chunk_reader_progress_filter(tmp_path):
         store, prefix, dead_after_s=100.0, clock=lambda: clock["t"],
         progress_filter=lambda line: '"engine_heartbeat"' not in line,
     )
+    reader.arm()  # pod is RUNNING — silence now counts (death signals are inert until armed)
 
     await ship.emit_line('{"event_type": "engine_heartbeat"}')
     await ship.flush()
@@ -171,6 +190,7 @@ async def test_terminal_gap_surfaces_as_dead(tmp_path):
     store = LocalFsObjectStore(tmp_path)
     prefix = "run/r/nodes/n"
     reader = ChunkReader(store, prefix, dead_after_s=50.0, clock=lambda: clock["t"])
+    reader.arm()  # pod is RUNNING — silence now counts (death signals are inert until armed)
     # write chunk 2 but NOT chunk 1, plus a manifest claiming 2 chunks → a gap
     await store.put(f"{prefix}/events-000002.jsonl", b'{"run_id":"r","span_id":"b","kind":"node","event":"open","ts":0}\n')
     import json

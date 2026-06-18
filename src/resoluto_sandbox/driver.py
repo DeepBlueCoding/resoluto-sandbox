@@ -21,6 +21,7 @@ from resoluto_sandbox.contracts import (
     Admission,
     NodeResult,
     ObjectStore,
+    SandboxHandle,
     SandboxLaunchSpec,
     SandboxRuntime,
     SpanEvent,
@@ -38,13 +39,23 @@ async def _fire(on_event: OnEvent | None, ev: SpanEvent) -> None:
         await r
 
 
+class _DirectLease:
+    """Minimal Lease for the admission-free path — just exposes `.handle` so the driver
+    reads it uniformly whether the slot came from an Admission or a direct launch."""
+
+    __slots__ = ("handle",)
+
+    def __init__(self, handle: SandboxHandle) -> None:
+        self.handle = handle
+
+
 @asynccontextmanager
 async def _direct_lease(runtime: SandboxRuntime, spec: SandboxLaunchSpec):
     """Admission-free launch: launch now, reap on exit — the no-admitter path (an external
     scheduler/Kueue, or nothing, decides WHEN; the substrate just does the HOW)."""
     handle = await runtime.launch(spec)
     try:
-        yield handle
+        yield _DirectLease(handle)
     finally:
         await runtime.destroy(handle)
 
@@ -63,28 +74,22 @@ async def drive_node(
     node_id = spec.labels.get("resoluto.node_id", "")
     lease_cm = (await admit.acquire(spec)) if admit is not None else _direct_lease(runtime, spec)
     async with lease_cm as leased:
-        handle = getattr(leased, "handle", leased)  # Lease (.handle) or a bare handle
+        handle = leased.handle
         reader = ChunkReader(store, spec.store_prefix, dead_after_s=dead_after_s, clock=clock)
         phase = "unknown"
-        # The silence window only counts once the pod is RUNNING (or already shipping):
-        # time spent Pending/SchedulingGated (scheduling, image pull, an external admission
-        # gate) is NOT silence and must not reap a healthy pod.
-        armed = False
         while True:
-            events = await reader.poll()
-            for ev in events:
+            for ev in await reader.poll():
                 await _fire(on_event, ev)
-            if events:
-                armed = True  # the pod is shipping → it's alive (poll reset the window)
             st = await runtime.status(handle)
             prev_phase, phase = phase, st.phase
             if st.terminal:
                 for ev in await reader.poll():  # final drain after the pod exits
                     await _fire(on_event, ev)
                 break
-            if phase == "running" and not armed:
-                armed = True
-                reader.arm()  # scheduling/pull/gate time does not count toward death
+            if phase == "running":
+                # Arm the silence window only at RUNNING (idempotent): Pending/SchedulingGated
+                # time — scheduling, image pull, an external admission gate — is not silence.
+                reader.arm()
             if prev_phase == "running" and phase == "unknown":
                 # The pod vanished after running — an EXTERNAL termination (evicted,
                 # preempted, node-drained, deleted), not a silent substrate death. Report
@@ -93,7 +98,7 @@ async def drive_node(
                     node_id=node_id, status="failure", observed_phase=phase,
                     reason="pod terminated externally (evicted/deleted) while running",
                 )
-            if armed and reader.is_dead():
+            if reader.is_dead():
                 # silently-dead substrate — the guest can't report its own death,
                 # so capture substrate-side forensics here (E2) and fail loud.
                 try:
