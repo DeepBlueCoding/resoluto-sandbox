@@ -223,11 +223,21 @@ class K8sSandboxRuntime(SandboxRuntime):
             "securityContext": self._security_context(spec),
             "env": env,
             "resources": {
+                # Honest requests == limits: the pod reserves what it will use, so the
+                # kube-scheduler (and any external quota layer like Kueue) right-sizes it
+                # correctly rather than over- or under-reserving. The dind tmpfs graph is a
+                # medium:Memory emptyDir already counted WITHIN spec.memory (not added); the
+                # block/virtio-blk graph is off-RAM and correctly not requested here.
+                "requests": {
+                    "cpu": spec.cpu,
+                    "memory": spec.memory,
+                    "ephemeral-storage": spec.ephemeral_storage,
+                },
                 "limits": {
                     "cpu": spec.cpu,
                     "memory": spec.memory,
                     "ephemeral-storage": spec.ephemeral_storage,
-                }
+                },
             },
         }
         if spec.command is not None:
@@ -268,10 +278,18 @@ class K8sSandboxRuntime(SandboxRuntime):
         }
         if spec.deadline_seconds is not None:
             pod_spec["activeDeadlineSeconds"] = spec.deadline_seconds
+        # Stamp opaque caller-supplied scheduling gates VERBATIM (the seam an external
+        # admitter like Kueue gates through). Empty → no gates → normal scheduling. The
+        # substrate never constructs, names, or removes a gate; it only relays what the
+        # caller put on the spec, so it stays Kueue-agnostic.
+        if spec.scheduling_gates:
+            pod_spec["schedulingGates"] = [{"name": g} for g in spec.scheduling_gates]
 
         # All sandbox pods carry resoluto.sandbox=true for deployment-wide counting.
         pod_labels = {"resoluto.sandbox": "true", **dict(spec.labels)}
         metadata: dict = {"name": name, "namespace": self._ns, "labels": pod_labels}
+        if spec.annotations:
+            metadata["annotations"] = dict(spec.annotations)
         if owner_name and owner_uid:
             metadata["ownerReferences"] = [{
                 "apiVersion": "v1",
@@ -364,7 +382,9 @@ class K8sSandboxRuntime(SandboxRuntime):
 
     async def node_allocatable_memory(self) -> int:
         """Public: minimum allocatable RAM (bytes) across Ready nodes, 0 if unknown.
-        The source for the default per-kind admission budget (RES-290)."""
+
+        A neutral NODE-CAPACITY query — pure substrate. What a consumer does with it
+        (e.g. derive an admission budget) is the consumer's policy, not the runtime's."""
         return await self._get_node_allocatable_ram()
 
     async def _get_node_allocatable_ram(self) -> int:

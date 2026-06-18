@@ -448,3 +448,35 @@ async def test_preflight_noop_for_dind_block_backend(monkeypatch):
         assert "memory budget" not in str(exc), f"Preflight should not fire for block: {exc}"
     except Exception:
         pass  # expected: no k8s cluster
+
+
+def test_manifest_stamps_opaque_scheduling_gates_and_annotations():
+    """Decoupling contract: the substrate stamps caller-supplied scheduling gates +
+    annotations VERBATIM (the seam Kueue composes through), and emits honest requests."""
+    from resoluto_sandbox.contracts import SandboxLaunchSpec
+    from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
+    rt = K8sSandboxRuntime()
+    spec = SandboxLaunchSpec(
+        image="x", store_prefix="run/x/nodes/n/lane-0",
+        labels={"kueue.x-k8s.io/queue-name": "team-a"},
+        scheduling_gates=["kueue.x-k8s.io/admission"],
+        annotations={"foo": "bar"},
+    )
+    m = rt._manifest(spec, "sbx-test")
+    # gates relayed verbatim, never constructed by the substrate
+    assert m["spec"]["schedulingGates"] == [{"name": "kueue.x-k8s.io/admission"}]
+    assert m["metadata"]["annotations"] == {"foo": "bar"}
+    assert m["metadata"]["labels"]["kueue.x-k8s.io/queue-name"] == "team-a"
+    # honest requests == limits (right-sizing for any scheduler / quota layer)
+    res = m["spec"]["containers"][0]["resources"]
+    assert res["requests"]["memory"] == res["limits"]["memory"]
+
+
+def test_manifest_no_gates_by_default_normal_scheduling():
+    # No scheduling_gates → no schedulingGates key → plain kube-scheduler, no admitter.
+    from resoluto_sandbox.contracts import SandboxLaunchSpec
+    from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
+    m = K8sSandboxRuntime()._manifest(
+        SandboxLaunchSpec(image="x", store_prefix="run/x/nodes/n/lane-0"), "sbx-test")
+    assert "schedulingGates" not in m["spec"]
+    assert "annotations" not in m["metadata"]

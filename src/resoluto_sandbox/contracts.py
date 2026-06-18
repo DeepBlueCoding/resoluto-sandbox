@@ -15,7 +15,7 @@ import logging
 import os
 import re
 from abc import ABC, abstractmethod
-from typing import Literal
+from typing import AsyncContextManager, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
@@ -84,6 +84,12 @@ class SandboxLaunchSpec(BaseModel):
     docker_graph_block_size: str = "50Gi"  # dind + block only: emptyDir sizeLimit for the virtio-blk volume
     privileged: bool = False
     labels: dict[str, str] = Field(default_factory=dict)
+    # Opaque pod metadata the substrate stamps VERBATIM and never interprets — the seam an
+    # EXTERNAL admission layer (e.g. Kueue) composes through, with zero coupling: the caller
+    # sets `labels["kueue.x-k8s.io/queue-name"]` + a scheduling gate; the substrate has no
+    # idea what they mean. Empty (the default) → normal scheduling, no external admitter.
+    annotations: dict[str, str] = Field(default_factory=dict)
+    scheduling_gates: list[str] = Field(default_factory=list)  # k8s pod schedulingGates (opaque names)
     store_prefix: str  # run/<run_id>/nodes/<node_id> — where the sandbox self-reports
     store_write_token: str = ""  # prefix-scoped, write-only, expiring (§12.3)
     deadline_seconds: int | None = None  # optional pod cap; None = no wall-clock deadline
@@ -174,6 +180,33 @@ class SandboxRuntime(ABC):
         """Substrate-side forensics (pod terminated reason / stdout). FORENSIC
         ONLY — the main channel is the object store. Untrusted on read (§12.12)."""
         raise NotImplementedError
+
+
+# ── admission (the swappable WHEN) ──────────────────────────────────────────
+
+
+@runtime_checkable
+class Lease(Protocol):
+    """An acquired sandbox slot, an async context manager exposing the live handle.
+    Closing it releases the slot (and, for the in-process pool, reaps the pod)."""
+
+    handle: SandboxHandle
+
+    async def __aenter__(self) -> "Lease": ...
+    async def __aexit__(self, *exc: object) -> None: ...
+
+
+@runtime_checkable
+class Admission(Protocol):
+    """The swappable WHETHER/WHEN-to-launch concern, SEPARATE from the substrate (the
+    HOW). `acquire(spec)` decides if/when a launch is allowed, then launches and returns
+    a Lease. Implementations: the in-process `SandboxPool` (local/non-cluster path); a
+    no-op identity admitter (launch immediately); or NONE at all when an EXTERNAL
+    admission layer (k8s scheduler, Kueue) already gated the pod via its metadata. The
+    substrate (`SandboxRuntime`) never imports or depends on any admitter — the only thing
+    that connects them is the `SandboxLaunchSpec`'s opaque pod metadata."""
+
+    async def acquire(self, spec: SandboxLaunchSpec) -> AsyncContextManager[Lease]: ...
 
 
 # ── observability span event (§13) ──────────────────────────────────────────

@@ -189,6 +189,17 @@ class ChunkReader:
     async def poll(self) -> list[SpanEvent]:
         return [SpanEvent.model_validate_json(line) for line in await self.poll_lines()]
 
+    def arm(self) -> None:
+        """(Re)start the silence window NOW.
+
+        The window is armed at construction, but the caller should re-arm it the moment
+        the pod actually reaches RUNNING — because a pod sitting Pending / SchedulingGated
+        (waiting to schedule, pulling a multi-GB Kata image, or held by an EXTERNAL
+        admission gate like Kueue) legitimately ships no chunks, and counting that time as
+        silence would false-positive a perfectly healthy pod as substrate-dead. Liveness
+        must measure silence-while-running, not time-since-pod-created."""
+        self._last_progress = self._last_arrival = self._clock()
+
     @property
     def seconds_since_progress(self) -> float:
         return self._clock() - self._last_progress
