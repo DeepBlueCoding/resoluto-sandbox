@@ -300,9 +300,12 @@ substrate_logs: str            # host-side forensics on silent death
 
 A finite cluster can't launch sandboxes freely: a plain lane pod is small (e.g. 4Gi)
 but a `dind` gate pod is large (e.g. 12Gi). `SandboxPool` therefore admits by **real
-memory cost against a budget**, not just a pod count.
+memory cost against a budget**, not just a pod count — on by default, sized from the node.
 
 ```python
+# Default: budget derived from the node's allocatable RAM (resolved async on first acquire).
+pool = SandboxPool(runtime, max_concurrent=4, mem_budget_provider=node_ram_share)
+# Or a fixed budget:
 pool = SandboxPool(runtime, max_concurrent=4, mem_budget_bytes=parse_k8s_memory("16Gi"))
 ```
 
@@ -323,13 +326,19 @@ pool = SandboxPool(runtime, max_concurrent=4, mem_budget_bytes=parse_k8s_memory(
   when the caller parks, so the orchestrator can mark the execution **"queued for
   resources"** (Resoluto emits a `resource_queued` event for both lanes and gate pods).
 
-> **Per-kind budgets, never shared.** In Resoluto the lane pool and the (independent)
-> gate pool each carry their **own** budget (`RESOLUTO_LANE_MEM_BUDGET` /
-> `RESOLUTO_GATE_MEM_BUDGET`). A *shared* cluster-wide budget would let a full lane fleet
-> starve gate admission while each lane waits on a gate verdict — a deadlock. Separate
-> per-kind budgets keep the two independent. The budget is in-process per worker;
-> cross-replica coordination is the k8s `ResourceQuota` backstop. Unset budget → the
-> memory gate is off (count cap only).
+> **On by default — derived from the node, no config.** Resoluto turns this on
+> automatically: it reads the node's **allocatable RAM** and **partitions it per-kind** —
+> the gate pool (heavy `dind` pods) gets the larger share, the lane pool (cheap fleet)
+> the rest. The two shares **sum to node RAM**, so the lane fleet + gate pods together
+> never over-commit the node. There is no env var to set (the budget is resolved lazily
+> on first acquire, since the node-RAM query is async); when node RAM is unknown
+> (offline/tests) the memory gate is simply off.
+>
+> **Per-kind budgets, never shared.** The lane pool and the (independent) gate pool each
+> carry their **own** budget. A *shared* budget would let a full lane fleet starve gate
+> admission while each lane waits on a gate verdict — a deadlock. Separate per-kind
+> budgets keep the two independent. In-process per worker; cross-replica coordination is
+> the k8s `ResourceQuota` backstop.
 
 ---
 

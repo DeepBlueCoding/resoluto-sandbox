@@ -117,3 +117,40 @@ async def test_no_budget_admits_freely() -> None:
     for _ in range(3):
         await pool.acquire(_spec("lane", "8Gi"))
     assert len(rt.live) == 3
+
+
+@pytest.mark.asyncio
+async def test_lazy_budget_provider_resolved_once_on_first_acquire() -> None:
+    # The DEFAULT path: budget derived from an async provider (node RAM), resolved
+    # lazily on first acquire, then enforced like a fixed budget.
+    rt = _FakeRuntime()
+    calls = []
+
+    async def provider() -> int:
+        calls.append(1)
+        return 12 * GiB
+
+    pool = SandboxPool(rt, max_concurrent=99, mem_budget_provider=provider)
+    a = await pool.acquire(_spec("lane", "8Gi"))     # resolves budget=12Gi, fits
+    blocked = asyncio.create_task(pool.acquire(_spec("lane", "8Gi")))  # 8+8>12 → parks
+    await asyncio.sleep(0.1)
+    assert len(rt.live) == 1                          # provider budget is enforced
+    assert len(calls) == 1                            # resolved exactly once
+    await a.release()
+    await asyncio.sleep(0.1)
+    assert len(calls) == 1                            # not re-resolved on later acquires
+    blocked.cancel()
+
+
+@pytest.mark.asyncio
+async def test_lazy_provider_zero_means_gate_off() -> None:
+    # node RAM unknown (offline/tests) → provider returns 0 → memory gate off.
+    rt = _FakeRuntime()
+    pool = SandboxPool(rt, max_concurrent=99, mem_budget_provider=lambda: _zero())
+    for _ in range(3):
+        await pool.acquire(_spec("lane", "99Gi"))    # huge, but gate is off
+    assert len(rt.live) == 3
+
+
+async def _zero() -> int:
+    return 0

@@ -62,6 +62,7 @@ class SandboxPool:
         acquire_timeout_s: float = 600.0,
         admission_gate=None,
         mem_budget_bytes: int | None = None,
+        mem_budget_provider=None,
     ) -> None:
         if max_concurrent < 1:
             raise ValueError("max_concurrent must be >= 1")
@@ -73,15 +74,33 @@ class SandboxPool:
         self._live: set[str] = set()
         self._max = max_concurrent
         # Resource-aware admission (RES-290/291) via a fair byte-budgeted SEMAPHORE.
-        # When mem_budget_bytes is set, a spec must reserve its memory from a per-kind
-        # ResourceSemaphore BEFORE the pod is launched — so a waiter parks event-driven
-        # (no spin, no held thread) and holds NO RAM while queued (the pod isn't launched
-        # until granted). PER-KIND budget (lane vs gate each own one) keeps the RES-287
-        # no-deadlock guarantee; the semaphore is FIFO-head-reserving (no starvation) and
-        # grants atomically on release (no race). In-process (per worker) — cross-replica
-        # coordination is the k8s ResourceQuota backstop (deferred per the advisor).
+        # A spec must reserve its memory from a per-kind ResourceSemaphore BEFORE the pod
+        # is launched — so a waiter parks event-driven (no spin, no held thread) and holds
+        # NO RAM while queued (the pod isn't launched until granted). PER-KIND budget (lane
+        # vs gate each own one) keeps the RES-287 no-deadlock guarantee; the semaphore is
+        # FIFO-head-reserving (no starvation) and grants atomically on release (no race).
+        # In-process per worker — cross-replica coordination is the k8s ResourceQuota
+        # backstop (deferred per the advisor).
+        #
+        # The budget is either fixed (mem_budget_bytes) or resolved LAZILY on first
+        # acquire from mem_budget_provider (an async callable → bytes) — used for the
+        # default node-RAM-derived budget, whose source is an async k8s query the
+        # (sync) constructor can't await. A provider returning 0 → memory gate off.
         self._mem_sem = ResourceSemaphore(mem_budget_bytes) if mem_budget_bytes else None
+        self._mem_budget_provider = mem_budget_provider
+        self._budget_resolved = mem_budget_bytes is not None or mem_budget_provider is None
+        self._budget_lock = asyncio.Lock()  # one-time lazy resolution under concurrency
         self._handle_mem: dict[str, int] = {}  # handle.id → reserved bytes (for release)
+
+    async def _resolve_budget(self) -> None:
+        if self._budget_resolved:
+            return
+        async with self._budget_lock:
+            if self._budget_resolved:
+                return
+            budget = await self._mem_budget_provider()
+            self._mem_sem = ResourceSemaphore(budget) if budget else None
+            self._budget_resolved = True
 
     @property
     def runtime(self) -> SandboxRuntime:
@@ -111,6 +130,7 @@ class SandboxPool:
         woken event-driven when a release frees enough budget (FIFO, no starvation).
         Cancellation (a stop) cleanly drops it from the queue."""
         check_runtime_class_guard(spec.runtime_class)
+        await self._resolve_budget()  # lazily derive the default budget on first acquire
         spec_mem = parse_k8s_memory(spec.memory) if self._mem_sem is not None else 0
         # 1. RAM budget — the heavy, event-driven gate. Parks holding nothing.
         if self._mem_sem is not None:

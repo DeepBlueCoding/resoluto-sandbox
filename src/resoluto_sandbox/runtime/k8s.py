@@ -362,6 +362,11 @@ class K8sSandboxRuntime(SandboxRuntime):
             },
         }
 
+    async def node_allocatable_memory(self) -> int:
+        """Public: minimum allocatable RAM (bytes) across Ready nodes, 0 if unknown.
+        The source for the default per-kind admission budget (RES-290)."""
+        return await self._get_node_allocatable_ram()
+
     async def _get_node_allocatable_ram(self) -> int:
         """Return minimum allocatable RAM in bytes across all Ready nodes.
 
