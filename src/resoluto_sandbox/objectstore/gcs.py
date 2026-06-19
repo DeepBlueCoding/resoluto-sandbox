@@ -44,6 +44,18 @@ class GcsObjectStore(ObjectStore):
         out.sort(key=lambda i: i.key)
         return out
 
+    async def copy_prefix(self, src_prefix: str, dst_prefix: str) -> int:
+        # Server-side copy (no host round-trip). GCS is not integration-tested in
+        # this env (see module docstring); if the kwarg name drifts across
+        # gcloud-aio-storage versions the ABC's get/put default still copies.
+        src, dst = src_prefix.rstrip("/"), dst_prefix.rstrip("/")
+        client = self._client()
+        objs = await self.list_prefix(src)
+        for o in objs:
+            rel = o.key[len(src):].lstrip("/")
+            await client.copy(self._bucket, o.key, self._bucket, new_name=f"{dst}/{rel}")
+        return len(objs)
+
     async def close(self) -> None:
         if self._storage is not None:
             await self._storage.close()

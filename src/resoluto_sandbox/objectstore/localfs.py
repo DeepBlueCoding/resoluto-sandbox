@@ -47,3 +47,18 @@ class LocalFsObjectStore(ObjectStore):
             if p.is_file() and not p.name.endswith(_TMP_SUFFIX):
                 out.append(ObjectInfo(key=str(p.resolve().relative_to(root)), size=p.stat().st_size))
         return out
+
+    async def copy_prefix(self, src_prefix: str, dst_prefix: str) -> int:
+        import shutil
+
+        src = src_prefix.rstrip("/")
+        if not self._path(src).exists():
+            return 0
+        n = 0
+        for o in await self.list_prefix(src):
+            rel = o.key[len(src):].lstrip("/")
+            dst = self._path(f"{dst_prefix.rstrip('/')}/{rel}")
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(self._path(o.key), dst)  # path-level — no 184MB buffered into RAM
+            n += 1
+        return n

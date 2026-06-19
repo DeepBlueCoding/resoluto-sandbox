@@ -147,6 +147,22 @@ class S3ObjectStore(ObjectStore):
         out.sort(key=lambda i: i.key)
         return out
 
+    async def copy_prefix(self, src_prefix: str, dst_prefix: str) -> int:
+        # Server-side CopyObject — the bytes never round-trip through the host
+        # (the ~184MB/lane worktree stays in the store). Single-part copy caps at
+        # 5GB/object; lane payloads are well under, so no multipart needed.
+        src, dst = src_prefix.rstrip("/"), dst_prefix.rstrip("/")
+        objs = await self.list_prefix(src)
+        async with self._client() as c:
+            for o in objs:
+                rel = o.key[len(src):].lstrip("/")
+                await c.copy_object(
+                    Bucket=self._bucket,
+                    Key=f"{dst}/{rel}",
+                    CopySource={"Bucket": self._bucket, "Key": o.key},
+                )
+        return len(objs)
+
     async def ensure_bucket(self) -> None:
         """Dev convenience — create the bucket if absent (minio/local)."""
         from botocore.exceptions import ClientError

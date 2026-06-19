@@ -154,6 +154,18 @@ class ObjectStore(ABC):
     @abstractmethod
     async def list_prefix(self, prefix: str) -> list[ObjectInfo]: ...
 
+    async def copy_prefix(self, src_prefix: str, dst_prefix: str) -> int:
+        """Copy every object under src_prefix to dst_prefix (suffix-preserving),
+        returning the count copied. No-ops cleanly when src has no objects. The
+        default round-trips bytes through get/put; backends that support
+        server-side copy override this to avoid the host round-trip."""
+        src, dst = src_prefix.rstrip("/"), dst_prefix.rstrip("/")
+        objs = await self.list_prefix(src)
+        for o in objs:
+            rel = o.key[len(src):].lstrip("/")
+            await self.put(f"{dst}/{rel}", await self.get(o.key))
+        return len(objs)
+
 
 # ── runtime ─────────────────────────────────────────────────────────────────
 
