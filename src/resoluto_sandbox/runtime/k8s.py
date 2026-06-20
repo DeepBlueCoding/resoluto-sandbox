@@ -509,6 +509,13 @@ class K8sSandboxRuntime(SandboxRuntime):
             if term is not None:
                 exit_code = term.exit_code
                 reason = reason or (term.reason or "")
+            # Surface the WAITING reason too (ImagePullBackOff/ErrImagePull/
+            # CreateContainerError/CrashLoopBackOff) — a pod stuck waiting on one of
+            # these will never run, but its pod-phase is just "Pending", so the host
+            # can't tell it apart from a legitimate resource hold without this.
+            wait = getattr(cs.state, "waiting", None)
+            if wait is not None and getattr(wait, "reason", None):
+                reason = reason or wait.reason
         return SandboxStatus(phase=phase, reason=reason, exit_code=exit_code)
 
     async def destroy(self, handle: SandboxHandle) -> None:
@@ -587,6 +594,30 @@ class K8sSandboxRuntime(SandboxRuntime):
         except ApiException as exc:
             if exc.status != 404:
                 raise
+
+    async def reap_stale_run_owners(self, keep_run_id: str, max_age_s: float = 7200.0) -> int:
+        """Delete run-owner ConfigMaps from runs that are surely done — older than max_age_s
+        (a single task run is ~30-60 min) and NOT the current run — which cascade-GCs their
+        leaked pods. This is the backstop for runs that died (kill -9) before teardown could
+        delete their owner: the dispatcher is gone, so nothing else reaps them. Safe — only
+        run-owner ConfigMaps are touched, never a concurrent active run's (recent) owner."""
+        from datetime import UTC, datetime
+
+        api = await self._client()
+        cms = await api.list_namespaced_config_map(
+            namespace=self._ns, label_selector="resoluto.run_id"
+        )
+        n = 0
+        for cm in cms.items:
+            rid = (cm.metadata.labels or {}).get("resoluto.run_id", "")
+            if not rid or rid == keep_run_id[:63]:
+                continue
+            created = cm.metadata.creation_timestamp
+            if created is not None and (datetime.now(UTC) - created).total_seconds() < max_age_s:
+                continue  # a recent owner may belong to a concurrently-running task
+            await self.delete_run_owner(rid)
+            n += 1
+        return n
 
     async def count_active_pods(self, kind: str | None = None) -> int:
         """Count non-terminal pods in the sandbox namespace (deployment-wide).
