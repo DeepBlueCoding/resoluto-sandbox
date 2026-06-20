@@ -8,6 +8,18 @@ from resoluto_sandbox.contracts import SandboxLaunchSpec
 from resoluto_sandbox.runtime.k8s import EgressConfig, K8sSandboxRuntime
 
 
+@pytest.fixture(autouse=True)
+def _never_touch_a_real_cluster(monkeypatch):
+    """These are UNIT tests of manifest/guard/preflight logic — they must never reach a
+    real k8s API. Several call `await rt.launch(...)` expecting it to fail "because there's
+    no cluster", but on a dev box with k3s reachable that assumption is false and launch
+    leaks real `img:dev` pods (ImagePullBackOff forever). Stub `_client` so any API call
+    raises instead of hitting the cluster — the guard/preflight asserts still hold."""
+    async def _no_api(self):
+        raise RuntimeError("unit test: k8s API access is stubbed out")
+    monkeypatch.setattr(K8sSandboxRuntime, "_client", _no_api)
+
+
 # ── docker graph backend ─────────────────────────────────────────────────────
 
 
