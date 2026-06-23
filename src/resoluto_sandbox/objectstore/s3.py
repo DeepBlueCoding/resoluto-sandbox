@@ -7,8 +7,21 @@ sandbox; the orchestrator-side reader uses fuller creds. Lazy aioboto3 import
 from __future__ import annotations
 
 import json
+from contextlib import asynccontextmanager
 
-from resoluto_sandbox.contracts import ObjectInfo, ObjectStore
+from resoluto_sandbox.contracts import ObjectInfo, ObjectStore, ObjectStoreError
+
+
+def _is_infra_error(exc: BaseException) -> bool:
+    """True for substrate/transport failures (S3 ClientError incl. storage-full,
+    botocore, connection/OS errors) — as opposed to ordinary application errors."""
+    try:
+        from botocore.exceptions import BotoCoreError, ClientError
+        if isinstance(exc, (BotoCoreError, ClientError)):
+            return True
+    except Exception:
+        pass
+    return isinstance(exc, (ConnectionError, TimeoutError, OSError))
 
 
 def _build_scoped_policy(bucket: str, prefix: str) -> str:
@@ -120,19 +133,38 @@ class S3ObjectStore(ObjectStore):
         kwargs = {k: v for k, v in self._client_kwargs.items() if v is not None}
         return self._session.client("s3", config=cfg, **kwargs)
 
+    @asynccontextmanager
+    async def _io(self):
+        """Open a client and translate transport failures into a typed
+        ObjectStoreError (substrate-native), so the worker can fail the run fast
+        with the real cause (e.g. minio storage-full) instead of leaking a raw
+        botocore traceback that gets misclassified as an agent failure."""
+        try:
+            async with self._client() as c:
+                yield c
+        except Exception as exc:
+            if _is_infra_error(exc):
+                raise ObjectStoreError(f"object store I/O failed (bucket={self._bucket}): {exc}") from exc
+            raise
+
+    async def aclose(self) -> None:
+        """Drop the cached session so a stale one isn't reused after teardown.
+        (Clients are per-call async context managers, closed on exit.)"""
+        self._session = None
+
     async def put(self, key: str, data: bytes) -> None:
-        async with self._client() as c:
+        async with self._io() as c:
             await c.put_object(Bucket=self._bucket, Key=key, Body=data)
 
     async def get(self, key: str) -> bytes:
-        async with self._client() as c:
+        async with self._io() as c:
             resp = await c.get_object(Bucket=self._bucket, Key=key)
             async with resp["Body"] as body:
                 return await body.read()
 
     async def list_prefix(self, prefix: str) -> list[ObjectInfo]:
         out: list[ObjectInfo] = []
-        async with self._client() as c:
+        async with self._io() as c:
             token: str | None = None
             while True:
                 kwargs = {"Bucket": self._bucket, "Prefix": prefix}
@@ -153,7 +185,7 @@ class S3ObjectStore(ObjectStore):
         # 5GB/object; lane payloads are well under, so no multipart needed.
         src, dst = src_prefix.rstrip("/"), dst_prefix.rstrip("/")
         objs = await self.list_prefix(src)
-        async with self._client() as c:
+        async with self._io() as c:
             for o in objs:
                 rel = o.key[len(src):].lstrip("/")
                 await c.copy_object(

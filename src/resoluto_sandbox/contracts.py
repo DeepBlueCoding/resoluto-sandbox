@@ -138,6 +138,13 @@ class ObjectInfo(BaseModel):
     size: int
 
 
+class ObjectStoreError(Exception):
+    """A transport/I/O failure talking to the object store (disk/storage full,
+    connection refused, timeout). Substrate-native: the worker layer translates
+    this into the pipeline's fatal InfrastructureError — the sandbox package has
+    no dependency on resoluto-core."""
+
+
 class ObjectStore(ABC):
     """Durable key/value rendezvous. Backends: localfs, S3 (minio), GCS.
 
