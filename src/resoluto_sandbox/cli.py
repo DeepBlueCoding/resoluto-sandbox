@@ -5,7 +5,6 @@ import argparse
 import os
 import shutil
 import sys
-from typing import Sequence
 
 
 def main(argv: list[str] | None = None) -> int:
