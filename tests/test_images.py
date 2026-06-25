@@ -82,3 +82,20 @@ def test_cli_image_build_langchain(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "resoluto-sandbox:9.9.9-langchain" in out
     assert len(calls) == 2
+
+
+def test_cli_image_build_context_flag_passed_through(monkeypatch, capsys):
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+
+    import subprocess
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    from resoluto_sandbox.cli import main
+    rc = main(["image", "build", "--provider", "claude", "--version", "1.0.0", "--context", ".."])
+    assert rc == 0
+    assert len(calls) == 2
+    assert calls[0][-1] == ".."
+    assert calls[1][-1] == ".."

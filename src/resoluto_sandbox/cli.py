@@ -34,6 +34,12 @@ def main(argv: list[str] | None = None) -> int:
         choices=["claude", "langchain", "openai", "all"],
     )
     build_p.add_argument("--version", default=None, metavar="VER")
+    build_p.add_argument(
+        "--context",
+        default=".",
+        metavar="PATH",
+        help="Docker build context path. Base image build needs the workspace root (e.g. --context ..) until the package is a standalone repo.",
+    )
 
     args, rest = parser.parse_known_args(argv)
 
@@ -51,6 +57,10 @@ def _cmd_run(args: argparse.Namespace, rest: list[str]) -> int:
     """Handle `run` subcommand. Returns the program's exit code."""
     if "--" in rest:
         idx = rest.index("--")
+        stray = rest[:idx]
+        if stray:
+            print(f"error: unexpected arguments before '--': {stray}", file=sys.stderr)
+            return 2
         program_argv = rest[idx + 1 :]
     else:
         program_argv = []
@@ -98,7 +108,8 @@ def _cmd_image(args: argparse.Namespace) -> int:
     import subprocess
     from resoluto_sandbox.images import PROVIDERS, build
     providers = list(PROVIDERS) if args.provider == "all" else [args.provider]
+    context = getattr(args, "context", ".")
     for p in providers:
-        tag = build(p, ver=args.version, runner=subprocess.run)
+        tag = build(p, ver=args.version, context=context, runner=subprocess.run)
         print(tag)
     return 0

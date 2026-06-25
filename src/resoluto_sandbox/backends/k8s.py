@@ -57,7 +57,10 @@ class K8sBackend(Backend):
         output_paths: Sequence[str] | None,
         stream: IO[str] | None,
     ) -> RunResult:
-        """Launch a Kata pod via drive_node, stage workspace in, fetch artifacts out."""
+        """Launch a Kata pod via drive_node, stage workspace in, fetch artifacts out.
+
+        Output artifacts are extracted into the provided ``workspace`` dir (in place),
+        matching the local backend; the caller's workspace is mutated by collected outputs."""
         from resoluto_sandbox.contracts import SandboxLaunchSpec
         from resoluto_sandbox.driver import drive_node
         from resoluto_sandbox.runner_main import store_from_env
@@ -130,6 +133,7 @@ class K8sBackend(Backend):
             stderr="",
             artifacts=artifacts,
             result=node_result,
+            reason=(result.reason or result.observed_phase or ""),
         )
 
 

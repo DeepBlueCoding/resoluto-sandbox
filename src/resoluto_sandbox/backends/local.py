@@ -14,7 +14,11 @@ from resoluto_sandbox.deps import Deps, resolve_invocation
 
 
 class LocalBackend(Backend):
-    """Runs the program as a subprocess on this host."""
+    """Runs the program as a subprocess on this host.
+
+    Provides NO isolation — the program runs as a normal subprocess on the host
+    with the host environment. Use it for trusted code only; use the k8s backend
+    for untrusted/adversarial workloads."""
 
     def run(
         self,

@@ -12,13 +12,15 @@ from resoluto_sandbox.deps import Deps
 class RunResult(BaseModel):
     """Outcome of one ``run()``. ``stdout`` is the program's answer; ``artifacts``
     are the collected ``output_paths``; ``result`` is a parsed ``result.json`` if
-    the program wrote one (otherwise ``None``)."""
+    the program wrote one (otherwise ``None``); ``reason`` carries substrate
+    forensics (e.g. an evicted/OOMKilled pod) when available; empty for local."""
 
     exit_code: int
     stdout: str
     stderr: str
     artifacts: list[str] = []
     result: dict | None = None
+    reason: str = ""
 
     @property
     def ok(self) -> bool:

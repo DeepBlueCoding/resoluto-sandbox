@@ -104,3 +104,28 @@ def test_stdin_and_deps_raise_not_implemented():
         K8sBackend(image="img:dev").run(["true"], stdin="x")
     with pytest.raises(NotImplementedError):
         K8sBackend(image="img:dev").run(["true"], deps=Deps(kind="image"))
+
+
+def test_run_result_reason_populated_from_node_result(monkeypatch):
+    import resoluto_sandbox.driver as driver
+    import resoluto_sandbox.runtime.k8s as rt
+    import resoluto_sandbox.staging as staging
+
+    async def fake_drive_node(runtime, store, spec, *, on_event=None, **kw):
+        return NodeResult(status="failure", exit_code=1, reason="OOMKilled")
+
+    class FakeRuntime:
+        def __init__(self, **kw): pass
+
+    async def fake_put_dir(store, prefix, src): return []
+    async def fake_fetch_outputs(store, prefix, dest): return []
+
+    monkeypatch.setattr(driver, "drive_node", fake_drive_node)
+    monkeypatch.setattr(rt, "K8sSandboxRuntime", FakeRuntime)
+    monkeypatch.setattr(staging, "put_dir", fake_put_dir)
+    monkeypatch.setattr(staging, "fetch_outputs", fake_fetch_outputs)
+
+    backend = K8sBackend(image="img:dev", conduit=_FakeConduit())
+    result = backend.run(["true"])
+    assert result.reason == "OOMKilled"
+    assert result.exit_code == 1
