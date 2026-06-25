@@ -1,5 +1,5 @@
 """Acquire-time egress canary — empirically verifies that egress isolation is
-enforced before any untrusted workload runs (design §7).
+enforced before any untrusted workload runs.
 
 Three probes run IN-GUEST:
   1. Non-allowlisted external TCP — must be BLOCKED (CNI policy enforced).

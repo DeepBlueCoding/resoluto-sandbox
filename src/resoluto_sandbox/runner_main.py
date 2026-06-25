@@ -1,9 +1,9 @@
-"""Image ENTRYPOINT — the in-sandbox runner, configured entirely from env (§7).
+"""Image ENTRYPOINT — the in-sandbox runner, configured entirely from env.
 
 The pod carries NO orchestrator connection; it learns where to self-report from
 env the runtime injected (`RESOLUTO_STORE_*`, `RESOLUTO_STORE_PREFIX`) and runs
 the workload argv. Exit code mirrors the observed workload status — but the
-authoritative gate verdict is still derived orchestrator-side (§12.12)."""
+authoritative gate verdict is still derived orchestrator-side."""
 from __future__ import annotations
 
 import asyncio

@@ -3,7 +3,7 @@
 Owns ordered-async admission (FIFO) + a global concurrency cap. Placement is the
 runtime's. "ordered async then parallel": requests enter admission in call order;
 once admitted they run concurrently up to the cap. The acquire timeout is a
-SUBSTRATE timeout (distinct from the no-timeout-on-agent-work law, §5.2/E4).
+SUBSTRATE timeout (distinct from the no-timeout-on-agent-work principle).
 """
 from __future__ import annotations
 
@@ -73,11 +73,11 @@ class SandboxPool:
         self._admission_gate = admission_gate
         self._live: set[str] = set()
         self._max = max_concurrent
-        # Resource-aware admission (RES-290/291) via a fair byte-budgeted SEMAPHORE.
+        # Resource-aware admission via a fair byte-budgeted SEMAPHORE.
         # A spec must reserve its memory from a per-kind ResourceSemaphore BEFORE the pod
         # is launched — so a waiter parks event-driven (no spin, no held thread) and holds
         # NO RAM while queued (the pod isn't launched until granted). PER-KIND budget (lane
-        # vs gate each own one) keeps the RES-287 no-deadlock guarantee; the semaphore is
+        # vs gate each own one) keeps the no-deadlock guarantee; the semaphore is
         # FIFO-head-reserving (no starvation) and grants atomically on release (no race).
         # In-process per worker — cross-replica coordination is the k8s ResourceQuota
         # backstop (deferred per the advisor).
@@ -136,7 +136,7 @@ class SandboxPool:
         if self._mem_sem is not None:
             await self._mem_sem.acquire(spec_mem, on_wait=on_wait)
         try:
-            # 2. Count cap — a fast secondary ceiling (kind-scoped, RES-287). With a RAM
+            # 2. Count cap — a fast secondary ceiling (kind-scoped). With a RAM
             #    budget this rarely blocks (memory is the binding constraint).
             async with self._admit:
                 if self._admission_gate is not None:

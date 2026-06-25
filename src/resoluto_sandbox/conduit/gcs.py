@@ -4,7 +4,7 @@ Same contract as LocalConduit/S3Conduit. Uses gcloud-aio-storage (async); lazy i
 the [gcs] extra. NOTE: not locally integration-tested (no GCP creds in the spike
 env) — validated by contract parity with S3 (which IS minio-tested); the
 conformance suite should run against a real bucket before relying on it in
-production (audit §17 follow-up)."""
+production (a conformance suite should run against a real bucket before relying on it)."""
 from __future__ import annotations
 
 from resoluto_sandbox.contracts import Conduit, ObjectInfo

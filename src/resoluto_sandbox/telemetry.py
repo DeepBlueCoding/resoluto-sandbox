@@ -1,11 +1,11 @@
-"""Store-mediated telemetry — the comms + observability spine (design §11.2/§13).
+"""Store-mediated telemetry — the comms + observability spine.
 
 Append-free: the in-sandbox `ChunkShipper` writes immutable, sequence-numbered
 chunk objects (`events-000001.jsonl`, …); the orchestrator `ChunkReader` lists +
 concatenates them in index order. No append semantics, no long-lived stream, no
 in-sandbox server — reconnect is just "re-list, resume at index". Liveness =
 monotonic chunk arrival; dead = no new chunk within the substrate timeout (the
-RES-236 count-vs-time fix, now a property of object listing).
+count-vs-time liveness model, a property of object listing).
 """
 from __future__ import annotations
 
@@ -105,7 +105,7 @@ class ChunkShipper:
 
     async def close(self) -> None:
         """Final flush + a manifest naming the highest index — lets the reader
-        tell 'gap, still arriving' from 'gap, terminal' (§11.2/E3)."""
+        tell 'gap, still arriving' from 'gap, terminal'."""
         if self._closed:
             return
         await self.flush()

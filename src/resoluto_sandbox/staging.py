@@ -1,8 +1,8 @@
-"""Workspace staging over the object store (§15 — "tar in the store").
+"""Workspace staging over the object store ("tar in the store").
 
 Inputs reach the PASSIVE sandbox as a single archive under `<prefix>/inbox/` —
 the ONLY ingress. Default-deny egress forbids a runtime `git clone` (github isn't
-allowlisted) and §12.3 forbids creds in the guest, so the repo MUST arrive as a
+allowlisted) and credentials must never reach the guest, so the repo MUST arrive as a
 store object. `.git` rides inside the tar, so history is preserved with zero git
 egress. Outputs (e.g. the lane's diff) return under `<prefix>/outbox/`.
 

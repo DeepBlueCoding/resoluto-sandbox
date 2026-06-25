@@ -1,4 +1,4 @@
-"""Span emission (§13) — the observability tree, redacted, over the shipper.
+"""Span emission — the observability tree, redacted, over the shipper.
 
 A `SpanEmitter` turns the execution hierarchy (run→phase→node→lane→attempt→gate)
 into open/close `SpanEvent`s with `span_id`/`parent_span_id`, plus redacted log

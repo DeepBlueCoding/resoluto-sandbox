@@ -2,7 +2,7 @@
 
 `drive_node` launches a sandbox, tails its append-only telemetry from the object store
 (forwarding each SpanEvent to `on_event`), and returns the node's result — distinguishing
-a clean terminal from a silently-dead substrate (time-bounded, §11.2/E1/E2). The
+a clean terminal from a silently-dead substrate (time-bounded). The
 orchestrator and sandbox never hold a connection; they rendezvous through the store.
 
 ADMISSION is decoupled and OPTIONAL: pass `admit` (any `Admission` — e.g. the in-process
@@ -115,7 +115,7 @@ async def drive_node(
             await asyncio.sleep(poll_interval_s)
 
         # result.json is the sandbox's WORK PRODUCT; the authoritative gate verdict
-        # is derived orchestrator-side from observed signals (§12.12), not trusted here.
+        # is derived orchestrator-side from observed signals, not trusted here.
         try:
             result = NodeResult.model_validate_json(await store.get(result_key(spec.store_prefix)))
         except Exception:  # noqa: BLE001 — no/garbled result is itself a failure verdict

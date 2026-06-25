@@ -1,6 +1,6 @@
 """LocalConduit — the dev/CLI backend. Zero infra; the SAME architecture as
 cloud (different adapter config). Atomic writes (tmp + rename + fsync) so a chunk
-is listable only once fully durable (the §11.2/E3 atomicity invariant)."""
+is listable only once fully durable (the atomicity invariant)."""
 from __future__ import annotations
 
 import os

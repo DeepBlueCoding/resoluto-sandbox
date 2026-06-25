@@ -1,8 +1,8 @@
 """S3Conduit — the portable middle (minio locally, S3/any-S3-API in cloud).
 
 The bucket is the store root; keys are full object keys (parity with LocalConduit).
-A prefix-scoped, write-only, expiring credential (§12.3) is supplied to the
-sandbox; the orchestrator-side reader uses fuller creds. Lazy aioboto3 import
+A prefix-scoped, write-only, expiring credential is supplied to the sandbox;
+the orchestrator-side reader uses fuller creds. Lazy aioboto3 import
 (behind the [s3] extra)."""
 from __future__ import annotations
 
@@ -120,7 +120,7 @@ class S3Conduit(Conduit):
             self._session = aioboto3.Session()
         # A 20-min lane is tailed by polling this store every few seconds; a
         # transient connection blip under load must be absorbed, not abort the
-        # drive (§11.2 liveness is time-bounded by the death-window, not by one
+        # drive (liveness is time-bounded by the death-window, not by one
         # failed read). Standard mode retries the connection-error family with
         # backoff; bounded timeouts fail a hung socket fast so the retry fires.
         cfg = Config(
