@@ -57,17 +57,18 @@ def test_run_surfaces_result_json(tmp_path):
 
 def test_k8s_backend_constructs():
     from resoluto_sandbox.backends.k8s import K8sBackend
-    sb = Sandbox(backend="k8s", image="example.io/sandbox:latest")
+    sb = Sandbox(backend=K8sBackend(image="example.io/sandbox:latest"))
     assert isinstance(sb._backend, K8sBackend)
     assert sb._backend._image == "example.io/sandbox:latest"
 
 
 def test_k8s_run_raises_without_store_kind(monkeypatch):
+    from resoluto_sandbox.backends.k8s import K8sBackend
     for key in list(os.environ):
         if key.startswith("RESOLUTO_STORE_") or key.startswith("AWS_"):
             monkeypatch.delenv(key, raising=False)
     monkeypatch.delenv("RESOLUTO_STORE_KIND", raising=False)
-    sb = Sandbox(backend="k8s", image="example.io/sandbox:latest")
+    sb = Sandbox(backend=K8sBackend(image="example.io/sandbox:latest"))
     try:
         sb.run(["true"])
     except (KeyError, RuntimeError):
@@ -79,3 +80,13 @@ def test_run_image_deps_is_passthrough(tmp_path):
     from resoluto_sandbox.deps import Deps
     out = Sandbox(backend="local").run([sys.executable, "-c", "print('ok')"], deps=Deps(kind="image"))
     assert out.stdout.strip() == "ok"
+
+
+def test_run_survives_child_closing_stdin_early():
+    sb = Sandbox(backend="local")
+    out = sb.run(
+        [sys.executable, "-c", "import sys; sys.stdin.close()"],
+        stdin="x" * 100000,
+    )
+    assert out.exit_code == 0
+    assert isinstance(out, RunResult)

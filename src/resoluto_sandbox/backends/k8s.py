@@ -9,16 +9,24 @@ from pathlib import Path
 from typing import IO, Sequence
 from uuid import uuid4
 
+from resoluto_sandbox.backends.artifacts import _collect, read_result_json
 from resoluto_sandbox.backends.base import Backend, RunResult
-from resoluto_sandbox.backends.local import _collect
+from resoluto_sandbox.contracts import Conduit
 from resoluto_sandbox.deps import Deps
 
 
 class K8sBackend(Backend):
-    """Runs the program in a Kata pod via ``drive_node``."""
+    """Runs the program in a Kata pod via ``drive_node``.
 
-    def __init__(self, *, image: str | None = None) -> None:
+    For k8s, ``RunResult.stdout`` carries the runner's MERGED stdout+stderr (the
+    in-pod runner emits both as ``log`` span events), so ``RunResult.stderr`` is
+    empty by design — the divergence from the local backend is intentional, not a
+    dropped field.
+    """
+
+    def __init__(self, *, image: str | None = None, conduit: Conduit | None = None) -> None:
         self._image = image
+        self._conduit = conduit
 
     def run(
         self,
@@ -36,7 +44,7 @@ class K8sBackend(Backend):
         if deps is not None:
             raise NotImplementedError("deps is not supported on backend='k8s' (bake them into the image)")
         if self._image is None:
-            raise ValueError("backend='k8s' requires image=")
+            raise ValueError("backend='k8s' requires K8sBackend(image=...)")
         return asyncio.run(self._run_async(argv, workspace=workspace, env=env,
                                            output_paths=output_paths, stream=stream))
 
@@ -56,7 +64,7 @@ class K8sBackend(Backend):
         from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
         from resoluto_sandbox.staging import fetch_outputs, put_dir
 
-        store = store_from_env()
+        store = self._conduit if self._conduit is not None else store_from_env()
 
         run_id = "run-" + uuid4().hex[:8]
         node_id = "run"
@@ -71,14 +79,8 @@ class K8sBackend(Backend):
         if workspace:
             await put_dir(store, prefix, workspace)
 
-        store_env = {
-            k: v
-            for k, v in os.environ.items()
-            if k.startswith("RESOLUTO_STORE_") or k.startswith("AWS_") or k == "RESOLUTO_TRUSTED_LOCAL"
-        }
-
         pod_env: dict[str, str] = {
-            **store_env,
+            **_store_env_for_pod(os.environ),
             **(env or {}),
             "RESOLUTO_STORE_PREFIX": prefix,
             "RESOLUTO_RUN_ID": run_id,
@@ -105,18 +107,21 @@ class K8sBackend(Backend):
 
         def on_event(ev) -> None:
             if ev.event == "log":
-                msg = str(ev.data.get("msg") or ev.data.get("text") or "")
-                if msg:
-                    out_lines.append(msg + "\n")
-                    sink.write(msg + "\n")
+                line = str(ev.data.get("line") or "")
+                if line:
+                    rendered = line if line.endswith("\n") else line + "\n"
+                    out_lines.append(rendered)
+                    sink.write(rendered)
                     sink.flush()
 
         result = await drive_node(runtime, store, spec, on_event=on_event, dead_after_s=600.0)
 
         artifacts: list[str] = []
+        node_result: dict | None = None
         if output_paths and workspace:
             await fetch_outputs(store, prefix, str(Path(workspace)))
             artifacts = _collect(Path(workspace), output_paths)
+            node_result = read_result_json(Path(workspace))
 
         exit_code = result.exit_code if result.exit_code is not None else (0 if result.status == "success" else 1)
         return RunResult(
@@ -124,5 +129,33 @@ class K8sBackend(Backend):
             stdout="".join(out_lines),
             stderr="",
             artifacts=artifacts,
-            result=None,
+            result=node_result,
         )
+
+
+def _store_env_for_pod(environ: "os._Environ[str] | dict[str, str]") -> dict[str, str]:
+    """Select the env the untrusted pod is allowed to inherit.
+
+    Forwards RESOLUTO_STORE_* and RESOLUTO_TRUSTED_LOCAL. Host AWS_* creds are
+    NOT forwarded unless the standalone k8s backend is explicitly trusted-local
+    (dev only) — the pod should authenticate to the store via the prefix-scoped
+    RESOLUTO_STORE_WRITE_TOKEN.
+    """
+    selected = {
+        k: v
+        for k, v in environ.items()
+        if k.startswith("RESOLUTO_STORE_") or k == "RESOLUTO_TRUSTED_LOCAL"
+    }
+    if selected.get("RESOLUTO_STORE_WRITE_TOKEN"):
+        return selected
+
+    aws = {k: v for k, v in environ.items() if k.startswith("AWS_")}
+    if not aws:
+        return selected
+    if not environ.get("RESOLUTO_TRUSTED_LOCAL"):
+        raise RuntimeError(
+            "backend='k8s' needs a scoped RESOLUTO_STORE_WRITE_TOKEN, or set "
+            "RESOLUTO_TRUSTED_LOCAL=1 to forward host AWS creds (dev only)"
+        )
+    selected.update(aws)
+    return selected

@@ -9,7 +9,9 @@ the host environment (so an already-logged-in agent CLI authenticates with no
 extra wiring) and streaming its output live to ``stream`` (default stdout).
 
 ``backend="k8s"`` launches a Kata pod via the existing ``drive_node`` primitive.
-Requires ``RESOLUTO_STORE_KIND`` in the environment and ``image=`` set.
+The k8s image is a backend concern, not a facade concept: inject a configured
+backend — ``Sandbox(backend=K8sBackend(image=...))``. Requires
+``RESOLUTO_STORE_KIND`` in the environment.
 """
 from __future__ import annotations
 
@@ -24,13 +26,13 @@ from resoluto_sandbox.deps import Deps
 class Sandbox:
     """Run a program in a sandbox. Holds a Backend (selected by name or injected)."""
 
-    def __init__(self, *, backend: "Backend | str" = "local", image: str | None = None) -> None:
+    def __init__(self, *, backend: "Backend | str" = "local") -> None:
         if isinstance(backend, Backend):
             self._backend = backend
         elif backend == "local":
             self._backend = LocalBackend()
         elif backend == "k8s":
-            self._backend = K8sBackend(image=image)
+            self._backend = K8sBackend()
         else:
             raise ValueError(f"unknown backend {backend!r} (expected 'local', 'k8s', or a Backend)")
 
