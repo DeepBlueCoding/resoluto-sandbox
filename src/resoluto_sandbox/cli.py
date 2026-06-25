@@ -106,10 +106,15 @@ def _cmd_image(args: argparse.Namespace) -> int:
         print("error: use `resoluto-sandbox image build`", file=sys.stderr)
         return 2
     import subprocess
-    from resoluto_sandbox.images import PROVIDERS, build
+    from resoluto_sandbox.images import PROVIDERS, build, build_base
     providers = list(PROVIDERS) if args.provider == "all" else [args.provider]
     context = getattr(args, "context", ".")
-    for p in providers:
-        tag = build(p, ver=args.version, context=context, runner=subprocess.run)
+    if args.provider == "all":
+        prebuilt_base = build_base(ver=args.version, context=context, runner=subprocess.run)
+        for p in providers:
+            tag = build(p, ver=args.version, context=context, base_tag=prebuilt_base, runner=subprocess.run)
+            print(tag)
+    else:
+        tag = build(providers[0], ver=args.version, context=context, runner=subprocess.run)
         print(tag)
     return 0

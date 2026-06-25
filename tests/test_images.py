@@ -43,8 +43,8 @@ def test_build_passes_image_version_arg():
 def test_build_custom_base_tag():
     fake = FakeRunner()
     build("openai", ver="1.0.0", base_tag="my-base:latest", runner=fake)
-    assert "my-base:latest" in fake.calls[0]
-    assert "BASE_IMAGE=my-base:latest" in fake.calls[1]
+    assert len(fake.calls) == 1
+    assert "BASE_IMAGE=my-base:latest" in fake.calls[0]
 
 
 def test_build_unknown_provider_raises():
@@ -82,6 +82,24 @@ def test_cli_image_build_langchain(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "resoluto-sandbox:9.9.9-langchain" in out
     assert len(calls) == 2
+
+
+def test_cli_image_build_all_builds_base_once(monkeypatch, capsys):
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+
+    import subprocess
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    from resoluto_sandbox.cli import main
+    rc = main(["image", "build", "--provider", "all", "--version", "1.0.0"])
+    assert rc == 0
+    base_calls = [c for c in calls if "Dockerfile.base" in c]
+    overlay_calls = [c for c in calls if any(tok.startswith("images/") for tok in c)]
+    assert len(base_calls) == 1
+    assert len(overlay_calls) == len(PROVIDERS)
 
 
 def test_cli_image_build_context_flag_passed_through(monkeypatch, capsys):

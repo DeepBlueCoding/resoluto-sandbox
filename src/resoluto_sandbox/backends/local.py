@@ -35,9 +35,7 @@ class LocalBackend(Backend):
         if not cwd.is_dir():
             raise NotADirectoryError(f"workspace is not a directory: {cwd}")
 
-        child_env = dict(os.environ)
-        if env:
-            child_env.update(env)
+        child_env = {**os.environ, **env} if env else None
 
         launch_argv = resolve_invocation(argv, deps or Deps(), cwd)
         sink = stream if stream is not None else sys.stdout

@@ -15,6 +15,17 @@ from resoluto_sandbox.contracts import Conduit
 from resoluto_sandbox.deps import Deps
 
 
+def _append_log_event(ev, out_lines: list[str], sink) -> None:
+    """Append a log SpanEvent's line to out_lines and echo it to sink."""
+    if ev.event == "log":
+        line = str(ev.data.get("line") or "")
+        if line:
+            text = line if line.endswith("\n") else line + "\n"
+            out_lines.append(text)
+            sink.write(text)
+            sink.flush()
+
+
 class K8sBackend(Backend):
     """Runs the program in a Kata pod via ``drive_node``.
 
@@ -73,9 +84,9 @@ class K8sBackend(Backend):
 
         Output artifacts are extracted into the provided ``workspace`` dir (in place),
         matching the local backend; the caller's workspace is mutated by collected outputs."""
+        from resoluto_sandbox.conduit.factory import store_from_env
         from resoluto_sandbox.contracts import SandboxLaunchSpec
         from resoluto_sandbox.driver import drive_node
-        from resoluto_sandbox.runner_main import store_from_env
         from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
         from resoluto_sandbox.staging import fetch_outputs, put_dir
 
@@ -103,9 +114,8 @@ class K8sBackend(Backend):
             "RESOLUTO_NODE_ID": node_id,
             "RESOLUTO_WORKLOAD_ARGV": json.dumps(list(argv)),
             "RESOLUTO_WORKSPACE_DIR": "/workspace",
+            **({"RESOLUTO_OUTPUT_PATHS": json.dumps(list(output_paths))} if output_paths else {}),
         }
-        if output_paths:
-            pod_env["RESOLUTO_OUTPUT_PATHS"] = json.dumps(list(output_paths))
 
         spec = SandboxLaunchSpec(
             image=self._image,
@@ -121,16 +131,11 @@ class K8sBackend(Backend):
         out_lines: list[str] = []
         sink = stream if stream is not None else sys.stdout
 
-        def on_event(ev) -> None:
-            if ev.event == "log":
-                line = str(ev.data.get("line") or "")
-                if line:
-                    rendered = line if line.endswith("\n") else line + "\n"
-                    out_lines.append(rendered)
-                    sink.write(rendered)
-                    sink.flush()
-
-        result = await drive_node(runtime, store, spec, on_event=on_event, dead_after_s=600.0)
+        result = await drive_node(
+            runtime, store, spec,
+            on_event=lambda ev: _append_log_event(ev, out_lines, sink),
+            dead_after_s=600.0,
+        )
 
         artifacts: list[str] = []
         node_result: dict | None = None
@@ -158,15 +163,15 @@ def _store_env_for_pod(environ: "os._Environ[str] | dict[str, str]") -> dict[str
     (dev only) — the pod should authenticate to the store via the prefix-scoped
     RESOLUTO_STORE_WRITE_TOKEN.
     """
-    selected = {
-        k: v
-        for k, v in environ.items()
-        if k.startswith("RESOLUTO_STORE_") or k == "RESOLUTO_TRUSTED_LOCAL"
-    }
+    selected: dict[str, str] = {}
+    aws: dict[str, str] = {}
+    for k, v in environ.items():
+        if k.startswith("RESOLUTO_STORE_") or k == "RESOLUTO_TRUSTED_LOCAL":
+            selected[k] = v
+        elif k.startswith("AWS_"):
+            aws[k] = v
     if selected.get("RESOLUTO_STORE_WRITE_TOKEN"):
         return selected
-
-    aws = {k: v for k, v in environ.items() if k.startswith("AWS_")}
     if not aws:
         return selected
     if not environ.get("RESOLUTO_TRUSTED_LOCAL"):
