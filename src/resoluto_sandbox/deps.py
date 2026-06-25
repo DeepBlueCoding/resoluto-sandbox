@@ -12,7 +12,7 @@ _PEP723 = re.compile(r"^#\s*/// script", re.MULTILINE)
 
 class Deps(BaseModel):
     kind: Literal["auto", "inline", "requirements", "image", "vendored"] = "auto"
-    requirements: str | None = None  # path (rel to workspace) for kind="requirements"
+    requirements: str | None = None
 
 
 def _has_pep723(script: Path) -> bool:
@@ -44,5 +44,5 @@ def _detect(argv: list[str], workspace: Path) -> str:
     if (workspace / "requirements.txt").is_file():
         return "requirements"
     if (workspace / "pyproject.toml").is_file():
-        return "inline"  # uv run uses the project's pyproject
-    return "image"  # nothing to install -> run as-is
+        return "inline"
+    return "image"
