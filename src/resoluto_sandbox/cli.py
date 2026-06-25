@@ -1,4 +1,4 @@
-"""Thin CLI for resoluto-sandbox: `run` and `doctor` subcommands."""
+"""Thin CLI for resoluto-sandbox: `run`, `doctor`, and `image` subcommands."""
 from __future__ import annotations
 
 import argparse
@@ -25,12 +25,24 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("doctor", help="Check local backend readiness")
 
+    image_p = sub.add_parser("image", help="Manage provider images")
+    image_sub = image_p.add_subparsers(dest="image_cmd")
+    build_p = image_sub.add_parser("build", help="Build base + provider overlay image(s)")
+    build_p.add_argument(
+        "--provider",
+        default="claude",
+        choices=["claude", "langchain", "openai", "all"],
+    )
+    build_p.add_argument("--version", default=None, metavar="VER")
+
     args, rest = parser.parse_known_args(argv)
 
     if args.cmd == "run":
         return _cmd_run(args, rest)
     if args.cmd == "doctor":
         return _cmd_doctor()
+    if args.cmd == "image":
+        return _cmd_image(args)
     parser.print_help(sys.stderr)
     return 2
 
@@ -75,4 +87,18 @@ def _cmd_doctor() -> int:
     for label, ok, note in checks:
         status = "OK" if ok else "MISSING"
         print(f"[{status}] {label}  ({note})")
+    return 0
+
+
+def _cmd_image(args: argparse.Namespace) -> int:
+    """Handle `image` subcommand. Returns exit code."""
+    if not hasattr(args, "image_cmd") or args.image_cmd != "build":
+        print("error: use `resoluto-sandbox image build`", file=sys.stderr)
+        return 2
+    import subprocess
+    from resoluto_sandbox.images import PROVIDERS, build
+    providers = list(PROVIDERS) if args.provider == "all" else [args.provider]
+    for p in providers:
+        tag = build(p, ver=args.version, runner=subprocess.run)
+        print(tag)
     return 0
