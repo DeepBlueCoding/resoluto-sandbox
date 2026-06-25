@@ -24,3 +24,18 @@ def test_doctor_returns_zero(capsys):
     out = capsys.readouterr().out
     assert rc == 0
     assert "docker" in out.lower() or "uv" in out.lower()
+
+
+def test_run_requirements_flag_builds_deps(monkeypatch):
+    from resoluto_sandbox import RunResult
+    captured = {}
+    class FakeSandbox:
+        def __init__(self, **kw): pass
+        def run(self, argv, **kw):
+            captured["deps"] = kw.get("deps")
+            return RunResult(exit_code=0, stdout="", stderr="")
+    import resoluto_sandbox.client as _client_mod
+    monkeypatch.setattr(_client_mod, "Sandbox", FakeSandbox)
+    from resoluto_sandbox.cli import main
+    main(["run", "--backend", "local", "--deps-kind", "requirements", "--requirements", "r.txt", "--", "echo", "hi"])
+    assert captured["deps"].requirements == "r.txt"

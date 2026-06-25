@@ -21,6 +21,7 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         choices=["auto", "inline", "requirements", "image", "vendored"],
     )
+    run_p.add_argument("--requirements", default=None, metavar="PATH")
 
     sub.add_parser("doctor", help="Check local backend readiness")
 
@@ -49,7 +50,12 @@ def _cmd_run(args: argparse.Namespace, rest: list[str]) -> int:
     from resoluto_sandbox.client import Sandbox
     from resoluto_sandbox.deps import Deps
 
-    deps = Deps(kind=args.deps_kind) if args.deps_kind else None
+    if args.deps_kind:
+        deps = Deps(kind=args.deps_kind, requirements=args.requirements)
+    elif args.requirements:
+        deps = Deps(kind="requirements", requirements=args.requirements)
+    else:
+        deps = None
     sb = Sandbox(backend=args.backend, image=args.image)
     result = sb.run(program_argv, workspace=args.workspace, deps=deps, stream=sys.stdout)
     return result.exit_code
