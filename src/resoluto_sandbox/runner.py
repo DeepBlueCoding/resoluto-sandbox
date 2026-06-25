@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 from typing import Callable
 
-from resoluto_sandbox.contracts import NodeResult, ObjectStore
+from resoluto_sandbox.contracts import Conduit, NodeResult
 from resoluto_sandbox.spans import SpanEmitter
 from resoluto_sandbox.staging import collect_outputs, stage_inputs
 from resoluto_sandbox.telemetry import ChunkShipper, result_key
@@ -45,7 +45,7 @@ async def _exec_logged(em, parent_sid, kind, name, argv, cwd) -> int:
 
 async def run_node_in_sandbox(
     *,
-    store: ObjectStore,
+    store: Conduit,
     prefix: str,
     run_id: str,
     node_id: str,
@@ -62,7 +62,7 @@ async def run_node_in_sandbox(
 ) -> NodeResult:
     """Run one node's workload, self-report telemetry+result to the store.
 
-    Inputs: an ObjectStore + the run prefix (write-only-scoped in production), the
+    Inputs: a Conduit + the run prefix (write-only-scoped in production), the
     node identity, and the workload argv. When `workspace_dir` is set, input
     archives under `<prefix>/inbox/` are staged into it (§15 — the repo arrives as
     a store object, never a runtime git-clone) and the workload runs there; on

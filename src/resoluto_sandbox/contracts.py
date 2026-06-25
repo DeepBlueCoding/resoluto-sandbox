@@ -2,7 +2,7 @@
 
 The whole system hangs off three interfaces (design §11.1):
   - `SandboxRuntime` — the ONE platform-specific surface (k8s / ECS / Fly / docker).
-  - `ObjectStore`    — durable rendezvous (localfs / S3-minio / GCS).
+  - `Conduit`        — durable rendezvous (localfs / S3-minio / GCS).
   - `SandboxPool`    — platform-independent admission (see pool.py).
 
 Comms is store-mediated: a passive sandbox self-reports append-only JSONL into its
@@ -138,14 +138,14 @@ class ObjectInfo(BaseModel):
     size: int
 
 
-class ObjectStoreError(Exception):
-    """A transport/I/O failure talking to the object store (disk/storage full,
+class ConduitError(Exception):
+    """A transport/I/O failure talking to the conduit (disk/storage full,
     connection refused, timeout). Substrate-native: the worker layer translates
     this into the pipeline's fatal InfrastructureError — the sandbox package has
     no dependency on resoluto-core."""
 
 
-class ObjectStore(ABC):
+class Conduit(ABC):
     """Durable key/value rendezvous. Backends: localfs, S3 (minio), GCS.
 
     The reader uses `list_prefix` + whole-object `get` to tail append-only chunk

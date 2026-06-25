@@ -1,6 +1,6 @@
-"""S3ObjectStore — the portable middle (minio locally, S3/any-S3-API in cloud).
+"""S3Conduit — the portable middle (minio locally, S3/any-S3-API in cloud).
 
-The bucket is the store root; keys are full object keys (parity with LocalFs).
+The bucket is the store root; keys are full object keys (parity with LocalConduit).
 A prefix-scoped, write-only, expiring credential (§12.3) is supplied to the
 sandbox; the orchestrator-side reader uses fuller creds. Lazy aioboto3 import
 (behind the [s3] extra)."""
@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from contextlib import asynccontextmanager
 
-from resoluto_sandbox.contracts import ObjectInfo, ObjectStore, ObjectStoreError
+from resoluto_sandbox.contracts import Conduit, ConduitError, ObjectInfo
 
 
 def _is_infra_error(exc: BaseException) -> bool:
@@ -91,7 +91,7 @@ async def mint_scoped_credential(
     }
 
 
-class S3ObjectStore(ObjectStore):
+class S3Conduit(Conduit):
     def __init__(
         self,
         bucket: str,
@@ -136,7 +136,7 @@ class S3ObjectStore(ObjectStore):
     @asynccontextmanager
     async def _io(self):
         """Open a client and translate transport failures into a typed
-        ObjectStoreError (substrate-native), so the worker can fail the run fast
+        ConduitError (substrate-native), so the worker can fail the run fast
         with the real cause (e.g. minio storage-full) instead of leaking a raw
         botocore traceback that gets misclassified as an agent failure."""
         try:
@@ -144,7 +144,7 @@ class S3ObjectStore(ObjectStore):
                 yield c
         except Exception as exc:
             if _is_infra_error(exc):
-                raise ObjectStoreError(f"object store I/O failed (bucket={self._bucket}): {exc}") from exc
+                raise ConduitError(f"object store I/O failed (bucket={self._bucket}): {exc}") from exc
             raise
 
     async def aclose(self) -> None:

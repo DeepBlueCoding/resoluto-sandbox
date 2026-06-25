@@ -4,14 +4,14 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from resoluto_sandbox.contracts import NodeResult
-from resoluto_sandbox.objectstore import LocalFsObjectStore
+from resoluto_sandbox.conduit import LocalConduit
 from resoluto_sandbox.runner import run_node_in_sandbox
 from resoluto_sandbox.telemetry import ChunkReader, result_key
 
 
 @pytest.fixture
 def store(tmp_path):
-    return LocalFsObjectStore(tmp_path)
+    return LocalConduit(tmp_path)
 
 
 async def test_runner_ships_spans_logs_and_result(store):

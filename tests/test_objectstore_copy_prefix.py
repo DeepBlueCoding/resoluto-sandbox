@@ -1,6 +1,6 @@
 """copy_prefix — carries a run's lane substrate forward on resume (one worker-owned
-resume covering the stepped lanes). Verified on LocalFs (the default + the dev backend)."""
-from resoluto_sandbox.objectstore import LocalFsObjectStore
+resume covering the stepped lanes). Verified on LocalConduit (the default + the dev backend)."""
+from resoluto_sandbox.conduit import LocalConduit
 
 
 async def _seed(store):
@@ -12,7 +12,7 @@ async def _seed(store):
 
 
 async def test_copy_prefix_mirrors_suffixes_and_bytes(tmp_path):
-    store = LocalFsObjectStore(tmp_path)
+    store = LocalConduit(tmp_path)
     await _seed(store)
 
     n = await store.copy_prefix("run/A/nodes", "run/B/nodes")
@@ -27,13 +27,13 @@ async def test_copy_prefix_mirrors_suffixes_and_bytes(tmp_path):
 
 
 async def test_copy_prefix_absent_source_is_noop(tmp_path):
-    store = LocalFsObjectStore(tmp_path)
+    store = LocalConduit(tmp_path)
     assert await store.copy_prefix("run/NOPE/nodes", "run/C/nodes") == 0
     assert await store.list_prefix("run/C/nodes") == []  # nothing created
 
 
 async def test_copy_prefix_is_idempotent(tmp_path):
-    store = LocalFsObjectStore(tmp_path)
+    store = LocalConduit(tmp_path)
     await _seed(store)
     await store.copy_prefix("run/A/nodes", "run/B/nodes")
     n2 = await store.copy_prefix("run/A/nodes", "run/B/nodes")  # second run overwrites

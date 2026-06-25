@@ -1,16 +1,16 @@
-"""GcsObjectStore — the cloud backend (GKE + GCS via Workload Identity).
+"""GcsConduit — the cloud backend (GKE + GCS via Workload Identity).
 
-Same contract as LocalFs/S3. Uses gcloud-aio-storage (async); lazy import behind
+Same contract as LocalConduit/S3Conduit. Uses gcloud-aio-storage (async); lazy import behind
 the [gcs] extra. NOTE: not locally integration-tested (no GCP creds in the spike
 env) — validated by contract parity with S3 (which IS minio-tested); the
 conformance suite should run against a real bucket before relying on it in
 production (audit §17 follow-up)."""
 from __future__ import annotations
 
-from resoluto_sandbox.contracts import ObjectInfo, ObjectStore
+from resoluto_sandbox.contracts import Conduit, ObjectInfo
 
 
-class GcsObjectStore(ObjectStore):
+class GcsConduit(Conduit):
     def __init__(self, bucket: str, *, service_file: str | None = None) -> None:
         self._bucket = bucket
         self._service_file = service_file  # None → Workload Identity / ADC

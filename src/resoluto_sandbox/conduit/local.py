@@ -1,4 +1,4 @@
-"""LocalFsObjectStore — the dev/CLI backend. Zero infra; the SAME architecture as
+"""LocalConduit — the dev/CLI backend. Zero infra; the SAME architecture as
 cloud (different adapter config). Atomic writes (tmp + rename + fsync) so a chunk
 is listable only once fully durable (the §11.2/E3 atomicity invariant)."""
 from __future__ import annotations
@@ -6,22 +6,22 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from resoluto_sandbox.contracts import ObjectInfo, ObjectStore, ObjectStoreError
+from resoluto_sandbox.contracts import Conduit, ConduitError, ObjectInfo
 
 _TMP_SUFFIX = ".tmp-partial"
 
 
-class LocalFsObjectStore(ObjectStore):
+class LocalConduit(Conduit):
     def __init__(self, root: str | Path) -> None:
         self._root = Path(root)
         self._root.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
-    def _wrap_os_error(exc: OSError) -> ObjectStoreError:
+    def _wrap_os_error(exc: OSError) -> ConduitError:
         # Mirror the S3 adapter: a real I/O failure (disk full, permission, etc.) is a
-        # SUBSTRATE failure, not an agent failure — surface it as ObjectStoreError so the lane
+        # SUBSTRATE failure, not an agent failure — surface it as ConduitError so the lane
         # scaffold translates it to a fatal InfrastructureError (identical attribution to k8s).
-        return ObjectStoreError(f"local object store I/O failed (root={Path(exc.filename).parent if exc.filename else '?'}): {exc}")
+        return ConduitError(f"local object store I/O failed (root={Path(exc.filename).parent if exc.filename else '?'}): {exc}")
 
     def _path(self, key: str) -> Path:
         # Reject traversal — keys are run/<id>/... never absolute or "..".

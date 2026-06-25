@@ -14,7 +14,7 @@ from resoluto_sandbox.contracts import (
     SandboxStatus,
 )
 from resoluto_sandbox.driver import drive_node
-from resoluto_sandbox.objectstore import LocalFsObjectStore
+from resoluto_sandbox.conduit import LocalConduit
 from resoluto_sandbox.pool import SandboxPool
 from resoluto_sandbox.runner import run_node_in_sandbox
 
@@ -92,7 +92,7 @@ def _spec(prefix, argv):
 
 
 async def test_drive_node_full_loop(tmp_path):
-    store = LocalFsObjectStore(tmp_path)
+    store = LocalConduit(tmp_path)
     runtime = RunnerBackedRuntime(store)
     pool = SandboxPool(runtime, max_concurrent=2)
     seen = []
@@ -116,7 +116,7 @@ async def test_drive_node_full_loop(tmp_path):
 
 
 async def test_drive_node_detects_silent_substrate_death(tmp_path):
-    store = LocalFsObjectStore(tmp_path)
+    store = LocalConduit(tmp_path)
     runtime = DeadRuntime()
     pool = SandboxPool(runtime, max_concurrent=1)
     t = {"now": 1000.0}
@@ -141,7 +141,7 @@ async def test_drive_node_detects_silent_substrate_death(tmp_path):
 async def test_drive_node_runs_admission_free(tmp_path):
     # DECOUPLING: drive_node works with NO admission (no pool) — the substrate just
     # launches+tails+reaps. This is the shape for an external admitter (Kueue) or none.
-    store = LocalFsObjectStore(tmp_path)
+    store = LocalConduit(tmp_path)
     runtime = RunnerBackedRuntime(store)
     result = await drive_node(
         runtime, store, _spec("run/r1/nodes/direct", ["sh", "-c", "echo ok"]),
@@ -182,7 +182,7 @@ async def test_drive_node_not_reaped_while_pending(tmp_path):
     # The death clock must NOT count Pending/SchedulingGated time. With a clock that jumps
     # 60s/poll and dead_after_s=30, an un-armed window would reap on the very first poll —
     # the arm-on-running fix must keep the pod alive through the Pending polls.
-    store = LocalFsObjectStore(tmp_path)
+    store = LocalConduit(tmp_path)
     runtime = PendingThenRunningRuntime(pending_polls=5)
     t = {"now": 0.0}
 

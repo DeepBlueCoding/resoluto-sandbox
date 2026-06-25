@@ -19,8 +19,8 @@ from typing import Awaitable, Callable
 
 from resoluto_sandbox.contracts import (
     Admission,
+    Conduit,
     NodeResult,
-    ObjectStore,
     SandboxHandle,
     SandboxLaunchSpec,
     SandboxRuntime,
@@ -62,7 +62,7 @@ async def _direct_lease(runtime: SandboxRuntime, spec: SandboxLaunchSpec):
 
 async def drive_node(
     runtime: SandboxRuntime,
-    store: ObjectStore,
+    store: Conduit,
     spec: SandboxLaunchSpec,
     *,
     admit: Admission | None = None,
