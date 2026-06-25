@@ -119,7 +119,7 @@ class NodeResult(BaseModel):
     The first block is the sandbox's self-report; the `observed_*` / `reason` /
     `substrate_logs` block is filled by the ORCHESTRATOR from out-of-guest signals
     (the in-guest verdict is work product, not a trust decision).
-"""
+    """
 
     node_id: str = ""
     status: Literal["success", "failure"] = "failure"
