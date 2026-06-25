@@ -19,7 +19,7 @@ from resoluto_sandbox.contracts import (
     SpanEvent,
 )
 from resoluto_sandbox.driver import drive_node
-from resoluto_sandbox.conduit import LocalConduit
+from resoluto_sandbox.conduit import LocalConduit, StdoutConduit
 from resoluto_sandbox.pool import SandboxLease, SandboxPool
 from resoluto_sandbox.runner import run_node_in_sandbox
 from resoluto_sandbox.spans import SpanEmitter
@@ -35,7 +35,7 @@ __all__ = [
     "Sandbox", "RunResult",
     "NodeResult", "ObjectInfo", "Conduit", "SandboxHandle", "SandboxLaunchSpec",
     "SandboxRuntime", "SandboxStatus", "SpanEvent", "Admission", "Lease",
-    "LocalConduit", "SandboxLease", "SandboxPool",
+    "LocalConduit", "StdoutConduit", "SandboxLease", "SandboxPool",
     "ChunkReader", "ChunkShipper",
     "SpanEmitter", "run_node_in_sandbox", "drive_node",
     "put_dir", "stage_inputs", "collect_outputs", "fetch_outputs",
