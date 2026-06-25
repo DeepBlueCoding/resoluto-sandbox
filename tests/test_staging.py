@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from resoluto_sandbox.objectstore import LocalFsObjectStore
+from resoluto_sandbox.conduit import LocalConduit
 from resoluto_sandbox.staging import (
     collect_outputs,
     fetch_outputs,
@@ -16,7 +16,7 @@ from resoluto_sandbox.staging import (
 
 @pytest.fixture
 def store(tmp_path):
-    return LocalFsObjectStore(tmp_path / "store")
+    return LocalConduit(tmp_path / "store")
 
 
 async def test_put_then_stage_round_trips_a_worktree_including_dotgit(store, tmp_path):

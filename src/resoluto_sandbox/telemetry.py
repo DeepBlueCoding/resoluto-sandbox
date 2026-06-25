@@ -1,11 +1,11 @@
-"""Store-mediated telemetry — the comms + observability spine (design §11.2/§13).
+"""Store-mediated telemetry — the comms + observability spine.
 
 Append-free: the in-sandbox `ChunkShipper` writes immutable, sequence-numbered
 chunk objects (`events-000001.jsonl`, …); the orchestrator `ChunkReader` lists +
 concatenates them in index order. No append semantics, no long-lived stream, no
 in-sandbox server — reconnect is just "re-list, resume at index". Liveness =
 monotonic chunk arrival; dead = no new chunk within the substrate timeout (the
-RES-236 count-vs-time fix, now a property of object listing).
+count-vs-time liveness model, a property of object listing).
 """
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ import re
 import time
 from typing import Callable
 
-from resoluto_sandbox.contracts import ObjectStore, SpanEvent
+from resoluto_sandbox.contracts import Conduit, SpanEvent
 
 _CHUNK_RE = re.compile(r"events-(\d+)\.jsonl$")
 _MANIFEST = "_manifest.json"
@@ -41,7 +41,7 @@ class ChunkShipper:
 
     The transport is payload-agnostic — `emit_line(str)` ships any JSONL record
     (SpanEvents via `emit()`, or the worker's PipelineEvents). Inputs: an
-    `ObjectStore`, the run's `prefix`, flush thresholds, an injectable `clock`
+    `Conduit`, the run's `prefix`, flush thresholds, an injectable `clock`
     (tests pass a fake; no real sleeps), and a `heartbeat_factory` building the
     quiet-period heartbeat line so the carried vocabulary stays decodable. A
     heartbeat ensures a chunk lands every `heartbeat_s` even when quiet, so the
@@ -50,7 +50,7 @@ class ChunkShipper:
 
     def __init__(
         self,
-        store: ObjectStore,
+        store: Conduit,
         prefix: str,
         *,
         flush_bytes: int = 64 * 1024,
@@ -105,7 +105,7 @@ class ChunkShipper:
 
     async def close(self) -> None:
         """Final flush + a manifest naming the highest index — lets the reader
-        tell 'gap, still arriving' from 'gap, terminal' (§11.2/E3)."""
+        tell 'gap, still arriving' from 'gap, terminal'."""
         if self._closed:
             return
         await self.flush()
@@ -132,7 +132,7 @@ class ChunkReader:
 
     def __init__(
         self,
-        store: ObjectStore,
+        store: Conduit,
         prefix: str,
         *,
         dead_after_s: float = 120.0,

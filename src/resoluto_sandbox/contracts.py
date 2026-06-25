@@ -1,13 +1,13 @@
 """Pure contracts for the store-mediated sandbox — pydantic + ABCs, no platform deps.
 
-The whole system hangs off three interfaces (design §11.1):
+The whole system hangs off three interfaces:
   - `SandboxRuntime` — the ONE platform-specific surface (k8s / ECS / Fly / docker).
-  - `ObjectStore`    — durable rendezvous (localfs / S3-minio / GCS).
+  - `Conduit`        — durable rendezvous (localfs / S3-minio / GCS).
   - `SandboxPool`    — platform-independent admission (see pool.py).
 
 Comms is store-mediated: a passive sandbox self-reports append-only JSONL into its
 object-store prefix; the orchestrator launches, tails the store, reaps. No
-in-sandbox server, no long-lived stream — the RES-236 wedge cannot exist here.
+in-sandbox server, no long-lived stream — the long-lived-stream wedge cannot exist here.
 """
 from __future__ import annotations
 
@@ -65,7 +65,7 @@ def check_runtime_class_guard(runtime_class: str) -> None:
 class SandboxLaunchSpec(BaseModel):
     """What the orchestrator hands a runtime to launch ONE sandbox.
 
-    `flavor` maps to the §4.1 tier × dev_environment.kind:
+    `flavor` maps to the isolation tier × dev_environment.kind:
       tier-0/tier-1 → plain;  tier-2 + docker_compose → dind;  tier-2 + none → plain.
     `privileged` is GUEST-SCOPED under Kata (privileged_without_host_devices) — the
     host pod stays unprivileged. Required only by `dind` lanes (inner dockerd).
@@ -92,7 +92,7 @@ class SandboxLaunchSpec(BaseModel):
     annotations: dict[str, str] = Field(default_factory=dict)
     scheduling_gates: list[str] = Field(default_factory=list)  # k8s pod schedulingGates (opaque names)
     store_prefix: str  # run/<run_id>/nodes/<node_id> — where the sandbox self-reports
-    store_write_token: str = ""  # prefix-scoped, write-only, expiring (§12.3)
+    store_write_token: str = ""  # prefix-scoped, write-only, expiring
     deadline_seconds: int | None = None  # optional pod cap; None = no wall-clock deadline
 
 
@@ -118,7 +118,7 @@ class NodeResult(BaseModel):
 
     The first block is the sandbox's self-report; the `observed_*` / `reason` /
     `substrate_logs` block is filled by the ORCHESTRATOR from out-of-guest signals
-    (§12.12 — the in-guest verdict is work product, not a trust decision).
+    (the in-guest verdict is work product, not a trust decision).
     """
 
     node_id: str = ""
@@ -138,14 +138,14 @@ class ObjectInfo(BaseModel):
     size: int
 
 
-class ObjectStoreError(Exception):
-    """A transport/I/O failure talking to the object store (disk/storage full,
+class ConduitError(Exception):
+    """A transport/I/O failure talking to the conduit (disk/storage full,
     connection refused, timeout). Substrate-native: the worker layer translates
     this into the pipeline's fatal InfrastructureError — the sandbox package has
     no dependency on resoluto-core."""
 
 
-class ObjectStore(ABC):
+class Conduit(ABC):
     """Durable key/value rendezvous. Backends: localfs, S3 (minio), GCS.
 
     The reader uses `list_prefix` + whole-object `get` to tail append-only chunk
@@ -198,7 +198,7 @@ class SandboxRuntime(ABC):
 
     async def logs(self, handle: SandboxHandle, *, tail: int = 200) -> str:
         """Substrate-side forensics (pod terminated reason / stdout). FORENSIC
-        ONLY — the main channel is the object store. Untrusted on read (§12.12)."""
+        ONLY — the main channel is the object store. Untrusted on read."""
         raise NotImplementedError
 
 
@@ -229,7 +229,7 @@ class Admission(Protocol):
     async def acquire(self, spec: SandboxLaunchSpec) -> AbstractAsyncContextManager[Lease]: ...
 
 
-# ── observability span event (§13) ──────────────────────────────────────────
+# ── observability span event ─────────────────────────────────────────────────
 
 
 class SpanEvent(BaseModel):

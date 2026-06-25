@@ -1,7 +1,7 @@
 """K8sSandboxRuntime — the first concrete `SandboxRuntime` backend.
 
-Maps launch/status/destroy/sweep onto Pods with `runtimeClassName: kata` (proven
-by spike #1), the §12 hardened securityContext, labels for sweep, and an optional
+Maps launch/status/destroy/sweep onto Pods with `runtimeClassName: kata`, a
+hardened securityContext, labels for sweep, and an optional
 `activeDeadlineSeconds` (only when the spec sets one — orphan protection is the
 label-based sweep, not a per-pod self-destruct). Platform deps (kubernetes_asyncio)
 import lazily so the core package stays dependency-light.
@@ -255,7 +255,7 @@ class K8sSandboxRuntime(SandboxRuntime):
                 )
             else:
                 # Default tmpfs path: RAM-backed (medium: Memory) — overlay2 proven on tmpfs.
-                # The size counts against the pod's memory; the image bytes must fit (§14).
+                # The size counts against the pod's memory; the image bytes must fit.
                 # On Kata the virtiofs rootfs does NOT work: vfs exhausts host-side fd handles
                 # and overlay2/fuse-overlayfs fail — tmpfs is the only non-virtiofs fallback.
                 volumes.append(

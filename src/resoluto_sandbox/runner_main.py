@@ -1,9 +1,9 @@
-"""Image ENTRYPOINT — the in-sandbox runner, configured entirely from env (§7).
+"""Image ENTRYPOINT — the in-sandbox runner, configured entirely from env.
 
 The pod carries NO orchestrator connection; it learns where to self-report from
 env the runtime injected (`RESOLUTO_STORE_*`, `RESOLUTO_STORE_PREFIX`) and runs
 the workload argv. Exit code mirrors the observed workload status — but the
-authoritative gate verdict is still derived orchestrator-side (§12.12)."""
+authoritative gate verdict is still derived orchestrator-side."""
 from __future__ import annotations
 
 import asyncio
@@ -11,23 +11,28 @@ import json
 import os
 import sys
 
-from resoluto_sandbox.contracts import ObjectStore
+from resoluto_sandbox.contracts import Conduit
 from resoluto_sandbox.runner import run_node_in_sandbox
 
 
-def store_from_env() -> ObjectStore:
-    kind = os.environ["RESOLUTO_STORE_KIND"]
+def store_from_env(env: dict[str, str] | None = None) -> Conduit:
+    env = env if env is not None else os.environ
+    kind = env["RESOLUTO_STORE_KIND"]
+    if kind == "stdout":
+        from resoluto_sandbox.conduit.stdout import StdoutConduit
+
+        return StdoutConduit()
     if kind == "localfs":
-        from resoluto_sandbox.objectstore import LocalFsObjectStore
+        from resoluto_sandbox.conduit import LocalConduit
 
-        return LocalFsObjectStore(os.environ["RESOLUTO_STORE_ROOT"])
+        return LocalConduit(env["RESOLUTO_STORE_ROOT"])
     if kind == "s3":
-        from resoluto_sandbox.objectstore.s3 import S3ObjectStore
+        from resoluto_sandbox.conduit.s3 import S3Conduit
 
-        write_token = os.environ.get("RESOLUTO_STORE_WRITE_TOKEN")
+        write_token = env.get("RESOLUTO_STORE_WRITE_TOKEN")
         if write_token:
             tok = json.loads(write_token)
-            return S3ObjectStore(
+            return S3Conduit(
                 tok["bucket"],
                 endpoint_url=tok.get("endpoint_url"),
                 region_name=tok.get("region", "us-east-1"),
@@ -35,19 +40,19 @@ def store_from_env() -> ObjectStore:
                 aws_secret_access_key=tok["secret_access_key"],
                 aws_session_token=tok.get("session_token"),
             )
-        return S3ObjectStore(
-            os.environ["RESOLUTO_STORE_BUCKET"],
-            endpoint_url=os.environ.get("RESOLUTO_STORE_ENDPOINT") or None,
-            region_name=os.environ.get("RESOLUTO_STORE_REGION", "us-east-1"),
-            aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
-            aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
+        return S3Conduit(
+            env["RESOLUTO_STORE_BUCKET"],
+            endpoint_url=env.get("RESOLUTO_STORE_ENDPOINT") or None,
+            region_name=env.get("RESOLUTO_STORE_REGION", "us-east-1"),
+            aws_access_key_id=env.get("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=env.get("AWS_SECRET_ACCESS_KEY"),
         )
     if kind == "gcs":
-        from resoluto_sandbox.objectstore.gcs import GcsObjectStore
+        from resoluto_sandbox.conduit.gcs import GcsConduit
 
-        return GcsObjectStore(
-            os.environ["RESOLUTO_STORE_BUCKET"],
-            service_file=os.environ.get("RESOLUTO_GCS_SERVICE_FILE"),
+        return GcsConduit(
+            env["RESOLUTO_STORE_BUCKET"],
+            service_file=env.get("RESOLUTO_GCS_SERVICE_FILE"),
         )
     raise RuntimeError(f"unknown RESOLUTO_STORE_KIND={kind!r}")
 

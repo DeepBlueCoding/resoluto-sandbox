@@ -1,4 +1,4 @@
-"""In-sandbox runner — the passive self-reporting entrypoint (design §7/§13).
+"""In-sandbox runner — the passive self-reporting entrypoint.
 
 Runs the node's workload, streams redacted log+span telemetry into the run's
 object-store prefix via the ChunkShipper, writes `result.json`, exits. Opens NO
@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 from typing import Callable
 
-from resoluto_sandbox.contracts import NodeResult, ObjectStore
+from resoluto_sandbox.contracts import Conduit, NodeResult
 from resoluto_sandbox.spans import SpanEmitter
 from resoluto_sandbox.staging import collect_outputs, stage_inputs
 from resoluto_sandbox.telemetry import ChunkShipper, result_key
@@ -21,7 +21,7 @@ from resoluto_sandbox.telemetry import ChunkShipper, result_key
 async def _heartbeat(shipper: ChunkShipper, interval_s: float) -> None:
     """Periodically tick the shipper so a chunk lands even when the workload is
     quiet — keeps the reader's liveness signal monotonic, and (since the per-line
-    flush was removed) drives timely flushing of buffered output (§11.2)."""
+    flush was removed) drives timely flushing of buffered output."""
     while True:
         await asyncio.sleep(interval_s)
         await shipper.tick()
@@ -31,7 +31,7 @@ async def _exec_logged(em, parent_sid, kind, name, argv, cwd) -> int:
     """Run one command, streaming its merged stdout/stderr as redacted log events
     under its own span, and return the exit code. The unit of in-sandbox work AND
     the lifecycle-hook injection point (setup/workload/cleanup all go through here),
-    so every injected step is observable in the §13 span tree."""
+    so every injected step is observable in the span tree."""
     async with em.span(parent_sid, kind, name, inputs={"argv": argv}) as sid:
         proc = await asyncio.create_subprocess_exec(
             *argv, cwd=cwd,
@@ -45,7 +45,7 @@ async def _exec_logged(em, parent_sid, kind, name, argv, cwd) -> int:
 
 async def run_node_in_sandbox(
     *,
-    store: ObjectStore,
+    store: Conduit,
     prefix: str,
     run_id: str,
     node_id: str,
@@ -62,9 +62,9 @@ async def run_node_in_sandbox(
 ) -> NodeResult:
     """Run one node's workload, self-report telemetry+result to the store.
 
-    Inputs: an ObjectStore + the run prefix (write-only-scoped in production), the
+    Inputs: a Conduit + the run prefix (write-only-scoped in production), the
     node identity, and the workload argv. When `workspace_dir` is set, input
-    archives under `<prefix>/inbox/` are staged into it (§15 — the repo arrives as
+    archives under `<prefix>/inbox/` are staged into it (the repo arrives as
     a store object, never a runtime git-clone) and the workload runs there; on
     success the declared `output_paths` are tarred back to `<prefix>/outbox/`.
 
@@ -79,7 +79,7 @@ async def run_node_in_sandbox(
 
     Returns the `NodeResult` (also written to `<prefix>/result.json`). NOTE the
     verdict here is the OBSERVED exit code — the authoritative gate verdict is still
-    derived orchestrator-side (§12.12); this is work product, not a trust decision.
+    derived orchestrator-side; this is work product, not a trust decision.
     """
     shipper = ChunkShipper(store, prefix, clock=clock)
     em = SpanEmitter(shipper, run_id, clock=clock)

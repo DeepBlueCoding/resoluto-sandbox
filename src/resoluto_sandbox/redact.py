@@ -1,4 +1,4 @@
-"""Secret redaction (§12.7) — applied IN-SANDBOX before any telemetry/log leaves.
+"""Secret redaction — applied IN-SANDBOX before any telemetry/log leaves.
 
 Observability is an egress channel; inputs/outputs/logs must never carry secret
 env, tokens, Authorization headers, or cred-bearing URLs. Belt-and-suspenders to

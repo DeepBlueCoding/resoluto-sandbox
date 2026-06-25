@@ -3,7 +3,7 @@
 A real Kata pod (runtimeClass=kata) runs the BAKED runner image as its ENTRYPOINT.
 The runner — holding no orchestrator connection — self-reports redacted span/log
 chunks + result.json to LIVE minio. Host-side `drive_node` (SandboxPool +
-K8sSandboxRuntime + S3ObjectStore) tails that store, reconstructs the telemetry,
+K8sSandboxRuntime + S3Conduit) tails that store, reconstructs the telemetry,
 collects the result, and reaps the pod. This is the store-mediated loop that the
 RES-236 wedge made impossible — proven against the substrate, not a fake.
 
@@ -24,7 +24,7 @@ from resoluto_sandbox import (
     fetch_outputs,
     put_dir,
 )
-from resoluto_sandbox.objectstore.s3 import S3ObjectStore
+from resoluto_sandbox.conduit.s3 import S3Conduit
 from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
 
 RUNNER_IMAGE = "docker.io/library/resoluto-sandbox-runner:dev"
@@ -42,7 +42,7 @@ async def test_real_kata_lane_store_mediated_loop(runner_image):
     bucket = "resoluto-e2e"
     prefix = f"run/{run_id}/nodes/{node_id}"
 
-    store = S3ObjectStore(
+    store = S3Conduit(
         bucket, endpoint_url=HOST_ENDPOINT, region_name="us-east-1",
         aws_access_key_id=MINIO_KEY, aws_secret_access_key=MINIO_KEY,
     )
@@ -114,7 +114,7 @@ async def test_real_repo_stages_in_and_diff_comes_back_out(tmp_path, runner_imag
     subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
     subprocess.run(["git", "commit", "-qm", "init"], cwd=repo, check=True, env={**env, "PATH": "/usr/bin:/bin"})
 
-    store = S3ObjectStore(
+    store = S3Conduit(
         bucket, endpoint_url=HOST_ENDPOINT, region_name="us-east-1",
         aws_access_key_id=MINIO_KEY, aws_secret_access_key=MINIO_KEY,
     )

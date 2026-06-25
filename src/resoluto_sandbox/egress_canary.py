@@ -1,5 +1,5 @@
 """Acquire-time egress canary — empirically verifies that egress isolation is
-enforced before any untrusted workload runs (design §7).
+enforced before any untrusted workload runs.
 
 Three probes run IN-GUEST:
   1. Non-allowlisted external TCP — must be BLOCKED (CNI policy enforced).
@@ -17,7 +17,7 @@ import asyncio
 
 from pydantic import BaseModel
 
-from resoluto_sandbox.contracts import ObjectStore
+from resoluto_sandbox.contracts import Conduit
 
 
 class ProbeResult(BaseModel):
@@ -63,8 +63,8 @@ async def probe_tcp(host: str, port: int, timeout_s: float = 3.0) -> bool:
         return False
 
 
-async def probe_store(store: ObjectStore, prefix: str) -> bool:
-    """Returns True if a sentinel PUT to the ObjectStore succeeds."""
+async def probe_store(store: Conduit, prefix: str) -> bool:
+    """Returns True if a sentinel PUT to the Conduit succeeds."""
     try:
         await store.put(f"{prefix.rstrip('/')}/_canary_ok", b"ok")
         return True
@@ -73,14 +73,14 @@ async def probe_store(store: ObjectStore, prefix: str) -> bool:
 
 
 async def run_egress_canary(
-    store: ObjectStore,
+    store: Conduit,
     prefix: str,
     probe_host: str = "1.1.1.1",
     probe_port: int = 80,
 ) -> CanaryVerdict:
     """Run three probes and return the composite verdict.
 
-    Inputs: ObjectStore + run prefix (for store probe), configurable external
+    Inputs: Conduit + run prefix (for store probe), configurable external
     probe target (default 1.1.1.1:80). Returns a CanaryVerdict.
     """
     external_reachable = await probe_tcp(probe_host, probe_port)

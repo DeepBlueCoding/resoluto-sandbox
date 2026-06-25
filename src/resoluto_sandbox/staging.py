@@ -1,8 +1,8 @@
-"""Workspace staging over the object store (§15 — "tar in the store").
+"""Workspace staging over the object store ("tar in the store").
 
 Inputs reach the PASSIVE sandbox as a single archive under `<prefix>/inbox/` —
 the ONLY ingress. Default-deny egress forbids a runtime `git clone` (github isn't
-allowlisted) and §12.3 forbids creds in the guest, so the repo MUST arrive as a
+allowlisted) and credentials must never reach the guest, so the repo MUST arrive as a
 store object. `.git` rides inside the tar, so history is preserved with zero git
 egress. Outputs (e.g. the lane's diff) return under `<prefix>/outbox/`.
 
@@ -17,7 +17,7 @@ import io
 import tarfile
 from pathlib import Path
 
-from resoluto_sandbox.contracts import ObjectStore
+from resoluto_sandbox.contracts import Conduit
 
 INBOX = "inbox"
 OUTBOX = "outbox"
@@ -63,7 +63,7 @@ def _extract(data: bytes, dest: Path) -> None:
 
 
 async def put_dir(
-    store: ObjectStore, prefix: str, local_dir: str, *,
+    store: Conduit, prefix: str, local_dir: str, *,
     name: str = "workspace", exclude: frozenset[str] = _DEFAULT_EXCLUDES,
 ) -> str:
     """HOST side: tar a local worktree and PUT it as the sandbox's input. Returns
@@ -75,7 +75,7 @@ async def put_dir(
     return key
 
 
-async def stage_inputs(store: ObjectStore, prefix: str, workspace_dir: str) -> list[str]:
+async def stage_inputs(store: Conduit, prefix: str, workspace_dir: str) -> list[str]:
     """SANDBOX side: extract every input archive under `inbox/` into the workspace.
     Returns the keys staged (fail-loud on a corrupt archive)."""
     dest = Path(workspace_dir)
@@ -88,7 +88,7 @@ async def stage_inputs(store: ObjectStore, prefix: str, workspace_dir: str) -> l
 
 
 async def collect_outputs(
-    store: ObjectStore, prefix: str, workspace_dir: str, paths: list[str], *, name: str = "output"
+    store: Conduit, prefix: str, workspace_dir: str, paths: list[str], *, name: str = "output"
 ) -> str:
     """SANDBOX side: tar the declared output paths (relative to the workspace) and
     PUT them under `outbox/`. Returns the object key. A declared path that doesn't
@@ -98,7 +98,7 @@ async def collect_outputs(
     return key
 
 
-async def fetch_outputs(store: ObjectStore, prefix: str, dest_dir: str) -> list[str]:
+async def fetch_outputs(store: Conduit, prefix: str, dest_dir: str) -> list[str]:
     """HOST side: extract every output archive under `outbox/` into dest_dir. The
     tar is UNTRUSTED (adversarial guest) — `_extract` is traversal-safe."""
     dest = Path(dest_dir)

@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from resoluto_sandbox.objectstore.s3 import _build_scoped_policy
+from resoluto_sandbox.conduit.s3 import _build_scoped_policy
 
 
 def test_policy_actions_are_put_and_get_only():

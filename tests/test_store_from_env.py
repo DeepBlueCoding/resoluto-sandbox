@@ -10,7 +10,7 @@ import os
 import pytest
 
 from resoluto_sandbox.runner_main import store_from_env
-from resoluto_sandbox.objectstore.s3 import S3ObjectStore
+from resoluto_sandbox.conduit.s3 import S3Conduit
 
 
 TOKEN_DICT = {
@@ -34,7 +34,7 @@ def test_store_from_env_prefers_write_token_over_aws_creds(monkeypatch):
 
     store = store_from_env()
 
-    assert isinstance(store, S3ObjectStore)
+    assert isinstance(store, S3Conduit)
     assert store._bucket == "resoluto-scoped"
     assert store._client_kwargs["aws_access_key_id"] == "ASIA_SCOPED_KEY"
     assert store._client_kwargs["aws_secret_access_key"] == "scoped-secret"
@@ -54,7 +54,7 @@ def test_store_from_env_falls_back_to_aws_creds_when_no_token(monkeypatch):
 
     store = store_from_env()
 
-    assert isinstance(store, S3ObjectStore)
+    assert isinstance(store, S3Conduit)
     assert store._bucket == "broad-bucket"
     assert store._client_kwargs["aws_access_key_id"] == "BROAD_KEY"
     assert store._client_kwargs["aws_secret_access_key"] == "broad-secret"
@@ -74,7 +74,7 @@ def test_store_from_env_write_token_uses_bucket_from_token(monkeypatch):
 
 def test_store_from_env_localfs_unaffected(monkeypatch, tmp_path):
     """localfs backend is not affected by the RESOLUTO_STORE_WRITE_TOKEN logic."""
-    from resoluto_sandbox.objectstore import LocalFsObjectStore
+    from resoluto_sandbox.conduit import LocalConduit
 
     monkeypatch.setenv("RESOLUTO_STORE_KIND", "localfs")
     monkeypatch.setenv("RESOLUTO_STORE_ROOT", str(tmp_path))
@@ -82,4 +82,4 @@ def test_store_from_env_localfs_unaffected(monkeypatch, tmp_path):
 
     store = store_from_env()
 
-    assert isinstance(store, LocalFsObjectStore)
+    assert isinstance(store, LocalConduit)

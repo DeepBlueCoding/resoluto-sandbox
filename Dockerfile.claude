@@ -1,0 +1,28 @@
+# resoluto-sandbox:claude — a ready-to-run image with the Claude Agent SDK baked in.
+#
+# Contains the `claude` CLI (which the SDK forks), the `claude-agent-sdk` Python
+# package, and `uv`. No credentials are baked in — auth is supplied at run time
+# (see docs/auth.md): a Claude Max/Pro subscription via a mounted
+# ~/.claude/.credentials.json or CLAUDE_CODE_OAUTH_TOKEN, or ANTHROPIC_API_KEY.
+#
+#   docker build -f Dockerfile.claude -t resoluto-sandbox:claude .
+#   docker run --rm -e CLAUDE_CODE_OAUTH_TOKEN -v "$PWD/examples:/workspace" \
+#       resoluto-sandbox:claude python claude_agent.py "Say hello in five words"
+FROM node:20-bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates git python3 python3-venv curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# The Claude Agent SDK forks this CLI binary.
+RUN npm install -g @anthropic-ai/claude-code
+
+# A venv keeps pip off the Debian system interpreter (PEP 668).
+ENV PATH=/opt/venv/bin:$PATH
+RUN python3 -m venv /opt/venv \
+    && pip install --no-cache-dir "claude-agent-sdk>=0.1.0"
+
+# uv lets a script declare its own deps inline (PEP 723) and run unchanged here.
+RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+
+WORKDIR /workspace

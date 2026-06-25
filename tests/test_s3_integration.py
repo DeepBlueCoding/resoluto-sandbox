@@ -1,4 +1,4 @@
-"""S3ObjectStore integration against a real minio (proves the store-mediated
+"""S3Conduit integration against a real minio (proves the store-mediated
 telemetry works over a real object store, not just localfs).
 
 Run:  uv run pytest -m integration   (needs minio on :9100, see test setup)
@@ -17,14 +17,14 @@ import uuid
 import pytest
 
 from resoluto_sandbox import ChunkReader, ChunkShipper, SpanEvent
-from resoluto_sandbox.objectstore.s3 import S3ObjectStore, mint_scoped_credential
+from resoluto_sandbox.conduit.s3 import S3Conduit, mint_scoped_credential
 
 ENDPOINT = "http://localhost:9100"
 CREDS = dict(aws_access_key_id="minioadmin", aws_secret_access_key="minioadmin", region_name="us-east-1")
 
 
 async def _store():
-    s = S3ObjectStore("resoluto-spike", endpoint_url=ENDPOINT, **CREDS)
+    s = S3Conduit("resoluto-spike", endpoint_url=ENDPOINT, **CREDS)
     await s.ensure_bucket()
     return s
 
@@ -58,7 +58,7 @@ async def test_cross_prefix_isolation():
     run_b = f"run/{uuid.uuid4().hex}/nodes/b"
 
     # Ensure bucket exists using admin creds
-    admin_store = S3ObjectStore(bucket, endpoint_url=ENDPOINT, **CREDS)
+    admin_store = S3Conduit(bucket, endpoint_url=ENDPOINT, **CREDS)
     await admin_store.ensure_bucket()
 
     # Mint two scoped tokens for different prefixes
@@ -73,14 +73,14 @@ async def test_cross_prefix_isolation():
         sts_role_arn=role_arn,
     )
 
-    store_a = S3ObjectStore(
+    store_a = S3Conduit(
         tok_a["bucket"], endpoint_url=tok_a["endpoint_url"],
         region_name=tok_a["region"],
         aws_access_key_id=tok_a["access_key_id"],
         aws_secret_access_key=tok_a["secret_access_key"],
         aws_session_token=tok_a["session_token"],
     )
-    store_b = S3ObjectStore(
+    store_b = S3Conduit(
         tok_b["bucket"], endpoint_url=tok_b["endpoint_url"],
         region_name=tok_b["region"],
         aws_access_key_id=tok_b["access_key_id"],

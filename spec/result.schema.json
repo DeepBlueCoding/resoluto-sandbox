@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The lane's typed work product \u2014 written by the in-sandbox runner to\n`<prefix>/result.json`, read back by the orchestrator. Generic by design: it\ncarries NO gate/lane/git vocabulary (that mapping is the worker's, upstream).\n\nThe first block is the sandbox's self-report; the `observed_*` / `reason` /\n`substrate_logs` block is filled by the ORCHESTRATOR from out-of-guest signals\n(the in-guest verdict is work product, not a trust decision).",
+  "properties": {
+    "node_id": {
+      "default": "",
+      "title": "Node Id",
+      "type": "string"
+    },
+    "status": {
+      "default": "failure",
+      "enum": [
+        "success",
+        "failure"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "exit_code": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Exit Code"
+    },
+    "output_archive": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Output Archive"
+    },
+    "observed_phase": {
+      "default": "",
+      "title": "Observed Phase",
+      "type": "string"
+    },
+    "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+    },
+    "substrate_logs": {
+      "default": "",
+      "title": "Substrate Logs",
+      "type": "string"
+    }
+  },
+  "title": "NodeResult",
+  "type": "object"
+}

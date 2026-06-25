@@ -1,6 +1,6 @@
 """ResourceSemaphore — a fair, byte-budgeted async semaphore for RAM admission.
 
-The primitive behind resource-gated sandbox admission (RES-290/291). Unlike a
+The primitive behind resource-gated sandbox admission. Unlike a
 busy-poll budget check, a waiter that doesn't fit PARKS on a future (event-driven —
 no spin, no held thread/lock) and launches NOTHING until granted (a pipeline "on
 hold" consumes no RAM — only a parked ping). Grants happen on `release`, FIFO on the
