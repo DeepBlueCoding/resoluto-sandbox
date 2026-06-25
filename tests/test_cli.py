@@ -26,6 +26,13 @@ def test_doctor_returns_zero(capsys):
     assert "docker" in out.lower() or "uv" in out.lower()
 
 
+def test_run_stray_args_before_dashdash_is_usage_error(capsys):
+    rc = main(["run", "--backend", "local", "junk", "--", sys.executable, "-c", "print(1)"])
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "unexpected arguments before '--'" in err
+
+
 def test_run_requirements_flag_builds_deps(monkeypatch):
     from resoluto_sandbox import RunResult
     captured = {}
