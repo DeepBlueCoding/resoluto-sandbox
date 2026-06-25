@@ -1,0 +1,59 @@
+{
+  "description": "One observability record on the JSONL wire \u2014 a span open/close or a log\nline \u2014 carrying the tree (`span_id`/`parent_span_id`), inputs/outputs, or a\nredacted log payload. The same schema drives live UI, replay, and forensics.",
+  "properties": {
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "span_id": {
+      "title": "Span Id",
+      "type": "string"
+    },
+    "parent_span_id": {
+      "default": "",
+      "title": "Parent Span Id",
+      "type": "string"
+    },
+    "kind": {
+      "title": "Kind",
+      "type": "string"
+    },
+    "name": {
+      "default": "",
+      "title": "Name",
+      "type": "string"
+    },
+    "event": {
+      "enum": [
+        "open",
+        "close",
+        "log"
+      ],
+      "title": "Event",
+      "type": "string"
+    },
+    "ts": {
+      "title": "Ts",
+      "type": "number"
+    },
+    "status": {
+      "default": "",
+      "title": "Status",
+      "type": "string"
+    },
+    "data": {
+      "additionalProperties": true,
+      "title": "Data",
+      "type": "object"
+    }
+  },
+  "required": [
+    "run_id",
+    "span_id",
+    "kind",
+    "event",
+    "ts"
+  ],
+  "title": "SpanEvent",
+  "type": "object"
+}

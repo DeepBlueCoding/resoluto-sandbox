@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "task.json",
+  "type": "object",
+  "properties": {
+    "prompt": {"type": "string"},
+    "workspace_dir": {"type": "string"},
+    "env": {"type": "object", "additionalProperties": {"type": "string"}},
+    "output_paths": {"type": "array", "items": {"type": "string"}}
+  },
+  "required": ["workspace_dir"]
+}
