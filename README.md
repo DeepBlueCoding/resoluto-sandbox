@@ -146,7 +146,8 @@ if the program wrote one), `ok` (property: `exit_code == 0`).
 | `backend="local"` — subprocess on host, full env inheritance, live stdout | **works today** |
 | `Deps` strategies: `auto`, `inline`, `requirements`, `image`, `vendored` | **works today** |
 | CLI: `run` + `doctor` | **works today** |
-| `Conduit` abstraction + `LocalConduit`, `StdoutConduit`, `S3Conduit`, `GcsConduit` | **works today** |
+| `Conduit` abstraction + `LocalConduit`, `StdoutConduit`, `S3Conduit` (minio/S3-compatible, proven) | **works today** |
+| `GcsConduit` | **provided, unverified** — experimental; not tested end-to-end |
 | Language-neutral wire spec | **published** — see `spec/PROTOCOL.md` |
 | `backend="k8s"` — Kata microVM isolation via injected `K8sBackend` | **implemented** — requires k3s+Kata cluster + store env + kubecontext |
 | Prebuilt image matrix (`-base`, `-runner`, langchain, openai variants) + `image build` CLI | design / roadmap |
@@ -157,6 +158,7 @@ if the program wrote one), `ok` (property: `exit_code == 0`).
 ## Further reading
 
 - `docs/auth.md` — Claude Max/Pro subscription auth (local and container)
+- `docs/networking.md` — egress isolation on the k8s backend (EgressConfig, NetworkPolicy, canary)
 - `spec/PROTOCOL.md` — language-neutral host ↔ sandbox wire protocol (JSON Schemas included)
 - `examples/` — runnable examples ladder:
   - `uv run examples/01_local_hello.py` — standalone program, no sandbox

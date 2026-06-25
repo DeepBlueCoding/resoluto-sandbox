@@ -76,10 +76,10 @@ key/value store with three operations: `put`, `get`, and `list_prefix`. Implemen
 
 | Class | Use |
 |---|---|
-| `StdoutConduit` | write-only; emits chunks to stdout — useful for piping |
-| `LocalConduit` | local filesystem; zero infra, for dev and tests |
-| `S3Conduit` | S3 / MinIO — production rendezvous |
-| `GcsConduit` | Google Cloud Storage |
+| `StdoutConduit` | write-only; emits chunks to stdout — useful for piping (local backend) |
+| `LocalConduit` | local filesystem; zero infra, for dev and tests (local backend) |
+| `S3Conduit` | S3 / minio-compatible — the proven k8s backend rendezvous |
+| `GcsConduit` | Google Cloud Storage — **provided, unverified** (experimental; not tested end-to-end) |
 
 Chunks are immutable and append-only. The reader tails via `list_prefix` + whole-object
 `get`; no streaming or long-lived TCP connection is required. Any blob store with list +

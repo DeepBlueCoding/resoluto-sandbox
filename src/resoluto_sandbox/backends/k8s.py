@@ -22,11 +22,23 @@ class K8sBackend(Backend):
     in-pod runner emits both as ``log`` span events), so ``RunResult.stderr`` is
     empty by design — the divergence from the local backend is intentional, not a
     dropped field.
+
+    ``egress`` is an ``EgressConfig`` (import from ``resoluto_sandbox.runtime.k8s``)
+    that applies a default-deny egress NetworkPolicy to the lane pod, allowing only
+    the declared CIDRs on TCP/443 plus kube-dns on UDP/53. When ``None`` (default)
+    the pod has unrestricted egress (Kata kernel isolation only).
     """
 
-    def __init__(self, *, image: str | None = None, conduit: Conduit | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        image: str | None = None,
+        conduit: Conduit | None = None,
+        egress: "EgressConfig | None" = None,
+    ) -> None:
         self._image = image
         self._conduit = conduit
+        self._egress = egress
 
     def run(
         self,
@@ -64,7 +76,7 @@ class K8sBackend(Backend):
         from resoluto_sandbox.contracts import SandboxLaunchSpec
         from resoluto_sandbox.driver import drive_node
         from resoluto_sandbox.runner_main import store_from_env
-        from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
+        from resoluto_sandbox.runtime.k8s import EgressConfig, K8sSandboxRuntime
         from resoluto_sandbox.staging import fetch_outputs, put_dir
 
         store = self._conduit if self._conduit is not None else store_from_env()
@@ -77,6 +89,7 @@ class K8sBackend(Backend):
             namespace=os.environ.get("RESOLUTO_SANDBOX_NAMESPACE", "resoluto-sandboxes"),
             context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT") or None,
             image_pull_policy=os.environ.get("RESOLUTO_LANE_IMAGE_PULL_POLICY", "IfNotPresent"),
+            egress=self._egress,
         )
 
         if workspace:
