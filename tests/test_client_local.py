@@ -1,4 +1,5 @@
 """Local-backend `Sandbox.run` behavior against real subprocesses."""
+import os
 import sys
 
 from resoluto_sandbox import RunResult, Sandbox
@@ -54,12 +55,23 @@ def test_run_surfaces_result_json(tmp_path):
     assert out.result == {"status": "success"}
 
 
-def test_k8s_backend_not_wired_yet():
+def test_k8s_backend_constructs():
+    sb = Sandbox(backend="k8s", image="example.io/sandbox:latest")
+    assert sb._backend == "k8s"
+    assert sb._image == "example.io/sandbox:latest"
+
+
+def test_k8s_run_raises_without_store_kind(monkeypatch):
+    for key in list(os.environ):
+        if key.startswith("RESOLUTO_STORE_") or key.startswith("AWS_"):
+            monkeypatch.delenv(key, raising=False)
+    monkeypatch.delenv("RESOLUTO_STORE_KIND", raising=False)
+    sb = Sandbox(backend="k8s", image="example.io/sandbox:latest")
     try:
-        Sandbox(backend="k8s")
-    except NotImplementedError:
+        sb.run(["true"])
+    except (KeyError, RuntimeError):
         return
-    raise AssertionError("k8s backend should raise NotImplementedError in this build")
+    raise AssertionError("expected KeyError or RuntimeError when RESOLUTO_STORE_KIND is absent")
 
 
 def test_run_image_deps_is_passthrough(tmp_path):
