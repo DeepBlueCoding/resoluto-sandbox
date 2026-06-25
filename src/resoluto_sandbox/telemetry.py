@@ -19,7 +19,8 @@ from resoluto_sandbox.contracts import Conduit, SpanEvent
 
 _CHUNK_RE = re.compile(r"events-(\d+)\.jsonl$")
 _MANIFEST = "_manifest.json"
-_RESULT = "result.json"
+RESULT_FILENAME = "result.json"
+_RESULT = RESULT_FILENAME
 
 
 def _chunk_key(prefix: str, index: int) -> str:

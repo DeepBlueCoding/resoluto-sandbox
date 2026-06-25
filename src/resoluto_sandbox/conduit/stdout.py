@@ -21,3 +21,6 @@ class StdoutConduit(Conduit):
 
     async def list_prefix(self, prefix: str) -> list[ObjectInfo]:
         raise NotImplementedError("StdoutConduit is write-only")
+
+    async def copy_prefix(self, src_prefix: str, dst_prefix: str) -> int:
+        raise NotImplementedError("StdoutConduit is write-only")

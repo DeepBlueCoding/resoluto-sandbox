@@ -18,6 +18,15 @@ def image_tags(ver: str) -> dict[str, str]:
             **{p: f"resoluto-sandbox:{ver}-{p}" for p in PROVIDERS}}
 
 
+def build_base(*, ver: str | None = None, context: str = ".", runner=subprocess.run) -> str:
+    """Build the base image and return its tag. Inputs: optional version, build context,
+    injectable runner. Output: the base image tag built."""
+    ver = ver or wheel_version()
+    tag = image_tags(ver)["base"]
+    runner(["docker", "build", "-f", "Dockerfile.base", "-t", tag, context], check=True)
+    return tag
+
+
 def build(provider: str, *, ver: str | None = None, context: str = ".", base_tag: str | None = None,
           runner=subprocess.run) -> str:
     """Build one provider overlay (building base first if needed). Returns the tag built.
@@ -26,17 +35,14 @@ def build(provider: str, *, ver: str | None = None, context: str = ".", base_tag
         raise ValueError(f"unknown provider {provider!r} (expected one of {PROVIDERS})")
     ver = ver or wheel_version()
     tags = image_tags(ver)
-    base = base_tag or tags["base"]
-    runner(
-        ["docker", "build", "-f", "Dockerfile.base", "-t", base, context],
-        check=True,
-    )
+    if base_tag is None:
+        base_tag = build_base(ver=ver, context=context, runner=runner)
     tag = tags[provider]
     runner(
         [
             "docker", "build",
             "-f", f"images/{provider}.Dockerfile",
-            "--build-arg", f"BASE_IMAGE={base}",
+            "--build-arg", f"BASE_IMAGE={base_tag}",
             "--build-arg", f"IMAGE_VERSION={ver}",
             "-t", tag,
             context,
