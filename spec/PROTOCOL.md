@@ -31,7 +31,7 @@ run/<run_id>/nodes/<node_id>/
 | Key (relative to run prefix)       | Direction       | Description                                      |
 |------------------------------------|-----------------|--------------------------------------------------|
 | `inbox/<name>.tar.gz`              | host → sandbox  | Workspace content, gzip-tarred                   |
-| `task.json`                        | host → sandbox  | Optional task instructions (see schema below)    |
+| `task.json`                        | host → sandbox  | Reserved; not read by the reference runner (see schema below) |
 | `events-<NNNNNN>.jsonl`            | sandbox → host  | Progress events, one JSON object per line        |
 | `result.json`                      | sandbox → host  | Final verdict and output metadata                |
 | `outbox/<name>.tar.gz`             | sandbox → host  | Output artifacts, gzip-tarred                    |
@@ -85,10 +85,11 @@ appended from out-of-guest signals and must not be trusted as the in-guest verdi
 | `reason`         | string         | Human-readable failure reason                       |
 | `substrate_logs` | string         | Forensic substrate logs (untrusted)                 |
 
-### task.json (optional)
+### task.json (reserved)
 
-The orchestrator may write `task.json` before the sandbox starts. The sandbox reads it to
-obtain work instructions.
+**Reserved — not consumed by the reference runner.** The reference runner is configured via
+environment variables (`RESOLUTO_WORKLOAD_ARGV`, `RESOLUTO_WORKSPACE_DIR`, `RESOLUTO_OUTPUT_PATHS`),
+not by reading `task.json`. The schema is published for backends that prefer a file-based contract.
 
 | Field           | Type            | Required | Description                         |
 |-----------------|-----------------|----------|-------------------------------------|
@@ -118,9 +119,9 @@ Liveness is determined by **chunk arrival rate** and **heartbeat events**, not w
 
 ## Sequence
 
-1. Orchestrator writes `inbox/<name>.tar.gz` (workspace) and optionally `task.json`.
-2. Orchestrator launches the sandbox, passing the run prefix and a write-scoped token.
-3. Sandbox reads `inbox/` and `task.json`, performs its work.
+1. Orchestrator writes `inbox/<name>.tar.gz` (workspace) and optionally `task.json` (for backends that read it).
+2. Orchestrator launches the sandbox, passing the run prefix, a write-scoped token, and workload configuration via env vars.
+3. Sandbox reads `inbox/`, performs its work (the reference runner is driven by env vars, not `task.json`).
 4. Sandbox appends `events-<NNNNNN>.jsonl` chunks as work progresses.
 5. Sandbox writes `result.json` and any `outbox/<name>.tar.gz` artifacts.
 6. Sandbox writes `_manifest.json` with the final chunk count.

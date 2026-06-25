@@ -83,13 +83,39 @@ result = Sandbox().run(["agent.py", "--prompt", "hello"], deps=Deps(kind="inline
 
 ---
 
+## k8s backend
+
+Requires a live k3s+Kata cluster, `RESOLUTO_STORE_KIND` (plus the matching store env vars) set in
+the environment, and `RESOLUTO_SANDBOX_KUBECONTEXT` pinned (the backend fails closed if this is
+unset). The image is a backend concern — inject a configured `K8sBackend`:
+
+```python
+from resoluto_sandbox import Sandbox
+from resoluto_sandbox.backends.k8s import K8sBackend
+
+sb = Sandbox(backend=K8sBackend(image="<registry>/resoluto-lane:dev"))
+out = sb.run(["bash", "-lc", "echo hi"], workspace="./proj", output_paths=["*.txt"])
+```
+
+Limits on `backend="k8s"`: **no `stdin`** (raises `NotImplementedError`) and **no `deps`** (raises
+`NotImplementedError` — dependencies must be baked into the image). `RunResult.stderr` is always
+empty on this backend; the in-pod runner merges stdout and stderr into the stdout stream.
+
+`Sandbox(backend="k8s")` without an injected backend builds `K8sBackend(image=None)`, which raises
+a clear `ValueError` on `run()` asking you to inject `K8sBackend(image=...)` instead.
+
+---
+
 ## CLI
 
 ```bash
-resoluto-sandbox run -- echo hi          # run any command via the local backend
-resoluto-sandbox run -- python agent.py  # any program; -- separates sandbox opts from argv
-resoluto-sandbox doctor                  # check what is available on this machine
+resoluto-sandbox run -- echo hi                       # local backend (default)
+resoluto-sandbox run --backend k8s --image <img> -- python agent.py  # k8s backend
+resoluto-sandbox doctor                               # check what is available on this machine
 ```
+
+`--deps-kind` is silently accepted but has no effect on `--backend k8s` — deps must be baked into
+the image. `--` separates sandbox options from the program argv.
 
 ---
 
@@ -122,7 +148,7 @@ if the program wrote one), `ok` (property: `exit_code == 0`).
 | CLI: `run` + `doctor` | **works today** |
 | `Conduit` abstraction + `LocalConduit`, `StdoutConduit`, `S3Conduit`, `GcsConduit` | **works today** |
 | Language-neutral wire spec | **published** — see `spec/PROTOCOL.md` |
-| `backend="k8s"` — Kata microVM isolation | design / roadmap (raises `NotImplementedError` today) |
+| `backend="k8s"` — Kata microVM isolation via injected `K8sBackend` | **implemented** — requires k3s+Kata cluster + store env + kubecontext |
 | Prebuilt image matrix (`-base`, `-runner`, langchain, openai variants) + `image build` CLI | design / roadmap |
 | Worker migration utilities | design / roadmap |
 

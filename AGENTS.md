@@ -76,5 +76,5 @@ CLAUDE_CODE_OAUTH_TOKEN=...` first, or use the `~/.claude/.credentials.json` mou
 `claude` CLI uses it and bills the API instead of your Max/Pro subscription. Leave it unset to
 use subscription billing.
 
-**`backend="k8s"` raises `NotImplementedError`.** The k8s backend is not wired in this build.
-Use `backend="local"` (the default). See the Status table in README.md for the roadmap.
+**`backend="k8s"` needs an injected `K8sBackend(image=...)`.**  `Sandbox(backend="k8s")` with no
+injected backend raises `ValueError` at `run()`. Use `Sandbox(backend=K8sBackend(image="<registry>/resoluto-lane:dev"))`. Also requires a live k3s+Kata cluster, `RESOLUTO_STORE_KIND` set, and `RESOLUTO_SANDBOX_KUBECONTEXT` pinned (fails closed otherwise). `stdin` and `deps` both raise `NotImplementedError` on k8s — deps must be baked into the image. `RunResult.stderr` is always empty on k8s; the in-pod runner merges both streams into stdout.

@@ -1,6 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "task.json",
+  "description": "Reserved wire object; the reference runner is configured by env vars and does not read this.",
   "type": "object",
   "properties": {
     "prompt": {"type": "string"},
