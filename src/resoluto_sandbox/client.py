@@ -72,6 +72,10 @@ class Sandbox:
         ``output_paths`` are globs collected into ``RunResult.artifacts``; ``stream``
         receives stdout live (default ``sys.stdout``). Returns a ``RunResult``."""
         if self._backend == "k8s":
+            if stdin is not None:
+                raise NotImplementedError("stdin is not supported on backend='k8s'")
+            if deps is not None:
+                raise NotImplementedError("deps is not supported on backend='k8s' (bake them into the image)")
             return self._run_k8s(argv, workspace=workspace, env=env, output_paths=output_paths, stream=stream)
 
         cwd = Path(workspace).resolve() if workspace else Path.cwd()
