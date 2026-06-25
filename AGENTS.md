@@ -16,7 +16,7 @@ result: RunResult = Sandbox(backend="local").run(
     stdin=None,             # str | bytes | None: fed to stdin
     env=None,               # dict[str, str] | None: overlaid on host env (not replaced)
     output_paths=None,      # Sequence[str] | None: glob patterns to collect as artifacts
-    stream=sys.stdout,      # IO[str] | None: receives stdout live; None to suppress
+    stream=None,            # IO[str] | None: live stdout sink; None (default) -> sys.stdout; pass a StringIO/file to capture
     deps=None,              # Deps | None: dependency strategy; default Deps(kind="auto")
 ) -> RunResult
 ```

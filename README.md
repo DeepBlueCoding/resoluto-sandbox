@@ -103,7 +103,7 @@ Sandbox(backend="local").run(
     stdin=None,                  # str or bytes fed to stdin
     env=None,                    # dict overlaid on the host environment
     output_paths=None,           # list of glob patterns to collect as artifacts
-    stream=sys.stdout,           # where to echo stdout live (pass None to suppress)
+    stream=None,                 # live stdout sink; None (default) echoes to sys.stdout; pass a StringIO/file to capture
     deps=None,                   # Deps() strategy; default is Deps(kind="auto")
 ) -> RunResult
 ```

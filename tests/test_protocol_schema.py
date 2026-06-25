@@ -12,3 +12,11 @@ def test_spanevent_validates_against_schema():
 def test_noderesult_validates_against_schema():
     schema = json.loads((SPEC / "result.schema.json").read_text())
     jsonschema.validate(NodeResult(status="success", exit_code=0).model_dump(), schema)
+
+def test_task_schema_validates_sample():
+    schema = json.loads((SPEC / "task.schema.json").read_text())
+    jsonschema.validate({"workspace_dir": "/w", "env": {"A": "1"}, "output_paths": ["*.py"]}, schema)
+
+def test_manifest_schema_validates_sample():
+    schema = json.loads((SPEC / "manifest.schema.json").read_text())
+    jsonschema.validate({"total_chunks": 3}, schema)

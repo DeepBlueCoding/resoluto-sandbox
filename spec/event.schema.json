@@ -1,4 +1,5 @@
 {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "One observability record on the JSONL wire \u2014 a span open/close or a log\nline \u2014 carrying the tree (`span_id`/`parent_span_id`), inputs/outputs, or a\nredacted log payload. The same schema drives live UI, replay, and forensics.",
   "properties": {
     "run_id": {
