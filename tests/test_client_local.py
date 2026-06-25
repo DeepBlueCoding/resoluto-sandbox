@@ -60,3 +60,9 @@ def test_k8s_backend_not_wired_yet():
     except NotImplementedError:
         return
     raise AssertionError("k8s backend should raise NotImplementedError in this build")
+
+
+def test_run_image_deps_is_passthrough(tmp_path):
+    from resoluto_sandbox.deps import Deps
+    out = Sandbox(backend="local").run([sys.executable, "-c", "print('ok')"], deps=Deps(kind="image"))
+    assert out.stdout.strip() == "ok"

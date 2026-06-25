@@ -21,6 +21,8 @@ from typing import IO, Literal, Sequence
 
 from pydantic import BaseModel
 
+from resoluto_sandbox.deps import Deps, resolve_invocation
+
 Backend = Literal["local", "k8s"]
 
 
@@ -62,6 +64,7 @@ class Sandbox:
         env: dict[str, str] | None = None,
         output_paths: Sequence[str] | None = None,
         stream: IO[str] | None = None,
+        deps: Deps | None = None,
     ) -> RunResult:
         """Run ``argv`` in the sandbox. ``workspace`` (a directory) is the program's
         cwd; ``stdin`` is fed on standard input; ``env`` overlays the host env;
@@ -75,9 +78,10 @@ class Sandbox:
         if env:
             child_env.update(env)
 
+        launch_argv = resolve_invocation(argv, deps or Deps(), cwd)
         sink = stream if stream is not None else sys.stdout
         proc = subprocess.Popen(
-            list(argv),
+            launch_argv,
             cwd=str(cwd),
             env=child_env,
             stdin=subprocess.PIPE if stdin is not None else None,
