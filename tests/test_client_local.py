@@ -56,9 +56,10 @@ def test_run_surfaces_result_json(tmp_path):
 
 
 def test_k8s_backend_constructs():
+    from resoluto_sandbox.backends.k8s import K8sBackend
     sb = Sandbox(backend="k8s", image="example.io/sandbox:latest")
-    assert sb._backend == "k8s"
-    assert sb._image == "example.io/sandbox:latest"
+    assert isinstance(sb._backend, K8sBackend)
+    assert sb._backend._image == "example.io/sandbox:latest"
 
 
 def test_k8s_run_raises_without_store_kind(monkeypatch):
