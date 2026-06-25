@@ -44,7 +44,7 @@ out.result      # parsed ./result.json if the program wrote it
 | backend | `Sandbox(backend="local")` or `Sandbox(backend=K8sBackend(image=...))` | `local` = subprocess, no setup; `k8s` = Kata pod, needs cluster + store env + kubecontext |
 | deps | `Deps(kind="auto"\|"inline"\|"requirements"\|"image"\|"vendored")` | `local` only; bake deps into the image for `k8s` |
 
-`RESOLUTO_STORE_KIND` selects the Conduit store (`stdout` / `localfs` / `s3` / `gcs`) used by the in-pod runner on the k8s path — conduit selection is internal for now.
+`RESOLUTO_STORE_KIND` selects the Conduit store used by the in-pod runner on the k8s path. Proven conduits: `stdout`/`localfs` (local backend) and `s3` (minio/S3-compatible, k8s backend). `gcs` is provided but unverified (experimental).
 
 ## The program contract
 
@@ -83,4 +83,5 @@ set -o pipefail && uv run pytest -q -m integration   # needs live cluster
 - **Do NOT set `ANTHROPIC_API_KEY`** if you want Claude Max/Pro subscription billing — it switches the SDK to API-key mode and charges your API account.
 - **`backend="k8s"` requires injecting `K8sBackend(image=...)`** — `Sandbox(backend="k8s")` with no image raises `ValueError` at `run()`. Also needs a live k3s+Kata cluster, `RESOLUTO_STORE_KIND` set, and `RESOLUTO_SANDBOX_KUBECONTEXT` pinned. `stdin` and `deps` raise `NotImplementedError` on this backend.
 - **No wall-clock timeouts anywhere** — liveness on the k8s path is chunk-arrival + heartbeat, not clock ticks.
+- **k8s backend egress is unrestricted by default** — pass `K8sBackend(egress=EgressConfig(...))` (import `EgressConfig` from `resoluto_sandbox.runtime.k8s`) to apply a default-deny NetworkPolicy. See `docs/networking.md`.
 - **pytest piped to `tail`/`head` needs `set -o pipefail`** or a failing test suite silently returns exit 0.
