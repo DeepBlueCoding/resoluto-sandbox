@@ -76,7 +76,7 @@ class K8sBackend(Backend):
         from resoluto_sandbox.contracts import SandboxLaunchSpec
         from resoluto_sandbox.driver import drive_node
         from resoluto_sandbox.runner_main import store_from_env
-        from resoluto_sandbox.runtime.k8s import EgressConfig, K8sSandboxRuntime
+        from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
         from resoluto_sandbox.staging import fetch_outputs, put_dir
 
         store = self._conduit if self._conduit is not None else store_from_env()
