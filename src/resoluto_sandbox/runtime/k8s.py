@@ -70,6 +70,13 @@ class EgressConfig:
                 )
 
 
+def _no_local_kubeconfig_errors() -> tuple[type[BaseException], ...]:
+    """Exceptions that mean 'no usable local kube-config' → fall back to in-cluster."""
+    from kubernetes_asyncio.config.config_exception import ConfigException
+
+    return (ConfigException, FileNotFoundError)
+
+
 def _dns_safe(s: str) -> str:
     out = "".join(c if (c.isalnum() or c == "-") else "-" for c in s.lower())
     return out.strip("-")[:40] or "x"
@@ -108,9 +115,21 @@ class K8sSandboxRuntime(SandboxRuntime):
             in_cluster = False
             try:
                 await config.load_kube_config(config_file=self._kubeconfig, context=self._context)
-            except Exception:
+            except _no_local_kubeconfig_errors():
+                # No usable local kube-config (missing file / empty context) → assume
+                # we're running inside the cluster. Any OTHER error propagates.
                 config.load_incluster_config()
                 in_cluster = True
+
+            if not in_cluster and self._context is None and os.environ.get(
+                "RESOLUTO_SANDBOX_ALLOW_AMBIENT_CONTEXT"
+            ) != "1":
+                raise RuntimeError(
+                    "refusing to launch lane pods on the ambient kube-context — set "
+                    "RESOLUTO_SANDBOX_KUBECONTEXT, or RESOLUTO_SANDBOX_ALLOW_AMBIENT_CONTEXT=1 "
+                    "to override"
+                )
+
             self._api = client.CoreV1Api()
             host = self._api.api_client.configuration.host
             if in_cluster:
@@ -119,9 +138,9 @@ class K8sSandboxRuntime(SandboxRuntime):
                 logger.info("[k8s-runtime] PINNED to kube-context %r → %s (ns=%s)", self._context, host, self._ns)
             else:
                 logger.warning(
-                    "[k8s-runtime] no kube-context pinned — using the AMBIENT current-context → %s. "
-                    "Set RESOLUTO_SANDBOX_KUBECONTEXT to pin the target cluster; an unpinned "
-                    "context can launch lane pods on the wrong (even production) cluster.", host,
+                    "[k8s-runtime] no kube-context pinned — using the AMBIENT current-context → %s "
+                    "(RESOLUTO_SANDBOX_ALLOW_AMBIENT_CONTEXT=1). An unpinned context can launch lane "
+                    "pods on the wrong (even production) cluster.", host,
                 )
             await self._ensure_namespace()
         return self._api

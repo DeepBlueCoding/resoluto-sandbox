@@ -5,7 +5,8 @@ platform deps import lazily:
     from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
     from resoluto_sandbox.conduit.s3 import S3Conduit
 """
-from resoluto_sandbox.client import RunResult, Sandbox
+from resoluto_sandbox.backends.base import Backend, RunResult
+from resoluto_sandbox.client import Sandbox
 from resoluto_sandbox.deps import Deps
 from resoluto_sandbox.contracts import (
     Admission,
@@ -33,7 +34,7 @@ from resoluto_sandbox.staging import (
 from resoluto_sandbox.telemetry import ChunkReader, ChunkShipper
 
 __all__ = [
-    "Sandbox", "RunResult", "Deps",
+    "Sandbox", "RunResult", "Backend", "Deps",
     "NodeResult", "ObjectInfo", "Conduit", "SandboxHandle", "SandboxLaunchSpec",
     "SandboxRuntime", "SandboxStatus", "SpanEvent", "Admission", "Lease",
     "LocalConduit", "StdoutConduit", "SandboxLease", "SandboxPool",

@@ -31,7 +31,11 @@ stage → run → collect
 
 ## Backends
 
-### `local` (available now)
+`Sandbox` composes with an injected `Backend` (the Backend ABC). Selecting a substrate is a
+constructor concern: pass a backend name string (`"local"`) or a configured `Backend` instance
+(`K8sBackend(image=...)`). Adding a new substrate means implementing `Backend` — nothing else.
+
+### `local`
 
 The program runs as a subprocess on the calling host. The host environment is inherited
 (env overlay is additive, not a replacement), so an agent CLI that is already logged in
@@ -39,13 +43,29 @@ on the host authenticates with no extra wiring. There is no isolation from the h
 filesystem or network — `local` is a development and integration convenience, not a
 security boundary.
 
-### `k8s` (design / roadmap)
+### `k8s`
 
-Each run executes in a short-lived Kata microVM pod. The sandbox reports progress as
-append-only JSONL chunks to an object store; the orchestrator tails the store and reaps
-the pod when done. There is no long-lived connection between the two halves. The
-language-neutral wire format is already published in `spec/PROTOCOL.md`; the Python
-`backend="k8s"` path raises `NotImplementedError` in the current build.
+Each run executes in a short-lived Kata microVM pod via the `drive_node` primitive and a
+`Conduit` object store. The sandbox reports progress as append-only JSONL chunks to the
+store; the orchestrator tails and reaps the pod when done. There is no long-lived connection
+between the two halves.
+
+Inject a configured `K8sBackend` — the image is not a `Sandbox` constructor concern:
+
+```python
+from resoluto_sandbox import Sandbox
+from resoluto_sandbox.backends.k8s import K8sBackend
+
+sb = Sandbox(backend=K8sBackend(image="<registry>/resoluto-lane:dev"))
+```
+
+Requirements: a live k3s+Kata cluster, `RESOLUTO_STORE_KIND` (plus the matching store env
+vars) set in the environment, and `RESOLUTO_SANDBOX_KUBECONTEXT` pinned (fails closed
+otherwise). Limits: `stdin` and `deps` both raise `NotImplementedError` on this backend —
+dependencies must be baked into the image. `RunResult.stderr` is always empty; the in-pod
+runner merges stdout and stderr into the stdout stream.
+
+The language-neutral wire format is documented in `spec/PROTOCOL.md`.
 
 ---
 
