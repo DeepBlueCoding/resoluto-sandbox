@@ -201,6 +201,78 @@ async def test_drive_node_not_reaped_while_pending(tmp_path):
     assert runtime._left == 0  # all 5 pending polls were survived (not reaped early)
 
 
+class _UnstartableRuntime(SandboxRuntime):
+    """A pod that never runs: status stays Pending with a fatal waiting reason."""
+
+    def __init__(self):
+        self.destroyed: list[str] = []
+
+    async def launch(self, spec):
+        return SandboxHandle(id="bad/1", labels=spec.labels)
+
+    async def status(self, handle):
+        return SandboxStatus(phase="pending", reason="ImagePullBackOff")
+
+    async def destroy(self, handle):
+        self.destroyed.append(handle.id)
+
+    async def sweep(self, labels):
+        return 0
+
+    async def logs(self, handle, *, tail=200):
+        return "never started"
+
+
+async def test_drive_node_raw_unstartable_fast_fail(tmp_path):
+    # drive_node_raw fails fast (debounced) on a fatal waiting reason and reaps the pod,
+    # instead of waiting out the death window — the silence watchdog only arms at RUNNING.
+    from resoluto_sandbox.driver import drive_node_raw
+    store = LocalConduit(tmp_path)
+    rt = _UnstartableRuntime()
+    outcome = await drive_node_raw(
+        rt, store, _spec("run/r1/nodes/bad", ["true"]),
+        poll_interval_s=0, unstartable_polls=3,
+    )
+    assert outcome.disposition == "unstartable"
+    assert "ImagePullBackOff" in outcome.reason
+    assert rt.destroyed == ["bad/1"]  # reaped, not leaked
+
+
+async def test_drive_node_raw_completes_on_result_ready_before_terminal(tmp_path):
+    # A caller whose work product lands BEFORE the pod reports terminal (the worker's
+    # result.json) finishes as soon as result_ready() is true — the pod may still be running.
+    from resoluto_sandbox.driver import drive_node_raw
+    store = LocalConduit(tmp_path)
+
+    class _NeverTerminalRuntime(SandboxRuntime):
+        def __init__(self):
+            self.destroyed: list[str] = []
+        async def launch(self, spec):
+            return SandboxHandle(id="run/1", labels=spec.labels)
+        async def status(self, handle):
+            return SandboxStatus(phase="running")  # never terminal
+        async def destroy(self, handle):
+            self.destroyed.append(handle.id)
+        async def sweep(self, labels):
+            return 0
+        async def logs(self, handle, *, tail=200):
+            return ""
+
+    rt = _NeverTerminalRuntime()
+    polls = {"n": 0}
+
+    async def ready() -> bool:
+        polls["n"] += 1
+        return polls["n"] >= 2  # work product appears on the 2nd loop pass
+
+    outcome = await drive_node_raw(
+        rt, store, _spec("run/r1/nodes/wp", ["true"]),
+        result_ready=ready, poll_interval_s=0,
+    )
+    assert outcome.disposition == "completed"
+    assert rt.destroyed == ["run/1"]  # reaped on completion
+
+
 def test_sandbox_pool_satisfies_admission_protocol():
     from resoluto_sandbox.contracts import Admission
     from resoluto_sandbox.runtime import k8s  # noqa: F401 — ensure import path is clean
