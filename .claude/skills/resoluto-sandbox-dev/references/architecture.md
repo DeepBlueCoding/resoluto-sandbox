@@ -189,41 +189,58 @@ Sandbox(backend=EcsBackend(image="..."))   # no facade change needed
 
 If your substrate also needs novel placement, implement `SandboxRuntime` too and drive it from your `Backend`. Reuse `Conduit` for the host↔sandbox exchange — don't invent a new transport. Keep heavy SDK imports lazy/inside methods to preserve the import-light litmus.
 
-## Layer diagram
+## Layer diagrams
+
+### Layering (the full stack)
 
 ```
-            your system  (calls sb.run(argv, ...))
-                  │
-                  ▼
-        ┌───────────────────┐
-        │      Sandbox      │  facade — HOLDS one Backend, DELEGATES run()
-        │     (client.py)   │  no substrate logic here
-        └─────────┬─────────┘
-                  │ self._backend.run(...)
-        ┌─────────▼─────────┐
-        │   Backend (ABC)   │  run(argv, ...) -> RunResult        [SEAM 1]
-        └─────────┬─────────┘
-       ┌──────────┴───────────┐
-       ▼                      ▼
- LocalBackend            K8sBackend(image=, conduit=, egress=)
- subprocess              Kata pod via drive_node
- stdin OK                (no stdin — bake deps into image)
-       │                      │ tail / reap
-       │                      ▼
-       │            ┌───────────────────┐
-       │            │  Conduit (ABC)    │ put/get/list_prefix/copy_prefix  [SEAM 2]
-       │            │  host↔sandbox     │ Local·Stdout·S3(minio)·GCS(exp)
-       │            └─────────┬─────────┘
-       │                      ▼
-       │            ┌───────────────────┐
-       │            │ SandboxRuntime ABC│ launch/status/destroy/sweep      [SEAM 3]
-       │            │  (placement)      │ K8sSandboxRuntime
-       │            └───────────────────┘
-       ▼
- host process (localfs / stdout conduit)
-
- pydantic-only contracts.py underlies all three seams (import-light: no cloud SDK at import)
+your program  (plain: reads argv/stdin -> writes stdout/files/exit; never imports resoluto_sandbox)
+      |  argv / workspace                         ^  output / errors / artifacts
+      v                                           |
+┌─────────────────────────────────────────────────────────────┐
+│ Sandbox(backend=...)            thin facade: composes + delegates
+│   .run(argv, ...) -> RunResult(exit_code, output, errors, …)  │
+├─────────────────────────────────────────────────────────────┤
+│ Backend  (ABC)      ← the extension seam: implement to add a substrate
+│    ├── LocalBackend  → subprocess on this host
+│    └── K8sBackend    → composes a SandboxRuntime + a Conduit
+├──────────────────────────────┬──────────────────────────────┤
+│ SandboxRuntime (ABC)         │  Conduit (ABC)  host<->sandbox exchange
+│   K8sSandboxRuntime          │    StdoutConduit | LocalConduit
+│   (Kata microVM pod on k8s)  │    S3Conduit | GcsConduit(exp.)
+└──────────────────────────────┴──────────────────────────────┘
 ```
+
+### Local run flow
+
+```
+Sandbox(backend="local").run(argv, workspace, output_paths)
+   └─ LocalBackend
+        subprocess(argv, cwd=workspace, env=host+overlay)
+          ├─ stdout ─┐ live → stream (default: your stdout)
+          ├─ stderr ─┘ captured
+          └─ exit code + glob(output_paths)
+   → RunResult(output, errors, exit_code, artifacts)     # no pods, no store
+```
+
+### k8s run flow (connectionless host ↔ pod, via the Conduit)
+
+```
+   host (your process)            Conduit  (S3 / minio / …)        Kata microVM pod (k8s)
+   ───────────────────           ───────────────────────         ──────────────────────
+   put_dir(workspace) ─────────────▶  inbox/ *.tar.gz ───────────▶  stage inputs -> /workspace
+   drive_node: launch pod ───────────────────────────────────────▶  run argv (RESOLUTO_WORKLOAD_ARGV)
+   tail ChunkReader  ◀───────────── events-000001.jsonl ◀──────────  ship spans + heartbeat (no stream)
+        (silence-watchdog; NO wall-clock timeout)
+   read result.json  ◀───────────── result.json ◀─────────────────  write verdict
+   fetch_outputs     ◀───────────── outbox/ *.tar.gz ◀────────────  collect output_paths
+   reap pod
+   → RunResult(output reconstructed from chunks, exit_code, artifacts)
+```
+
+`pydantic-only contracts.py` underlies all three seams (import-light: no cloud SDK at import).
+`RunResult.output` and `RunResult.errors` are populated in the same fields by both backends —
+the Conduit is transport; the result shape is uniform.
 
 ## Cross-links
 

@@ -114,7 +114,7 @@ sb = Sandbox(backend=K8sBackend(image="<registry>/resoluto-lane:dev", egress=egr
 ```
 
 `EgressConfig.__post_init__` rejects any value without `/` (no hostnames). Needs
-a NetworkPolicy-capable CNI (k3s Flannel has it). An in-guest canary
+a NetworkPolicy-capable CNI (see `docs/networking.md`). An in-guest canary
 fail-closes if the policy was not enforced. Full table: [docs/networking.md](../../../../docs/networking.md).
 
 ### 5. Bring your own OCI image

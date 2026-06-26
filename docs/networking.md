@@ -72,9 +72,10 @@ ranges can rotate — widen the CIDR conservatively or re-resolve before each de
 ### CNI requirement
 
 NetworkPolicy enforcement requires a NetworkPolicy-capable CNI (e.g. Calico, Cilium, Flannel
-with NetworkPolicy support). k3s ships with Flannel + the NetworkPolicy controller enabled by
-default. On a cluster without a NetworkPolicy controller the manifested policy is silently
-**not enforced** — the in-guest egress canary (see below) is the empirical backstop.
+with NetworkPolicy support). Some distributions (e.g. k3s) ship with Flannel + the NetworkPolicy
+controller enabled by default; managed clusters (EKS, GKE, AKS) may need it enabled separately.
+On a cluster without a NetworkPolicy controller the manifested policy is silently **not enforced** —
+the in-guest egress canary (see below) is the empirical backstop.
 
 ### Egress canary
 

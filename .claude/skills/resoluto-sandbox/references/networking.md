@@ -102,7 +102,7 @@ Note: only TCP/443 is opened to allowlisted hosts. A non-443 destination (e.g. p
 
 ## CNI requirement
 
-NetworkPolicy enforcement needs a NetworkPolicy-capable CNI (Calico, Cilium, Flannel-with-NetworkPolicy). k3s ships one enabled by default. On a cluster WITHOUT a NetworkPolicy controller the manifest is created but SILENTLY NOT ENFORCED. The egress canary (below) is the empirical backstop that catches this.
+NetworkPolicy enforcement needs a NetworkPolicy-capable CNI (Calico, Cilium, Flannel-with-NetworkPolicy). Some distributions (e.g. k3s) ship with one enabled by default; managed clusters (EKS, GKE, AKS) may require it to be enabled separately. On a cluster WITHOUT a NetworkPolicy controller the manifest is created but SILENTLY NOT ENFORCED. The egress canary (below) is the empirical backstop that catches this.
 
 ## Egress canary (`egress_canary.py`)
 

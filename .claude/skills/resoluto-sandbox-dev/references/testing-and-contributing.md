@@ -62,7 +62,7 @@ EgressConfig(store_cidr="10.0.0.5/32", llm_cidr="160.79.104.0/23", git_cidrs=["1
 
 ### k8s real limit (NOT roadmap — the backend IS implemented via `drive_node` → real Kata pod)
 - `stdin is not None` → `NotImplementedError("stdin is not supported on backend='k8s'")`
-- Everything else (workspace stage-in via `put_dir`, live `log` span streaming, `output_paths` fetch-out via `fetch_outputs`, `result.json` parse) works against a live pod. Requires `RESOLUTO_STORE_KIND` in env (the conduit) and a reachable k3s+Kata.
+- Everything else (workspace stage-in via `put_dir`, live `log` span streaming, `output_paths` fetch-out via `fetch_outputs`, `result.json` parse) works against a live pod. Requires `RESOLUTO_STORE_KIND` in env (the conduit) and a reachable Kubernetes cluster with Kata (k3s, kind, EKS, or any distribution).
 
 ### Conduits (host↔pod rendezvous; selected by `RESOLUTO_STORE_KIND` in `conduit/factory.py`)
 | kind | class | status |
@@ -82,14 +82,14 @@ Config lives in `pyproject.toml` `[tool.pytest.ini_options]`: `asyncio_mode = "a
 # UNIT — integration is deselected by default (addopts), so this is the everyday command:
 uv run pytest
 
-# INTEGRATION — opt in explicitly; needs a LIVE k3s + Kata + minio box:
+# INTEGRATION — opt in explicitly; needs a LIVE Kubernetes cluster (k3s, kind, EKS, …) + Kata + minio:
 RESOLUTO_LANE_IMAGE=<lane-image> uv run pytest -m integration
 ```
 
 `-m integration` tests (e.g. `tests/test_client_k8s.py::test_k8s_run_roundtrips`) round-trip `Sandbox(backend=K8sBackend(image=...)).run()` through a real Kata pod. They read `RESOLUTO_LANE_IMAGE` from env. Without the live box they will fail — that is correct; do not stub them green.
 
 ### Green-canary preflight (run BEFORE any `-m integration`)
-Integration tests require a live k3s + Kata + minio cluster. Export `RESOLUTO_LANE_IMAGE` and the `RESOLUTO_STORE_*` variables before running. Unit tests need none of this — they run against stubs and the default `addopts` deselects `@integration` automatically.
+Integration tests require a live Kubernetes cluster (k3s, kind, EKS, or any distribution) with Kata + minio. Export `RESOLUTO_LANE_IMAGE` and the `RESOLUTO_STORE_*` variables before running. Unit tests need none of this — they run against stubs and the default `addopts` deselects `@integration` automatically.
 
 RED canary (store unreachable / image missing) → fix infra first, do not run integration tests.
 
