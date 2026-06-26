@@ -7,7 +7,7 @@ For the run protocol and backend contracts see `../../../../spec/PROTOCOL.md`; f
 
 | Backend | Isolation | Egress | When |
 |---|---|---|---|
-| `local` | NONE — host subprocess, host network | unrestricted, inherits host firewall/DNS | trusted code only |
+| `local` | Docker (OS-level: namespaces/cgroups) | unrestricted — egress canary SKIPPED (`RESOLUTO_TRUSTED_LOCAL=1`) | trusted code, dev |
 | `k8s` + `egress=None` | Kata microVM kernel isolation | UNRESTRICTED (no NetworkPolicy) | semi-trusted, kernel isolation enough |
 | `k8s` + `egress=EgressConfig(...)` | Kata microVM + default-deny egress NetworkPolicy | only declared CIDRs :443 + DNS :53; IMDS always blocked | untrusted code |
 
@@ -16,9 +16,10 @@ Footgun: `k8s` does NOT lock down egress unless you pass `EgressConfig`. Kata is
 ## API surface (verbatim)
 
 ```python
-from resoluto_sandbox import Sandbox                  # facade
-from resoluto_sandbox.backends.k8s import K8sBackend  # k8s backend (lazy k8s deps)
-from resoluto_sandbox.runtime.k8s import EgressConfig # CIDR allowlist — import from here ONLY
+from resoluto_sandbox import Sandbox                                              # facade
+from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod  # ONE backend impl
+from resoluto_sandbox.conduit.factory import store_from_env                      # conduit from env
+from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig         # k8s runtime + CIDR allowlist
 ```
 
 `Sandbox(backend="local" | "k8s" | <Backend instance>)` then:
@@ -28,8 +29,8 @@ RunResult = Sandbox.run(
     argv,                       # Sequence[str], the program to run (plain — never imports resoluto_sandbox)
     *,
     workspace=None,             # str | None — program cwd; outputs extracted here in place
-    stdin=None,                 # str | bytes | None  (k8s: NotImplementedError — see footguns)
-    env=None,                   # dict[str,str] | None — overlays host env
+    stdin=None,                 # NOT SUPPORTED — NotImplementedError on both backends
+    env=None,                   # dict[str,str] | None — overlays sandbox env
     output_paths=None,          # Sequence[str] | None — globs collected into RunResult.artifacts
     stream=None,                # IO[str] | None — live output sink (default sys.stdout)
 )
@@ -38,32 +39,45 @@ RunResult = Sandbox.run(
 `RunResult` (pydantic):
 ```
 exit_code: int
-output: str          # k8s: MERGED stdout+stderr (in-pod runner emits both as log spans)
-errors: str          # k8s: always "" by design
+output: str          # MERGED stdout+stderr (in-sandbox runner emits both as log spans)
+errors: str          # always "" by design
 artifacts: list[str] # collected output_paths
 result: dict | None  # parsed result.json if the program wrote one, else None
 reason: str          # substrate forensics (evicted/OOMKilled/observed phase); "" for local
 ok -> bool           # property: exit_code == 0
 ```
 
-k8s config is a backend concern — inject a configured `K8sBackend`, never a string:
+k8s config is a backend concern — inject a configured `SubstrateBackend`:
 ```python
-K8sBackend(image=None, conduit=None, egress=None)
+import os
+SubstrateBackend(
+    runtime=K8sSandboxRuntime(
+        namespace="resoluto-sandboxes",
+        context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
+        egress=None,   # or EgressConfig(...)
+    ),
+    conduit=store_from_env(),
+    image="<lane-image>",
+    store_env=store_env_for_pod(os.environ),
+)
 ```
-- `image: str | None` — REQUIRED for a real run (`run()` raises `ValueError` if `None`). The lane image.
-- `conduit: Conduit | None` — object store the pod self-reports through. `None` → built from env via `store_from_env()` (needs `RESOLUTO_STORE_KIND`).
-- `egress: EgressConfig | None` — the allowlist below. `None` → unrestricted egress.
+- `image` REQUIRED — `ValueError` if missing.
+- `conduit` — a `Conduit`. Use `store_from_env()` (needs `RESOLUTO_STORE_KIND`), or inject directly.
+- `egress` — `EgressConfig` (from `resoluto_sandbox.runtime.k8s`). All fields MUST be
+  CIDR notation (`x.x.x.x/32`); NetworkPolicy `ipBlock` rejects FQDNs — resolve hostnames
+  to IPs yourself first or `__post_init__` raises `ValueError`. `None` → unrestricted egress.
 
-`Sandbox(backend="k8s")` constructs a bare `K8sBackend()` (no image) — only useful for wiring tests; a real run needs the injected form.
+`Sandbox(backend="k8s")` constructs the k8s preset (reads `RESOLUTO_LANE_IMAGE` + `RESOLUTO_STORE_KIND`
+from env) — only useful for simple cases; inject `SubstrateBackend` for egress/conduit config.
 
 ## Status: this is implemented, not roadmap
 
-The `k8s` backend is FULLY implemented — `K8sBackend.run` launches a real Kata pod via `drive_node`, applies the NetworkPolicy, stages workspace in / artifacts out. The ONLY real limit on `k8s`:
-- `stdin is not None` → `NotImplementedError("stdin is not supported on backend='k8s'")`
+The `k8s` backend is FULLY implemented — `SubstrateBackend.run` launches a real Kata pod via `drive_node`, applies the NetworkPolicy, stages workspace in / artifacts out. The ONLY real limit on both backends:
+- `stdin is not None` → `NotImplementedError` on BOTH backends
 
 Dependencies must be baked into the image.
 
-Conduits: `local`/`StdoutConduit` (local backend) and S3-against-minio (k8s) are PROVEN. `GcsConduit` is experimental/unverified — do not rely on it for isolation guarantees.
+Conduits: `local`/`StdoutConduit` (local backend bind-mount) and S3-against-minio (k8s) are PROVEN. `GcsConduit` is experimental/unverified — do not rely on it for isolation guarantees.
 
 ## `EgressConfig` (CIDR allowlist)
 
@@ -113,18 +127,9 @@ Runs IN-GUEST before the workload, three probes:
 
 Any unexpected result → lane aborts with a reason naming every failed probe (surfaced via `SpanEmitter`). This fires when the CNI mis-enforces the policy or the policy was not applied before the pod started.
 
-API:
-```python
-run_egress_canary(store: Conduit, prefix: str,
-                  probe_host: str = "1.1.1.1", probe_port: int = 80) -> CanaryVerdict
-evaluate_verdict(results: list[ProbeResult]) -> CanaryVerdict   # pure; unit-testable, no network
-```
-`CanaryVerdict(passed: bool, results: list[ProbeResult], reason: str)`; `reason == ""` on pass.
-
-### `RESOLUTO_TRUSTED_LOCAL=1` bypass (DEV ONLY)
-
-Set `RESOLUTO_TRUSTED_LOCAL=1` to skip the canary. Side effects you must understand:
-- Also permits host `AWS_*` creds to be forwarded into the pod in place of a scoped store token (`_store_env_for_pod`). Without it, a k8s run with host AWS creds but no `RESOLUTO_STORE_WRITE_TOKEN` raises `RuntimeError` — the pod is meant to auth via the prefix-scoped `RESOLUTO_STORE_WRITE_TOKEN`.
+The local preset sets `RESOLUTO_TRUSTED_LOCAL=1` which skips the canary. On k8s, set
+`RESOLUTO_TRUSTED_LOCAL=1` to skip the canary (dev only). Side effects:
+- Also permits host `AWS_*` creds to be forwarded into the pod in place of a scoped store token (`store_env_for_pod`). Without it, a k8s run with host AWS creds but no `RESOLUTO_STORE_WRITE_TOKEN` raises `RuntimeError` — the pod is meant to auth via the prefix-scoped `RESOLUTO_STORE_WRITE_TOKEN`.
 - Also gates the non-Kata `runtime_class` guard.
 Never set it for untrusted code.
 
@@ -137,9 +142,11 @@ Never set it for untrusted code.
 ## Copy-paste: locked-down k8s run
 
 ```python
+import os
 from resoluto_sandbox import Sandbox
-from resoluto_sandbox.backends.k8s import K8sBackend
-from resoluto_sandbox.runtime.k8s import EgressConfig
+from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto_sandbox.conduit.factory import store_from_env
+from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
 
 egress = EgressConfig(
     store_cidr="192.168.1.197/32",     # your object store (minio / S3-compatible)
@@ -147,9 +154,17 @@ egress = EgressConfig(
     git_cidrs=["140.82.112.0/20"],     # optional git hosts; [] = no git egress
 )
 
-sb = Sandbox(backend=K8sBackend(
-    image="<registry>/resoluto-lane:dev",
+runtime = K8sSandboxRuntime(
+    namespace="resoluto-sandboxes",
+    context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
     egress=egress,                     # omit / None => UNRESTRICTED egress
+)
+
+sb = Sandbox(backend=SubstrateBackend(
+    runtime=runtime,
+    conduit=store_from_env(),
+    image="<registry>/resoluto-lane:dev",
+    store_env=store_env_for_pod(os.environ),
 ))
 
 result = sb.run(
@@ -159,14 +174,15 @@ result = sb.run(
     output_paths=["out/**"],
 )
 assert result.ok, result.reason
-print(result.output)            # merged stdout+stderr on k8s
+print(result.output)            # merged stdout+stderr
 print(result.artifacts)         # collected output_paths
 ```
 
-## Copy-paste: local (NO isolation)
+## Copy-paste: local (Docker, OS-level isolation, NOT egress-locked)
 
 ```python
 from resoluto_sandbox import Sandbox
 result = Sandbox(backend="local").run(["python", "agent.py"], workspace=".")
 ```
-Host network, host firewall/DNS, full host connectivity. `EgressConfig` does not apply. Trusted code only.
+Docker container on the host. OS-level isolation (namespaces/cgroups). No egress NetworkPolicy.
+`EgressConfig` does not apply. Trusted code only. Needs Docker + an image (default `resoluto-sandbox-runner:dev`).

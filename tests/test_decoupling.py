@@ -24,6 +24,5 @@ def test_same_program_runs_unchanged_via_sandbox(tmp_path):
     via = Sandbox(backend="local", image=_IMAGE).run(
         ["python", "echo_prompt.py", "hi"],
         workspace=str(tmp_path),
-        env={"RESOLUTO_TRUSTED_LOCAL": "1"},
     ).output
     assert "OUT:hi" in via

@@ -6,21 +6,38 @@ Reference for an agent that will USE or EXTEND this sandbox in its own system. T
 
 `Sandbox` is a thin facade. It HOLDS one injected `Backend` and DELEGATES every call to it. No substrate logic lives in the facade — it only selects/holds a backend and forwards `run(...)`.
 
+ONE `SubstrateBackend` drives both presets. The only thing that varies is the injected `SandboxRuntime`.
+
 ```python
 from resoluto_sandbox.client import Sandbox
 
-# select by name
-sb = Sandbox(backend="local")          # LocalBackend()
-sb = Sandbox(backend="k8s")            # K8sBackend() — but run() needs an image; inject instead
-# or inject a configured instance (the real k8s path)
-from resoluto_sandbox.backends.k8s import K8sBackend
-sb = Sandbox(backend=K8sBackend(image="ghcr.io/you/lane:tag"))
+# select by name (presets)
+sb = Sandbox(backend="local")          # SubstrateBackend(DockerSandboxRuntime + LocalConduit)
+sb = Sandbox(backend="k8s")            # SubstrateBackend(K8sSandboxRuntime + store_from_env()) — needs RESOLUTO_LANE_IMAGE
+
+# or inject a configured SubstrateBackend (the real k8s path with egress/conduit config)
+import os
+from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto_sandbox.conduit.factory import store_from_env
+from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
+
+runtime = K8sSandboxRuntime(
+    namespace="resoluto-sandboxes",
+    context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
+    egress=EgressConfig(store_cidr="10.0.0.5/32", llm_cidr="1.2.3.4/32"),
+)
+sb = Sandbox(backend=SubstrateBackend(
+    runtime=runtime,
+    conduit=store_from_env(),
+    image="ghcr.io/you/lane:tag",
+    store_env=store_env_for_pod(os.environ),
+))
 ```
 
-`Sandbox.__init__(*, backend: Backend | str = "local")`:
+`Sandbox.__init__(*, backend: Backend | str = "local", image: str | None = None)`:
 - a `Backend` instance → held as-is
-- `"local"` → `LocalBackend()`
-- `"k8s"` → `K8sBackend()` (no image; you must inject `K8sBackend(image=...)` to actually run)
+- `"local"` → builds `SubstrateBackend(DockerSandboxRuntime + LocalConduit)` with `RESOLUTO_TRUSTED_LOCAL=1`
+- `"k8s"` → builds `SubstrateBackend(K8sSandboxRuntime + store_from_env())` (needs `RESOLUTO_LANE_IMAGE`)
 - anything else → `ValueError`
 
 ## The run API (identical across backends)
@@ -29,9 +46,9 @@ sb = Sandbox(backend=K8sBackend(image="ghcr.io/you/lane:tag"))
 RunResult = sb.run(
     argv,                              # Sequence[str], the program + args
     *,
-    workspace: str | None = None,      # program cwd (a directory)
-    stdin: str | bytes | None = None,  # fed on stdin       — LOCAL ONLY (k8s raises)
-    env: dict[str, str] | None = None, # overlays host env
+    workspace: str | None = None,      # program cwd (a directory); staged into sandbox
+    stdin: str | bytes | None = None,  # NOT SUPPORTED — NotImplementedError on both backends
+    env: dict[str, str] | None = None, # overlays sandbox env
     output_paths: Sequence[str] | None = None,  # globs → RunResult.artifacts
     stream: IO[str] | None = None,     # live output sink (default sys.stdout)
 )
@@ -42,14 +59,14 @@ RunResult = sb.run(
 | field | type | meaning |
 |-------|------|---------|
 | `exit_code` | `int` | process exit code |
-| `output` | `str` | program's answer. **k8s:** MERGED stdout+stderr |
-| `errors` | `str` | local only; **empty on k8s by design** (merged into output) |
+| `output` | `str` | program's answer. **Both backends:** MERGED stdout+stderr |
+| `errors` | `str` | **always empty by design** (merged into output) |
 | `artifacts` | `list[str]` | collected `output_paths` |
 | `result` | `dict \| None` | parsed `result.json` if the program wrote one, else `None` |
 | `reason` | `str` | substrate forensics (evicted/OOMKilled pod, …); empty for local |
 | `ok` | `bool` (property) | `exit_code == 0` |
 
-The program you run is plain: it reads argv/stdin, writes stdout/files, and never imports `resoluto_sandbox`. Guarantee: a program that runs as `uv run agent.py` on your machine runs byte-identically under `run()`.
+The program you run is plain: it reads argv, writes stdout/files, and never imports `resoluto_sandbox`. A program that runs as `uv run agent.py` on your machine runs unchanged under `run()`.
 
 Dependencies are your program's concern — put `uv run`/`pip install` in your argv, or use a prebuilt image.
 
@@ -66,19 +83,20 @@ class Backend(ABC):
             output_paths=None, stream=None) -> RunResult: ...
 ```
 
-Implementations:
-- **`LocalBackend`** — subprocess on this host, inheriting host env (an already-logged-in agent CLI authenticates with no extra wiring). Streams live to `stream`. Honors `stdin`.
-- **`K8sBackend(*, image=None, conduit=None, egress=None)`** — fully implemented: launches a real Kata pod via the internal `drive_node` primitive; in-pod runner self-reports JSONL chunks to a `Conduit`; the host tails the store and reaps. Requires `RESOLUTO_STORE_KIND` in the env. `run()` calls `asyncio.run(...)` internally (sync surface, async core).
+One implementation drives both presets:
+- **`SubstrateBackend(*, runtime, conduit, image, store_env)`** — fully implemented: launches a sandbox via the injected `SandboxRuntime`, stages workspace, tails Conduit for output, fetches artifacts. `stdin is not None` → `NotImplementedError`. `image` is required. `run()` calls `asyncio.run(...)` internally (sync surface, async core).
+  - With `DockerSandboxRuntime` → local preset (Docker container, OS-level isolation)
+  - With `K8sSandboxRuntime` → k8s preset (Kata microVM, hardware isolation + optional egress)
 
-**k8s footguns:**
-- `stdin is not None` → `NotImplementedError("stdin is not supported on backend='k8s'")`
-- `image is None` → `ValueError("backend='k8s' requires K8sBackend(image=...)")`
+**Footguns:**
+- `stdin is not None` → `NotImplementedError` on BOTH presets
+- `image` missing → `ValueError`
 
-Everything else on k8s works. It is NOT a roadmap stub.
+Everything else works. It is NOT a roadmap stub.
 
 ### 2. `Conduit` — `resoluto_sandbox.contracts`
 
-The host↔sandbox exchange: a durable key/value rendezvous. The pod self-reports append-only immutable JSONL chunk objects under its prefix; the host tails via `list_prefix` + whole-object `get`. No in-sandbox server, no long-lived stream.
+The host↔sandbox exchange: a durable key/value rendezvous. The sandbox self-reports append-only immutable JSONL chunk objects under its prefix; the host tails via `list_prefix` + whole-object `get`. No in-sandbox server, no long-lived stream.
 
 ```python
 class Conduit(ABC):
@@ -97,7 +115,7 @@ class Conduit(ABC):
 `ObjectInfo(key: str, size: int)`. Transport/I/O failures raise `ConduitError`.
 
 Implementations (`resoluto_sandbox.conduit`):
-- **`LocalConduit(root)`** — localfs. Proven (local backend / localfs path).
+- **`LocalConduit(root)`** — localfs. Proven (local backend bind-mount).
 - **`StdoutConduit()`** — writes chunks to stdout. Proven (local backend path).
 - **`S3Conduit(bucket, *, endpoint_url=None, region_name=None, aws_access_key_id=None, aws_secret_access_key=None, aws_session_token=None)`** — proven against minio (the k8s path). `[s3]` extra also pulls `aioboto3`; factory defaults `region_name` to `"us-east-1"` when absent.
 - **`GcsConduit(bucket, *, service_file=)`** — EXPERIMENTAL / unverified. Do not rely on it.
@@ -106,7 +124,7 @@ Build one from env with `store_from_env(env=None) -> Conduit` (`resoluto_sandbox
 
 ### 3. `SandboxRuntime` — `resoluto_sandbox.contracts`
 
-The ONE platform-specific placement surface (k8s / ECS / Fly / docker). The pool owns admission/ordering; the runtime owns placement.
+The isolation/placement seam. The runtime owns launch, status, destroy, sweep for a specific substrate (Docker, k8s Kata, ECS, Fly, …).
 
 ```python
 class SandboxRuntime(ABC):
@@ -121,9 +139,11 @@ class SandboxRuntime(ABC):
     async def logs(self, handle, *, tail=200) -> str: ...        # forensic only; untrusted
 ```
 
-`K8sSandboxRuntime(*, namespace="resoluto-sandboxes", kubeconfig=None, context=None, image_pull_policy="IfNotPresent", egress=None, node_allocatable_memory=None)`. **Footgun:** `context` PINS the kube context — leave it `None` only knowingly (None follows the ambient current-context, which can wander to another cluster).
+Implementations:
+- **`DockerSandboxRuntime(*, conduit_host_dir, conduit_mount)`** — local preset; `docker run` with bind-mount.
+- **`K8sSandboxRuntime(*, namespace="resoluto-sandboxes", kubeconfig=None, context=None, image_pull_policy="IfNotPresent", egress=None, node_allocatable_memory=None)`** — k8s preset; Kata pod. **Footgun:** `context` PINS the kube context — leave it `None` only knowingly (None follows the ambient current-context, which can wander to another cluster).
 
-You normally don't touch `SandboxRuntime` directly — `K8sBackend` drives it for you. Reach for it only when building a new placement substrate.
+`SubstrateBackend` drives the runtime for you. Reach for `SandboxRuntime` directly only when building a new placement substrate.
 
 ## pydantic-only core (the import-light litmus)
 
@@ -137,11 +157,12 @@ Key pydantic contracts: `RunResult`, `SandboxLaunchSpec`, `SandboxHandle`, `Sand
 |---------|------|
 | public entrypoint / facade | `client.py` (`Sandbox`) |
 | substrate seam + `RunResult` | `backends/base.py` |
-| local subprocess | `backends/local.py` |
-| Kata pod via `drive_node` | `backends/k8s.py` |
-| host↔pod exchange seam | `contracts.py` (`Conduit`) + `conduit/*` |
+| ONE backend impl (Docker + k8s) | `backends/substrate.py` (`SubstrateBackend`) |
+| host↔sandbox exchange seam | `contracts.py` (`Conduit`) + `conduit/*` |
 | conduit-from-env | `conduit/factory.py` |
-| placement seam | `contracts.py` (`SandboxRuntime`) + `runtime/k8s.py` |
+| placement/isolation seam | `contracts.py` (`SandboxRuntime`) |
+| Docker runtime (local preset) | `runtime/docker.py` (`DockerSandboxRuntime`) |
+| k8s Kata runtime | `runtime/k8s.py` (`K8sSandboxRuntime`) |
 | admission (WHEN) — separate from substrate (HOW) | `contracts.py` (`Admission`/`Lease`), `pool.py` |
 | egress policy | `runtime/k8s.py` (`EgressConfig`) |
 | wire schema | `contracts.py` (`SpanEvent`) + `spec/PROTOCOL.md` |
@@ -149,98 +170,105 @@ Key pydantic contracts: `RunResult`, `SandboxLaunchSpec`, `SandboxHandle`, `Sand
 ## Configuring the k8s backend
 
 ```python
-from resoluto_sandbox.backends.k8s import K8sBackend
-from resoluto_sandbox.runtime.k8s import EgressConfig
+import os
+from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
 from resoluto_sandbox.conduit.s3 import S3Conduit
+from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
 
-backend = K8sBackend(
-    image="ghcr.io/you/lane:tag",
-    conduit=S3Conduit("my-bucket", endpoint_url="http://minio:9000",
-                      aws_access_key_id="...", aws_secret_access_key="..."),
+runtime = K8sSandboxRuntime(
+    namespace="resoluto-sandboxes",
+    context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
     egress=EgressConfig(                         # None (default) = unrestricted egress (Kata isolation only)
         store_cidr="10.0.0.5/32",                # object store endpoint
         llm_cidr="1.2.3.4/32",                   # LLM provider API
         git_cidrs=["140.82.112.0/20"],           # default [] = no git egress
     ),
 )
+backend = SubstrateBackend(
+    runtime=runtime,
+    conduit=S3Conduit("my-bucket", endpoint_url="http://minio:9000",
+                      aws_access_key_id="...", aws_secret_access_key="..."),
+    image="ghcr.io/you/lane:tag",
+    store_env=store_env_for_pod(os.environ),
+)
+from resoluto_sandbox.client import Sandbox
 sb = Sandbox(backend=backend)
 res = sb.run(["agent.py"], workspace="/work", output_paths=["out/*.json"])
 ```
 
 `EgressConfig` applies a default-deny NetworkPolicy: allows only the declared CIDRs on TCP/443 plus kube-dns on UDP/53. All fields MUST be CIDR (`x.x.x.x/32`) — k8s ipBlock has no FQDN support, so resolve hostnames yourself; a missing `/` raises `ValueError`.
 
-## Adding a new substrate (Ecs / Docker / Temporal / …)
+## Adding a new substrate (ECS / Temporal / Fly / …)
 
-Implement **`Backend`** — that's the whole job. One method:
+**Primary path:** implement `SandboxRuntime` (the isolation/placement seam) and wire it into `SubstrateBackend`. This reuses the entire store-mediated wire (runner_main, ChunkShipper/ChunkReader, staging, telemetry) and only adds the placement mechanism:
+
+```python
+from resoluto_sandbox.contracts import SandboxRuntime, SandboxLaunchSpec, SandboxHandle, SandboxStatus
+
+class EcsRuntime(SandboxRuntime):
+    async def launch(self, spec: SandboxLaunchSpec) -> SandboxHandle: ...
+    async def status(self, handle: SandboxHandle) -> SandboxStatus: ...
+    async def destroy(self, handle: SandboxHandle) -> None: ...
+    async def sweep(self, labels: dict[str, str]) -> int: ...
+
+# Wire it in:
+SubstrateBackend(runtime=EcsRuntime(...), conduit=store_from_env(), image="...", store_env=...)
+```
+
+**Alternative:** implement the `Backend` ABC directly for a completely different run approach (no store-mediated wire):
 
 ```python
 from resoluto_sandbox.backends.base import Backend, RunResult
 
-class EcsBackend(Backend):
-    def __init__(self, *, image: str, conduit=None, ...): ...
+class MyBackend(Backend):
     def run(self, argv, *, workspace=None, stdin=None, env=None,
             output_paths=None, stream=None) -> RunResult:
-        # run argv; collect output_paths into artifacts; parse result.json into .result
-        # raise NotImplementedError for genuinely unsupported kwargs (don't silently drop)
         ...
 
-Sandbox(backend=EcsBackend(image="..."))   # no facade change needed
+Sandbox(backend=MyBackend(...))   # no facade change needed
 ```
 
-If your substrate also needs novel placement, implement `SandboxRuntime` too and drive it from your `Backend`. Reuse `Conduit` for the host↔sandbox exchange — don't invent a new transport. Keep heavy SDK imports lazy/inside methods to preserve the import-light litmus.
+Reuse `Conduit` for the host↔sandbox exchange — don't invent a new transport. Keep heavy SDK imports lazy/inside methods to preserve the import-light litmus.
 
 ## Layer diagrams
 
 ### Layering (the full stack)
 
 ```
-your program  (plain: reads argv/stdin -> writes stdout/files/exit; never imports resoluto_sandbox)
+your program  (plain: reads argv -> writes stdout/files/exit; never imports resoluto_sandbox)
       |  argv / workspace                         ^  output / errors / artifacts
       v                                           |
 ┌─────────────────────────────────────────────────────────────┐
 │ Sandbox(backend=...)            thin facade: composes + delegates
 │   .run(argv, ...) -> RunResult(exit_code, output, errors, …)  │
 ├─────────────────────────────────────────────────────────────┤
-│ Backend  (ABC)      ← the extension seam: implement to add a substrate
-│    ├── LocalBackend  → subprocess on this host
-│    └── K8sBackend    → composes a SandboxRuntime + a Conduit
+│ SubstrateBackend (the ONE impl) ← drive_node + Conduit + runner_main
 ├──────────────────────────────┬──────────────────────────────┤
 │ SandboxRuntime (ABC)         │  Conduit (ABC)  host<->sandbox exchange
-│   K8sSandboxRuntime          │    StdoutConduit | LocalConduit
-│   (Kata microVM pod on k8s)  │    S3Conduit | GcsConduit(exp.)
+│   DockerSandboxRuntime       │    LocalConduit (bind-mount, local)
+│   (Docker container, local)  │    StdoutConduit | S3Conduit | GcsConduit(exp.)
+│   K8sSandboxRuntime          │
+│   (Kata microVM pod on k8s)  │
 └──────────────────────────────┴──────────────────────────────┘
 ```
 
-### Local run flow
+### Run flow (both backends; runtime + conduit differ)
 
 ```
-Sandbox(backend="local").run(argv, workspace, output_paths)
-   └─ LocalBackend
-        subprocess(argv, cwd=workspace, env=host+overlay)
-          ├─ stdout ─┐ live → stream (default: your stdout)
-          ├─ stderr ─┘ captured
-          └─ exit code + glob(output_paths)
-   → RunResult(output, errors, exit_code, artifacts)     # no pods, no store
-```
-
-### k8s run flow (connectionless host ↔ pod, via the Conduit)
-
-```
-   host (your process)            Conduit  (S3 / minio / …)        Kata microVM pod (k8s)
-   ───────────────────           ───────────────────────         ──────────────────────
+   host (your process)            Conduit  (LocalConduit / S3 / …)  Sandbox (Docker / Kata pod)
+   ───────────────────           ───────────────────────         ──────────────────────────
    put_dir(workspace) ─────────────▶  inbox/ *.tar.gz ───────────▶  stage inputs -> /workspace
-   drive_node: launch pod ───────────────────────────────────────▶  run argv (RESOLUTO_WORKLOAD_ARGV)
-   tail ChunkReader  ◀───────────── events-000001.jsonl ◀──────────  ship spans + heartbeat (no stream)
+   SandboxRuntime.launch ──────────────────────────────────────────▶  runner_main starts
+   tail ChunkReader  ◀───────────── events-000001.jsonl ◀──────────  ship spans + heartbeat
         (silence-watchdog; NO wall-clock timeout)
    read result.json  ◀───────────── result.json ◀─────────────────  write verdict
    fetch_outputs     ◀───────────── outbox/ *.tar.gz ◀────────────  collect output_paths
-   reap pod
+   destroy sandbox
    → RunResult(output reconstructed from chunks, exit_code, artifacts)
 ```
 
-`pydantic-only contracts.py` underlies all three seams (import-light: no cloud SDK at import).
-`RunResult.output` and `RunResult.errors` are populated in the same fields by both backends —
-the Conduit is transport; the result shape is uniform.
+`pydantic-only contracts.py` underlies all seams (import-light: no cloud SDK at import).
+`RunResult.output` carries merged stdout+stderr; `RunResult.errors` is always `""` by design.
 
 ## Cross-links
 

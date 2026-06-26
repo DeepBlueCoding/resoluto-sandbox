@@ -2,12 +2,12 @@
 
 These pin the wiring the integration test exercises end-to-end: the log-event key
 the runner emits (`data["line"]`), the pod_env the spec carries, the store-env
-selection (`_store_env_for_pod`), and the fail-fast/NotImplemented contract. They
+selection (`store_env_for_pod`), and the fail-fast/NotImplemented contract. They
 MUST NOT touch a cluster.
 """
 import pytest
 
-from resoluto_sandbox.backends.substrate import SubstrateBackend, _store_env_for_pod
+from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
 from resoluto_sandbox.contracts import (
     Conduit,
     NodeResult,
@@ -111,7 +111,7 @@ def test_store_env_no_aws_without_trusted_local(monkeypatch):
             monkeypatch.delenv(key, raising=False)
     monkeypatch.delenv("RESOLUTO_TRUSTED_LOCAL", raising=False)
     env = {"RESOLUTO_STORE_KIND": "s3", "RESOLUTO_STORE_BUCKET": "b"}
-    selected = _store_env_for_pod(env)
+    selected = store_env_for_pod(env)
     assert selected == env
     assert not any(k.startswith("AWS_") for k in selected)
 
@@ -123,11 +123,11 @@ def test_store_env_aws_forwarded_only_when_trusted_local():
         "AWS_SECRET_ACCESS_KEY": "minioadmin",
         "RESOLUTO_TRUSTED_LOCAL": "1",
     }
-    selected = _store_env_for_pod(env)
+    selected = store_env_for_pod(env)
     assert selected["AWS_ACCESS_KEY_ID"] == "minioadmin"
 
 
 def test_store_env_aws_without_trusted_local_raises():
     env = {"RESOLUTO_STORE_KIND": "s3", "AWS_ACCESS_KEY_ID": "minioadmin"}
     with pytest.raises(RuntimeError, match="RESOLUTO_STORE_WRITE_TOKEN"):
-        _store_env_for_pod(env)
+        store_env_for_pod(env)

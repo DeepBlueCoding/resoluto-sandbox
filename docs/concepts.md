@@ -4,7 +4,7 @@
 
 ## The program contract
 
-A sandbox program is **plain**. It reads `argv` / `stdin`, writes to `stdout` / files, and
+A sandbox program is **plain**. It reads `argv`, writes to `stdout` / files, and
 exits with a code. It never imports `resoluto_sandbox`. This decoupling is the core guarantee:
 a script that works as `uv run agent.py` on your machine works unchanged inside the sandbox.
 Test runners, LLM agents, shell scripts — all qualify.
@@ -19,30 +19,33 @@ Dependencies are your program's concern — put `uv run`/`pip install` in your a
 stage → run → collect
 ```
 
-1. **Stage** — the `Sandbox` resolves which backend to use.
-2. **Run** — the program executes. On `backend="local"` this is a subprocess on the host
-   that inherits the host environment and streams output live to `stream` (default
-   `sys.stdout`). The program's stdin, env overlay, and working directory are supplied as
-   arguments to `run()`.
+1. **Stage** — the `Sandbox` resolves which backend to use, then stages the workspace into the
+   `Conduit` (a bind-mounted directory for local, an S3 prefix for k8s).
+2. **Run** — the program executes. On `backend="local"` this is a Docker container on the host
+   (OS-level isolation: separate PID/mount/network namespaces, cgroups) sharing a bind-mounted
+   `LocalConduit`. On `backend="k8s"` this is a Kata microVM pod. In both cases the in-sandbox
+   `runner_main` stages inputs, runs the program, and ships output via the `Conduit`. Live output
+   streams to `stream` (default `sys.stdout`). `stdin` is NOT supported on either backend.
 3. **Collect** — when the program exits, `RunResult` is assembled from the captured output,
-   errors, exit code, any `output_paths` globs matched in the workspace, and a parsed
+   exit code, any `output_paths` globs matched in the workspace, and a parsed
    `result.json` if the program wrote one.
 
 ---
 
 ## Backends
 
-`Sandbox` composes with an injected `Backend` (the Backend ABC). Selecting a substrate is a
-constructor concern: pass a backend name string (`"local"`) or a configured `Backend` instance
-(`K8sBackend(image=...)`). Adding a new substrate means implementing `Backend` — nothing else.
+`Sandbox` holds one `Backend` (selected by name or injected). ONE `SubstrateBackend` drives
+both presets; the only thing that varies is the injected `SandboxRuntime`.
 
 ### `local`
 
-The program runs as a subprocess on the calling host. The host environment is inherited
-(env overlay is additive, not a replacement), so an agent CLI that is already logged in
-on the host authenticates with no extra wiring. There is no isolation from the host
-filesystem or network — `local` is a development and integration convenience, not a
-security boundary.
+`backend="local"` builds a `SubstrateBackend` wired to a `DockerSandboxRuntime` and a
+`LocalConduit`. The program runs in a Docker container on this host; the host and container
+share a bind-mounted directory as the conduit. OS-level isolation (namespaces/cgroups) is
+provided, but NOT egress NetworkPolicy isolation — use `k8s` for locked-down egress.
+
+The image must contain python + the resoluto-sandbox wheel + your program's deps. Default:
+`resoluto-sandbox-runner:dev`. Pass `image=` to override.
 
 ### `k8s`
 
@@ -51,20 +54,33 @@ Each run executes in a short-lived Kata microVM pod via the `drive_node` primiti
 store; the orchestrator tails and reaps the pod when done. There is no long-lived connection
 between the two halves.
 
-Inject a configured `K8sBackend` — the image is not a `Sandbox` constructor concern:
+Inject a configured `SubstrateBackend` — the image is not a `Sandbox` constructor concern:
 
 ```python
+import os
 from resoluto_sandbox import Sandbox
-from resoluto_sandbox.backends.k8s import K8sBackend
+from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto_sandbox.conduit.factory import store_from_env
+from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
 
-sb = Sandbox(backend=K8sBackend(image="<registry>/resoluto-lane:dev"))
+runtime = K8sSandboxRuntime(
+    namespace="resoluto-sandboxes",
+    context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
+)
+sb = Sandbox(backend=SubstrateBackend(
+    runtime=runtime,
+    conduit=store_from_env(),
+    image="<registry>/resoluto-lane:dev",
+    store_env=store_env_for_pod(os.environ),
+))
 ```
 
 Requirements: a Kubernetes cluster (k3s, kind, EKS, or any distribution) with Kata Containers,
 `RESOLUTO_STORE_KIND` (plus the matching store env vars) set in the environment, and
-`RESOLUTO_SANDBOX_KUBECONTEXT` pinned (fails closed otherwise). Limits: `stdin` raises `NotImplementedError` on this backend —
-dependencies must be baked into the image. `RunResult.errors` is always empty; the in-pod
-runner merges stdout and stderr into the output stream.
+`RESOLUTO_SANDBOX_KUBECONTEXT` pinned (fails closed otherwise). Limits: `stdin` raises
+`NotImplementedError` on this backend — dependencies must be baked into the image.
+`RunResult.errors` is always empty; the in-pod runner merges stdout and stderr into the output
+stream.
 
 The language-neutral wire format is documented in `spec/PROTOCOL.md`.
 
@@ -77,8 +93,8 @@ key/value store with three operations: `put`, `get`, and `list_prefix`. Implemen
 
 | Class | Use |
 |---|---|
-| `StdoutConduit` | write-only; emits chunks to stdout — useful for piping (local backend) |
-| `LocalConduit` | local filesystem; zero infra, for dev and tests (local backend) |
+| `StdoutConduit` | write-only; emits chunks to stdout — useful for piping |
+| `LocalConduit` | local filesystem; zero infra, for dev and tests (local backend bind-mount) |
 | `S3Conduit` | S3 / minio-compatible — the proven k8s backend rendezvous |
 | `GcsConduit` | Google Cloud Storage — **provided, unverified** (experimental; not tested end-to-end) |
 

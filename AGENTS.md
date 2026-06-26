@@ -13,8 +13,8 @@ result: RunResult = Sandbox(backend="local").run(
     argv,                   # list[str]: the program + its arguments
     *,
     workspace=None,         # str | None: cwd for the program; default is os.getcwd()
-    stdin=None,             # str | bytes | None: fed to stdin
-    env=None,               # dict[str, str] | None: overlaid on host env (not replaced)
+    stdin=None,             # NOT SUPPORTED — raises NotImplementedError on both backends
+    env=None,               # dict[str, str] | None: overlaid on sandbox env (not replaced)
     output_paths=None,      # Sequence[str] | None: glob patterns to collect as artifacts
     stream=None,            # IO[str] | None: live output sink; None (default) -> sys.stdout; pass a StringIO/file to capture
 ) -> RunResult
@@ -27,10 +27,11 @@ result: RunResult = Sandbox(backend="local").run(
 
 ## Program contract (the isolation guarantee)
 
-The program you run is **plain** — it reads `argv` / `stdin`, writes to `stdout` / files, and
-exits. It NEVER imports `resoluto_sandbox`. A script that runs as `uv run agent.py` on your
-machine runs byte-identically under `Sandbox().run(["uv", "run", "agent.py"])`. This is the
-central decoupling guarantee; do not break it.
+The program you run is **plain** — it reads `argv`, writes to `stdout` / files, and
+exits. It NEVER imports `resoluto_sandbox`. A script that works as `uv run agent.py` on your
+machine works inside the sandbox too; `backend="local"` runs it in a Docker container with
+OS-level isolation, `backend="k8s"` runs it in a Kata microVM. The backend changes only where
+it runs, not what runs.
 
 Dependencies are your program's concern — put `uv run`/`pip install` in your argv, or use a prebuilt image.
 
@@ -50,9 +51,12 @@ command exits with code 2.
 
 ## Footguns
 
-**Local == sandbox decoupling.** `backend="local"` is NOT an isolation boundary — the program
-runs as a direct subprocess inheriting the full host environment and filesystem. It is correct,
-fast, and useful for development, but do not assume any isolation from it.
+**Local uses Docker, needs an image.** `backend="local"` runs the program in a Docker container
+(OS-level isolation: separate PID/mount/network namespaces, cgroups). It requires Docker to be
+running and an image that contains python + the resoluto-sandbox wheel + your program's deps
+(default `resoluto-sandbox-runner:dev`; override with `image=`). The egress canary is skipped
+(`RESOLUTO_TRUSTED_LOCAL=1` is set by the local preset), so local is NOT egress-locked — use
+`backend="k8s"` for locked-down egress or hardware isolation.
 
 **`-e CLAUDE_CODE_OAUTH_TOKEN` with nothing exported = empty auth.** `docker run -e
 CLAUDE_CODE_OAUTH_TOKEN` (no `=value`) forwards the host shell's value, which is empty if you
@@ -65,5 +69,10 @@ CLAUDE_CODE_OAUTH_TOKEN=...` first, or use the `~/.claude/.credentials.json` mou
 `claude` CLI uses it and bills the API instead of your Max/Pro subscription. Leave it unset to
 use subscription billing.
 
-**`backend="k8s"` needs an injected `K8sBackend(image=...)`.**  `Sandbox(backend="k8s")` with no
-injected backend raises `ValueError` at `run()`. Use `Sandbox(backend=K8sBackend(image="<registry>/resoluto-lane:dev"))`. Also requires a Kubernetes cluster (k3s, kind, EKS, or any distribution) with Kata Containers, `RESOLUTO_STORE_KIND` set, and `RESOLUTO_SANDBOX_KUBECONTEXT` pinned (fails closed otherwise). `stdin` raises `NotImplementedError` on k8s — deps must be baked into the image. `RunResult.errors` is always empty on k8s; the in-pod runner merges both streams into output.
+**`backend="k8s"` needs a `SubstrateBackend` injection or sets `RESOLUTO_LANE_IMAGE`.**
+`Sandbox(backend="k8s")` without an image raises `ValueError` at `run()`. Inject a configured
+`SubstrateBackend` or set `RESOLUTO_LANE_IMAGE`. Also requires a Kubernetes cluster (k3s, kind,
+EKS, or any distribution) with Kata Containers, `RESOLUTO_STORE_KIND` set, and
+`RESOLUTO_SANDBOX_KUBECONTEXT` pinned (fails closed otherwise). `stdin` raises
+`NotImplementedError` on both backends — deps must be baked into the image. `RunResult.errors`
+is always empty; the in-sandbox runner merges both streams into output.

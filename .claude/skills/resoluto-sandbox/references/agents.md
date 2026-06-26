@@ -1,9 +1,10 @@
 # Bring your own agent (any language) + auth
 
-The sandbox runs a **plain program**. Your program reads argv/stdin and writes
-stdout/files; it NEVER imports `resoluto_sandbox`. The guarantee: what runs as
+The sandbox runs a **plain program**. Your program reads argv and writes
+stdout/files; it NEVER imports `resoluto_sandbox`. What runs as
 `uv run agent.py` (or `./agent`, `node agent.js`, …) on your machine runs
-byte-identically under `Sandbox().run(...)`.
+unchanged under `Sandbox().run(...)`. On `backend="local"` it runs in a Docker
+container with OS-level isolation; on `backend="k8s"` it runs in a Kata microVM.
 
 This is the agent-author view. For the wire protocol see [`spec/PROTOCOL.md`](../../../../spec/PROTOCOL.md);
 for host→pod config/credential flow see `operations.md` (this dir) and the parent `SKILL.md`.
@@ -15,20 +16,20 @@ Your program is the unit of work. The contract is the OS process contract — no
 | Channel | Direction | Meaning |
 |---|---|---|
 | `argv` (`argv[1:]`) | host → program | the task/prompt/args |
-| `stdin` | host → program | optional input stream (**local backend only**, see limits) |
-| `env` | host → program | overlaid on host env |
+| `stdin` | NOT SUPPORTED | raises `NotImplementedError` on both backends |
+| `env` | host → program | overlaid on sandbox env |
 | `stdout` | program → host | the answer → `RunResult.output` |
-| `stderr` | program → host | diagnostics → `RunResult.errors` (local only; empty on k8s) |
+| `stderr` | program → host | merged with stdout → `RunResult.output` (both backends emit as `log` events) |
 | exit code | program → host | `0` = ok → `RunResult.exit_code`, `RunResult.ok` |
 | files under `workspace` | program → host | collected via `output_paths` → `RunResult.artifacts` |
 | `result.json` in workspace | program → host | optional typed verdict → `RunResult.result` (dict or `None`) |
 
-Minimal program — read prompt from argv or stdin, print the answer, exit 0:
+Minimal program — read prompt from argv, print the answer, exit 0:
 
 ```python
 #!/usr/bin/env python3
 import sys
-prompt = " ".join(sys.argv[1:]).strip() or sys.stdin.read().strip()
+prompt = " ".join(sys.argv[1:]).strip()
 if not prompt:
     print("usage: agent.py <prompt>", file=sys.stderr)
     raise SystemExit(2)
@@ -55,8 +56,8 @@ Sandbox(*, backend: Backend | str = "local")   # "local" | "k8s" | injected Back
     argv: Sequence[str],
     *,
     workspace: str | None = None,       # program cwd; staged in, artifacts extracted back in place
-    stdin: str | bytes | None = None,   # local only — NotImplementedError on k8s
-    env: dict[str, str] | None = None,  # overlays host env
+    stdin: str | bytes | None = None,   # NOT SUPPORTED — NotImplementedError on both backends
+    env: dict[str, str] | None = None,  # overlays sandbox env
     output_paths: Sequence[str] | None = None,  # globs collected into RunResult.artifacts
     stream: IO[str] | None = None,      # live output sink, default sys.stdout
 ) -> RunResult
@@ -66,7 +67,7 @@ Sandbox(*, backend: Backend | str = "local")   # "local" | "k8s" | injected Back
 class RunResult(BaseModel):
     exit_code: int
     output: str
-    errors: str                # empty on k8s by design (output carries merged stdout+stderr)
+    errors: str                # always "" by design (output carries merged stdout+stderr)
     artifacts: list[str] = []   # filesystem paths under workspace
     result: dict | None = None  # parsed result.json, else None
     reason: str = ""            # substrate forensics (e.g. OOMKilled/evicted pod); empty for local
@@ -102,7 +103,7 @@ Layered on `resoluto-sandbox-base` (see `images/`). Each just `pip install`s a s
 | `openai.Dockerfile` | `openai-agents` |
 
 To extend: copy a Dockerfile, `FROM ${BASE_IMAGE}`, add your `pip install`/`npm install -g`,
-keep `USER 1000` last. On k8s, pass the image to the backend: `K8sBackend(image="your-image:tag")`.
+keep `USER 1000` last. On k8s, pass the image to `SubstrateBackend(image="your-image:tag")`.
 
 ## Claude Max/Pro subscription auth
 
@@ -118,11 +119,13 @@ auth itself, in this preference order (full detail in [`docs/auth.md`](../../../
 
 ### Local backend — nothing to configure
 
-`Sandbox(backend="local")` runs your program as a subprocess that inherits the host
-env. If you are already logged in to Claude Code on this machine, it just works:
+`Sandbox(backend="local")` runs your program in a Docker container that inherits the
+env you pass. If you are already logged in to Claude Code on this machine, pass the
+credentials via env or mount:
 
 ```bash
-claude   # one-time interactive login on your Max/Pro account, if needed
+# One-time interactive login on your Max/Pro account, if needed:
+claude
 
 python -c "from resoluto_sandbox import Sandbox; \
   print(Sandbox().run(['uv','run','examples/claude_agent.py','Say hello in five words']).output)"
@@ -165,17 +168,25 @@ the credentials-file mount.
 ## k8s backend — real Kata pod
 
 `backend="k8s"` launches a real Kata pod via `drive_node` (fully implemented — not a
-stub). Inject a configured backend; the image is a backend concern:
+stub). Inject a configured `SubstrateBackend`; the image is a backend concern:
 
 ```python
+import os
 from resoluto_sandbox import Sandbox
-from resoluto_sandbox.backends.k8s import K8sBackend
-from resoluto_sandbox.runtime.k8s import EgressConfig
+from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto_sandbox.conduit.factory import store_from_env
+from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
 
-sb = Sandbox(backend=K8sBackend(
-    image="resoluto-sandbox:claude",      # REQUIRED — ValueError if None
-    conduit=None,                          # None → store_from_env() (RESOLUTO_STORE_KIND)
+runtime = K8sSandboxRuntime(
+    namespace="resoluto-sandboxes",
+    context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
     egress=None,                           # None → unrestricted egress (Kata isolation only)
+)
+sb = Sandbox(backend=SubstrateBackend(
+    runtime=runtime,
+    conduit=store_from_env(),              # needs RESOLUTO_STORE_KIND
+    image="resoluto-sandbox:claude",       # REQUIRED
+    store_env=store_env_for_pod(os.environ),
 ))
 res = sb.run(["python", "claude_agent.py", "Say hi"], workspace="examples",
              output_paths=["*.json"], env={"CLAUDE_CODE_OAUTH_TOKEN": "..."})
@@ -187,9 +198,9 @@ your `workspace` dir in place.
 
 ### k8s hard limit
 
-- **No `stdin`** → `NotImplementedError("stdin is not supported on backend='k8s'")`. Pass input via argv, env, or workspace files.
+- **No `stdin`** → `NotImplementedError`. Pass input via argv, env, or workspace files.
 
-Everything else works. `RunResult.errors` is empty on k8s by design — the in-pod runner
+Everything else works. `RunResult.errors` is empty by design — the in-pod runner
 emits stdout+stderr as merged `log` events, so `RunResult.output` carries both. `RunResult.reason`
 carries pod forensics (e.g. `OOMKilled`, evicted) when present.
 
@@ -212,7 +223,7 @@ Applied: default-deny + the declared CIDRs on TCP/443 + kube-dns UDP/53. `egress
 
 ## Conduits (where workspace/artifacts travel)
 
-Selected by `RESOLUTO_STORE_KIND` via `store_from_env()`, or inject `K8sBackend(conduit=...)`.
+Selected by `RESOLUTO_STORE_KIND` via `store_from_env()`, or inject `SubstrateBackend(conduit=...)`.
 
 | Kind | Conduit | Status |
 |---|---|---|
@@ -221,6 +232,5 @@ Selected by `RESOLUTO_STORE_KIND` via `store_from_env()`, or inject `K8sBackend(
 | `s3` | `S3Conduit` (minio locally / any S3 API) | k8s default — **proven** |
 | `gcs` | `GcsConduit` (`RESOLUTO_STORE_BUCKET`) | **experimental / unverified — do not rely on it** |
 
-The local backend does not need a store for a basic run (it executes a host subprocess
-directly); the conduit matters for the k8s path. See [`spec/PROTOCOL.md`](../../../../spec/PROTOCOL.md)
+See [`spec/PROTOCOL.md`](../../../../spec/PROTOCOL.md)
 for the key namespace and chunk/tail semantics.

@@ -2,7 +2,7 @@
 
 Action-first reference for running/extending this sandbox. Verified against source:
 `src/resoluto_sandbox/{cli,images,version_guard}.py`, `conduit/factory.py`,
-`backends/{base,k8s}.py`, `runtime/k8s.py`, `client.py`.
+`backends/{base,substrate}.py`, `runtime/k8s.py`, `client.py`.
 
 Cross-links (don't duplicate): protocol/event/chunk semantics → `../../../../spec/PROTOCOL.md`.
 Substrate images are `Dockerfile.base` + `images/{claude,langchain,openai}.Dockerfile`; substrate internals (storage driver, stepped loop) → [`../../resoluto-sandbox-dev/references/internals.md`](../../resoluto-sandbox-dev/references/internals.md).
@@ -12,35 +12,33 @@ Substrate images are `Dockerfile.base` + `images/{claude,langchain,openai}.Docke
 ## Backends
 
 ```
-your program  (plain: reads argv/stdin -> writes stdout/files/exit; never imports resoluto_sandbox)
+your program  (plain: reads argv -> writes stdout/files/exit; never imports resoluto_sandbox)
       |  argv / workspace                         ^  output / errors / artifacts
       v                                           |
 ┌─────────────────────────────────────────────────────────────┐
 │ Sandbox(backend=...)            thin facade: composes + delegates
 │   .run(argv, ...) -> RunResult(exit_code, output, errors, …)  │
 ├─────────────────────────────────────────────────────────────┤
-│ Backend  (ABC)      ← the extension seam: implement to add a substrate
-│    ├── LocalBackend  → subprocess on this host
-│    └── K8sBackend    → composes a SandboxRuntime + a Conduit
+│ SubstrateBackend (the ONE impl)  ← drive_node + Conduit + runner_main
 ├──────────────────────────────┬──────────────────────────────┤
 │ SandboxRuntime (ABC)         │  Conduit (ABC)  host<->sandbox exchange
-│   K8sSandboxRuntime          │    StdoutConduit | LocalConduit
-│   (Kata microVM pod on k8s)  │    S3Conduit | GcsConduit(exp.)
+│   DockerSandboxRuntime       │    LocalConduit (bind-mount, local preset)
+│   (Docker container, local)  │    StdoutConduit | S3Conduit | GcsConduit(exp.)
+│   K8sSandboxRuntime          │
+│   (Kata microVM pod on k8s)  │
 └──────────────────────────────┴──────────────────────────────┘
 ```
 
 | backend | isolation | where it runs | needs | use for |
 |---------|-----------|---------------|-------|---------|
-| `local` | none (host subprocess) | your host | nothing | dev, trusted code, fast iteration |
-| `k8s` | hardware (Kata microVM) per run | a Kubernetes cluster | k8s + Kata + S3 store + image | untrusted/adversarial code, production |
+| `local` | OS-level (Docker namespaces/cgroups) | your machine | Docker + an image | dev and most workloads, no cluster |
+| `k8s` | hardware (Kata microVM) + egress policy | a Kubernetes cluster | k8s + Kata + S3 store + image | untrusted code at scale, locked-down egress, production |
 
-`RunResult.output` and `RunResult.errors` are populated in the same fields by both backends — the
-Conduit is transport; the result shape is uniform regardless of which store carries the bytes.
+`RunResult.output` carries merged stdout+stderr (both backends). `RunResult.errors` is always
+`""` by design — the in-sandbox runner emits both streams as `log` span events.
 
 For the full backends guide (local detail, k8s detail, vendor-neutral k8s install guide for any
 Kubernetes distribution): [`../../../../docs/backends.md`](../../../../docs/backends.md).
-
----
 
 ---
 
@@ -53,8 +51,8 @@ sb = Sandbox(backend="local")            # or "k8s", or a Backend instance (see 
 result = sb.run(
     argv,                                 # Sequence[str], the program + args
     workspace=None,                       # str dir = program cwd; outputs land here in place
-    stdin=None,                           # str|bytes piped to stdin   (LOCAL ONLY)
-    env=None,                             # dict[str,str] overlaid on host env
+    stdin=None,                           # NOT SUPPORTED — NotImplementedError on both backends
+    env=None,                             # dict[str,str] overlaid on sandbox env
     output_paths=None,                    # Sequence[str] globs collected into artifacts
     stream=None,                          # IO[str], live output (default sys.stdout)
 ) -> RunResult
@@ -64,17 +62,17 @@ result = sb.run(
 
 ```python
 exit_code: int
-output: str            # program output (k8s: MERGED stdout+stderr, see §5)
-errors: str            # local: program stderr; k8s: "" by design
+output: str            # program output (MERGED stdout+stderr on both backends)
+errors: str            # "" by design — runner merges both streams
 artifacts: list[str]   # collected output_paths (absolute paths)
 result: dict | None    # parsed result.json if the program wrote one, else None
 reason: str            # substrate forensics (evicted/OOMKilled/observed phase); "" for local
 ok -> bool             # property: exit_code == 0
 ```
 
-The program you run is plain — reads argv/stdin, writes stdout/files, NEVER imports
-`resoluto_sandbox`. Guarantee: a program that runs as `uv run agent.py` locally runs
-byte-identically under `run()`.
+The program you run is plain — reads argv, writes stdout/files, NEVER imports
+`resoluto_sandbox`. A program that works as `uv run agent.py` locally works
+unchanged under `run()` — in a Docker container (local) or Kata pod (k8s).
 
 Dependencies are your program's concern — put `uv run`/`pip install` in your argv, or use a prebuilt image.
 
@@ -96,10 +94,10 @@ Flags:
 |---|---|---|
 | `--backend` | `local` | `local`, `k8s` |
 | `--workspace` | `None` | dir (program cwd) |
-| `--image` | `None` | k8s image tag (REQUIRED for `--backend k8s`) |
+| `--image` | `None` | image tag (REQUIRED for `--backend k8s`) |
 
 ```bash
-# local run
+# local run (Docker container)
 resoluto-sandbox run --workspace . -- python agent.py --task build
 
 # k8s (image REQUIRED)
@@ -107,7 +105,7 @@ resoluto-sandbox run --backend k8s --image resoluto-sandbox:0.2.3-claude -- pyth
 ```
 
 ### `doctor`
-Readiness report, always exit 0. Checks: `docker` (k8s/images), `uv` (useful for Python programs),
+Readiness report, always exit 0. Checks: `docker` (local/images), `uv` (useful for Python programs),
 `RESOLUTO_SANDBOX_KUBECONTEXT` (k8s). Prints `[OK]`/`[MISSING]` per check.
 
 ### `image build` (`images.py`)
@@ -176,7 +174,7 @@ Switches on `RESOLUTO_STORE_KIND` (KeyError if unset; unknown value → RuntimeE
 | kind | class | needs | status |
 |---|---|---|---|
 | `stdout` | `StdoutConduit()` | nothing | proven (local default) |
-| `localfs` | `LocalConduit(RESOLUTO_STORE_ROOT)` | `RESOLUTO_STORE_ROOT` | proven (local) |
+| `localfs` | `LocalConduit(RESOLUTO_STORE_ROOT)` | `RESOLUTO_STORE_ROOT` | proven (local bind-mount) |
 | `s3` | `S3Conduit(...)` | token OR bucket+creds (below) | proven (minio + cloud S3) |
 | `gcs` | `GcsConduit(RESOLUTO_STORE_BUCKET, service_file=...)` | bucket; `RESOLUTO_GCS_SERVICE_FILE` opt | EXPERIMENTAL / unverified |
 
@@ -203,43 +201,50 @@ GcsConduit(bucket, *, service_file=None)            # extra [gcs]; service_file 
 ```
 
 Backend ↔ conduit pairing:
-- **local** → `stdout` (default, telemetry to stdout, inputs read from workspace in place) or
-  `localfs` (durable local store). No external infra.
+- **local** → `localfs` (`LocalConduit`, bind-mounted at `/conduit` inside the container). The
+  local preset wires this automatically.
 - **k8s** → `s3` against minio (local) or real S3 (cloud). The pod self-reports chunks to the
-  store; the orchestrator tails it. `K8sBackend` requires `RESOLUTO_STORE_KIND` in the env (it
-  calls `store_from_env()` unless you inject `conduit=`).
+  store; the orchestrator tails it. `SubstrateBackend` requires a conduit (inject or `store_from_env()`).
 
 ---
 
-## 5. k8s backend config (`backends/k8s.py`, `runtime/k8s.py`)
+## 5. k8s backend config (`backends/substrate.py`, `runtime/k8s.py`)
 
 The k8s backend is FULLY IMPLEMENTED — a real Kata pod via `drive_node`, not a stub. Inject a
-configured backend rather than passing `backend="k8s"` when you need image/conduit/egress:
+configured `SubstrateBackend` rather than passing `backend="k8s"` when you need egress/conduit config:
 
 ```python
+import os
 from resoluto_sandbox.client import Sandbox
-from resoluto_sandbox.backends.k8s import K8sBackend
-from resoluto_sandbox.runtime.k8s import EgressConfig
+from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto_sandbox.conduit.factory import store_from_env
+from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
 
-sb = Sandbox(backend=K8sBackend(
-    image="resoluto-sandbox:0.2.3-claude",   # REQUIRED — ValueError if None at run()
-    conduit=None,                            # None → store_from_env() (needs RESOLUTO_STORE_KIND)
-    egress=None,                             # None → unrestricted egress (Kata kernel isolation only)
+runtime = K8sSandboxRuntime(
+    namespace="resoluto-sandboxes",
+    context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
+    egress=None,                    # or EgressConfig(...)
+)
+sb = Sandbox(backend=SubstrateBackend(
+    runtime=runtime,
+    conduit=store_from_env(),       # needs RESOLUTO_STORE_KIND
+    image="resoluto-sandbox:0.2.3-claude",
+    store_env=store_env_for_pod(os.environ),
 ))
 result = sb.run(["python", "agent.py"], workspace="/path/to/ws", output_paths=["out/*.json"])
 ```
 
-`K8sBackend(*, image=None, conduit=None, egress=None)`. `run()` launches a Kata pod
+`SubstrateBackend(*, runtime, conduit, image, store_env)`. `run()` launches a Kata pod
 (`flavor="plain"`, `runtime_class="kata"`, non-privileged), stages `workspace` into the store
 prefix, runs `python -m resoluto_sandbox.runner_main`, fetches `output_paths` back into
 `workspace` in place, reads `result.json`. Liveness = substrate silence watchdog
 (`dead_after_s=600`), NO wall-clock timeout.
 
-### k8s hard limit:
-- **`stdin` is unsupported** → `NotImplementedError`. Don't pass `stdin=` with `backend="k8s"`.
+### Hard limit:
+- **`stdin` is unsupported** → `NotImplementedError` on BOTH backends. Don't pass `stdin=`.
 
-### k8s output divergence (intentional)
-The in-pod runner emits stdout AND stderr as `log` span events, so `RunResult.output` carries the
+### Output divergence (intentional)
+The in-sandbox runner emits stdout AND stderr as `log` span events, so `RunResult.output` carries the
 MERGED stream and `RunResult.errors == ""`. This is by design, not a dropped field.
 
 ### Egress allowlist — `EgressConfig` (frozen dataclass, `runtime/k8s.py`)
@@ -261,7 +266,7 @@ in-cluster config it REFUSES to launch (could target the wrong/production cluste
 
 ## 6. Env knobs the k8s path reads
 
-Store wiring (consumed by `store_from_env`, forwarded to the pod via `_store_env_for_pod`,
+Store wiring (consumed by `store_from_env`, forwarded to the pod via `store_env_for_pod`,
 which forwards `RESOLUTO_STORE_*` and `RESOLUTO_TRUSTED_LOCAL`):
 
 | var | used by | meaning |
@@ -275,7 +280,7 @@ which forwards `RESOLUTO_STORE_*` and `RESOLUTO_TRUSTED_LOCAL`):
 | `RESOLUTO_STORE_PREFIX` | pod | per-run/per-node store prefix (set by the backend) |
 | `RESOLUTO_GCS_SERVICE_FILE` | gcs | service-account file; None → Workload Identity/ADC |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | s3 ambient | only used when no write token |
-| `RESOLUTO_TRUSTED_LOCAL` | k8s pod env | dev-only: forward host AWS creds to the pod |
+| `RESOLUTO_TRUSTED_LOCAL` | k8s pod env | dev-only: forward host AWS creds to the pod; also skips egress canary |
 
 Runtime/placement:
 
@@ -291,7 +296,7 @@ Runtime/placement:
 | `RESOLUTO_SANDBOX_POD_MAX_CPU` | `4` | per-pod LimitRange max cpu |
 | `RESOLUTO_NODE_ALLOCATABLE_MEMORY` | k8s API | dind tmpfs preflight node-RAM override |
 
-> FOOTGUN: the standalone k8s backend forwards host `AWS_*` creds to the (untrusted) pod ONLY if
+> FOOTGUN: the k8s backend forwards host `AWS_*` creds to the (untrusted) pod ONLY if
 > `RESOLUTO_TRUSTED_LOCAL` is set; otherwise it raises and demands a scoped
 > `RESOLUTO_STORE_WRITE_TOKEN`. Prefer the scoped write token; reserve `RESOLUTO_TRUSTED_LOCAL=1`
 > for dev.
