@@ -16,66 +16,80 @@ host tails + reaps. Liveness = monotonic chunk-arrival + heartbeats. **No wall-c
 ```python
 from resoluto_sandbox import Sandbox, RunResult
 
-sb = Sandbox(backend="local")            # default: subprocess on this host
+sb = Sandbox(backend="local")            # default: Docker container on this host
 res = sb.run(["python", "agent.py", "--x"],
-            workspace="/abs/dir",         # program cwd; None = inherit
-            stdin="payload",              # str|bytes|None  (LOCAL ONLY)
-            env={"FOO": "1"},             # overlays host env
+            workspace="/abs/dir",         # program cwd, staged into the sandbox
+            env={"FOO": "1"},             # overlays the sandbox environment
             output_paths=["out/*.json"],  # globs collected into res.artifacts
             stream=sys.stdout)            # live output sink; None = sys.stdout
 res.ok          # bool == (exit_code == 0)
 res.exit_code   # int
-res.output      # str
-res.errors      # str  (k8s: ALWAYS "" — merged into output, by design)
-res.artifacts   # list[str]  collected output_paths
+res.output      # str   stdout+stderr, merged by the in-sandbox runner
+res.errors      # str   ALWAYS "" — merged into output, by design
+res.artifacts   # list[str]  collected output_paths (absolute paths)
 res.result      # dict | None  parsed result.json if the program wrote one
-res.reason      # str  substrate forensics (evicted/OOMKilled/observed_phase); "" for local
+res.reason      # str  substrate forensics (evicted/OOMKilled/observed_phase)
 ```
 
 `Sandbox(backend=...)` accepts `"local"`, `"k8s"`, or a `Backend` instance.
 `RunResult` is a pydantic `BaseModel` (`backends/base.py`). The program you run is **plain** — it
-never imports `resoluto_sandbox`; it reads argv/stdin, writes stdout/files. Guarantee: a program that
-runs as `uv run agent.py` on your host runs byte-identically under `run()`.
+never imports `resoluto_sandbox`; it reads argv, writes stdout/files. `stdin` is NOT supported on
+either backend (the substrate runner has no interactive stdin) — pass inputs via argv, env, or
+workspace files.
 
-### Backends and their two REAL k8s limits
+### One backend, two runtimes
 
-| backend | substrate | stdin | errors |
-|---|---|---|---|
-| `local` (`LocalBackend`) | subprocess, inherits host env | ✅ | populated |
-| `k8s` (`K8sBackend`) | real Kata pod via `drive_node` — **fully implemented** | ❌ raises `NotImplementedError` | always `""` |
+There is a single `SubstrateBackend` (`backends/substrate.py`). It is runtime-agnostic: it stages the
+workspace in, builds a `SandboxLaunchSpec`, calls `drive_node(runtime, conduit, spec, ...)`, and maps
+the resulting `NodeResult` to a `RunResult`. Isolation/placement is the injected `SandboxRuntime`:
 
-The k8s backend is NOT a stub. `K8sBackend.run` launches a `runtime_class="kata"`, `flavor="plain"`
-pod whose `args=["python","-m","resoluto_sandbox.runner_main"]`, stages `workspace` in, tails span
-events, fetches artifacts out. The one unsupported knob is `stdin` — it fails loud:
+| backend | runtime | conduit | isolation | stdin | errors |
+|---|---|---|---|---|---|
+| `local` | `DockerSandboxRuntime` (`docker run`) | `LocalConduit` (bind mount) | OS-level (namespaces/cgroups) | ❌ | `""` |
+| `k8s` | `K8sSandboxRuntime` (Kata pod) | `S3Conduit` | hardware (Kata microVM) + optional egress | ❌ | `""` |
+
+Both runtimes run the SAME image entrypoint `args=["python","-m","resoluto_sandbox.runner_main"]`; the
+container/pod stages inputs, runs the workload, ships span events, writes result.json. The backend
+fails loud:
 
 ```python
-if stdin is not None: raise NotImplementedError("stdin is not supported on backend='k8s'")
-if self._image is None: raise ValueError("backend='k8s' requires K8sBackend(image=...)")
+if stdin is not None: raise NotImplementedError("stdin is not supported on the substrate backend")
+if self._image is None: raise ValueError("SubstrateBackend requires image=")
 ```
 
-### Configuring the k8s backend (inject it)
+### Configuring a backend (inject the runtime)
 
 ```python
+import os
 from resoluto_sandbox import Sandbox
-from resoluto_sandbox.backends.k8s import K8sBackend
-from resoluto_sandbox.runtime.k8s import EgressConfig   # EgressConfig lives in runtime.k8s
+from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto_sandbox.conduit.factory import store_from_env
+from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig   # EgressConfig lives in runtime.k8s
 
-sb = Sandbox(backend=K8sBackend(
-    image="registry.local/resoluto-lane:dev",   # REQUIRED — no default
-    conduit=None,                                # None → store_from_env() (needs RESOLUTO_STORE_KIND)
+runtime = K8sSandboxRuntime(
+    namespace=os.environ.get("RESOLUTO_SANDBOX_NAMESPACE", "resoluto-sandboxes"),
+    context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
     egress=EgressConfig(                         # None → unrestricted egress (Kata kernel isolation only)
         store_cidr="10.0.0.5/32",                # ALL fields must be CIDR; FQDNs rejected in __post_init__
         llm_cidr="160.79.104.0/23",
         git_cidrs=[],                            # default empty == no git egress
     ),
+)
+sb = Sandbox(backend=SubstrateBackend(
+    runtime=runtime,
+    conduit=store_from_env(),                    # needs RESOLUTO_STORE_KIND
+    image="registry.local/resoluto-lane:dev",   # REQUIRED — no default
+    store_env=store_env_for_pod(os.environ),
 ))
 ```
 
-`K8sBackend` reads these env vars at run time: `RESOLUTO_SANDBOX_NAMESPACE` (default
-`resoluto-sandboxes`), `RESOLUTO_SANDBOX_KUBECONTEXT`, `RESOLUTO_LANE_IMAGE_PULL_POLICY` (default
-`IfNotPresent`). It hard-codes `dead_after_s=600.0` on its `drive_node` call.
+The `"local"` / `"k8s"` string presets (`client.py`) build the same `SubstrateBackend` with the right
+runtime, conduit, and store_env. The k8s preset reads `RESOLUTO_SANDBOX_NAMESPACE`,
+`RESOLUTO_SANDBOX_KUBECONTEXT`, `RESOLUTO_LANE_IMAGE_PULL_POLICY` from env; the substrate hard-codes
+`dead_after_s=600.0` on its `drive_node` call. (`DockerSandboxRuntime` is stdlib-only — it shells the
+`docker` CLI; `K8sSandboxRuntime` is imported lazily so the core import stays pydantic-only.)
 
-**Store env propagated to the pod** (`_store_env_for_pod`): only `RESOLUTO_STORE_*` and
+**Store env propagated to the sandbox** (`store_env_for_pod`): only `RESOLUTO_STORE_*` and
 `RESOLUTO_TRUSTED_LOCAL` are forwarded. Host `AWS_*` creds are **NOT** forwarded unless a scoped
 `RESOLUTO_STORE_WRITE_TOKEN` is absent AND `RESOLUTO_TRUSTED_LOCAL=1` (dev only) — otherwise it raises.
 Footgun: prefer minting a prefix-scoped `RESOLUTO_STORE_WRITE_TOKEN` over forwarding ambient AWS creds.

@@ -1,88 +1,85 @@
-"""Local-backend `Sandbox.run` behavior against real subprocesses."""
-import os
-import sys
+"""Local-backend (Docker) `Sandbox.run` wiring — the docker runtime + drive_node
+are stubbed so NO real container launches. Asserts the SubstrateBackend the Docker
+preset builds: the spec env (RESOLUTO_WORKLOAD_ARGV), the localfs/conduit store_env,
+and the NodeResult→RunResult mapping."""
+import pytest
 
-from resoluto_sandbox import RunResult, Sandbox
+from resoluto_sandbox import RunResult, Sandbox, SubstrateBackend
+from resoluto_sandbox.contracts import NodeResult, SpanEvent
 
 
-def test_run_captures_stdout_and_exit_code():
+def _patch_docker_substrate(monkeypatch, *, on_event_payload=None, captured=None, node_result=None):
+    """Stub DockerSandboxRuntime + drive_node + staging so run() never touches docker."""
+    import resoluto_sandbox.driver as driver
+    import resoluto_sandbox.runtime.docker as rt
+    import resoluto_sandbox.staging as staging
+
+    async def fake_drive_node(runtime, store, spec, *, on_event=None, **kw):
+        if captured is not None:
+            captured["spec"] = spec
+            captured["runtime"] = runtime
+        if on_event is not None and on_event_payload is not None:
+            on_event(on_event_payload)
+        return node_result or NodeResult(status="success", exit_code=0)
+
+    class FakeRuntime:
+        def __init__(self, **kw):
+            self.kw = kw
+
+    async def fake_put_dir(store, prefix, src): return []
+    async def fake_fetch_outputs(store, prefix, dest): return []
+
+    monkeypatch.setattr(driver, "drive_node", fake_drive_node)
+    monkeypatch.setattr(rt, "DockerSandboxRuntime", FakeRuntime)
+    monkeypatch.setattr(staging, "put_dir", fake_put_dir)
+    monkeypatch.setattr(staging, "fetch_outputs", fake_fetch_outputs)
+
+
+def test_local_preset_builds_substrate_backend(monkeypatch):
+    _patch_docker_substrate(monkeypatch)
     sb = Sandbox(backend="local")
-    out = sb.run([sys.executable, "-c", "print('hello from the box')"])
+    assert isinstance(sb._backend, SubstrateBackend)
+
+
+def test_local_spec_carries_workload_and_localfs_store_env(monkeypatch):
+    captured: dict = {}
+    _patch_docker_substrate(monkeypatch, captured=captured)
+    Sandbox(backend="local").run(["python", "agent.py"])
+    spec = captured["spec"]
+    assert spec.env["RESOLUTO_WORKLOAD_ARGV"] == '["python", "agent.py"]'
+    assert spec.env["RESOLUTO_STORE_KIND"] == "localfs"
+    assert spec.env["RESOLUTO_STORE_ROOT"] == "/conduit"
+    assert spec.env["RESOLUTO_TRUSTED_LOCAL"] == "1"
+    assert spec.env["RESOLUTO_WORKSPACE_DIR"] == "/workspace"
+    assert spec.args == ["python", "-m", "resoluto_sandbox.runner_main"]
+
+
+def test_local_default_image_and_override(monkeypatch):
+    _patch_docker_substrate(monkeypatch)
+    from resoluto_sandbox.client import DEFAULT_LOCAL_IMAGE
+    assert Sandbox(backend="local")._backend._image == DEFAULT_LOCAL_IMAGE
+    assert Sandbox(backend="local", image="my:img")._backend._image == "my:img"
+
+
+def test_local_log_event_streams_into_output(monkeypatch):
+    ev = SpanEvent(run_id="r", span_id="s", kind="log", event="log", ts=1.0, data={"line": "hi"})
+    _patch_docker_substrate(monkeypatch, on_event_payload=ev)
+    out = Sandbox(backend="local").run(["true"])
+    assert "hi" in out.output
     assert out.exit_code == 0
-    assert out.ok is True
-    assert out.output.strip() == "hello from the box"
+
+
+def test_local_maps_node_result_reason_and_exit(monkeypatch):
+    nr = NodeResult(status="failure", exit_code=1, reason="boom")
+    _patch_docker_substrate(monkeypatch, node_result=nr)
+    out = Sandbox(backend="local").run(["true"])
+    assert isinstance(out, RunResult)
+    assert out.exit_code == 1
+    assert out.reason == "boom"
     assert out.errors == ""
 
 
-def test_run_propagates_nonzero_exit():
-    sb = Sandbox(backend="local")
-    out = sb.run([sys.executable, "-c", "import sys; sys.stderr.write('boom\\n'); sys.exit(3)"])
-    assert out.exit_code == 3
-    assert out.ok is False
-    assert "boom" in out.errors
-
-
-def test_run_feeds_stdin():
-    sb = Sandbox(backend="local")
-    out = sb.run([sys.executable, "-c", "import sys; print(sys.stdin.read().upper())"], stdin="abc")
-    assert out.output.strip() == "ABC"
-
-
-def test_run_uses_workspace_as_cwd_and_collects_artifacts(tmp_path):
-    sb = Sandbox(backend="local")
-    out = sb.run(
-        [sys.executable, "-c", "open('made.txt','w').write('x')"],
-        workspace=str(tmp_path),
-        output_paths=["*.txt"],
-    )
-    assert out.exit_code == 0
-    assert (tmp_path / "made.txt").is_file()
-    assert any(p.endswith("made.txt") for p in out.artifacts)
-
-
-def test_run_overlays_env():
-    sb = Sandbox(backend="local")
-    out = sb.run([sys.executable, "-c", "import os; print(os.environ['ONLY_HERE'])"], env={"ONLY_HERE": "42"})
-    assert out.output.strip() == "42"
-
-
-def test_run_surfaces_result_json(tmp_path):
-    sb = Sandbox(backend="local")
-    out = sb.run(
-        [sys.executable, "-c", "open('result.json','w').write('{\"status\": \"success\"}')"],
-        workspace=str(tmp_path),
-    )
-    assert out.result == {"status": "success"}
-
-
-def test_k8s_backend_constructs():
-    from resoluto_sandbox.backends.k8s import K8sBackend
-    from resoluto_sandbox.backends.local import LocalBackend
-    sb_k8s = Sandbox(backend=K8sBackend(image="example.io/sandbox:latest"))
-    assert isinstance(sb_k8s._backend, K8sBackend)
-    sb_local = Sandbox(backend="local")
-    assert isinstance(sb_local._backend, LocalBackend)
-
-
-def test_k8s_run_raises_without_store_kind(monkeypatch):
-    from resoluto_sandbox.backends.k8s import K8sBackend
-    for key in list(os.environ):
-        if key.startswith("RESOLUTO_STORE_") or key.startswith("AWS_"):
-            monkeypatch.delenv(key, raising=False)
-    monkeypatch.delenv("RESOLUTO_STORE_KIND", raising=False)
-    sb = Sandbox(backend=K8sBackend(image="example.io/sandbox:latest"))
-    try:
-        sb.run(["true"])
-    except (KeyError, RuntimeError):
-        return
-    raise AssertionError("expected KeyError or RuntimeError when RESOLUTO_STORE_KIND is absent")
-
-
-def test_run_survives_child_closing_stdin_early():
-    sb = Sandbox(backend="local")
-    out = sb.run(
-        [sys.executable, "-c", "import sys; sys.stdin.close()"],
-        stdin="x" * 100000,
-    )
-    assert out.exit_code == 0
-    assert isinstance(out, RunResult)
+def test_stdin_raises_not_implemented(monkeypatch):
+    _patch_docker_substrate(monkeypatch)
+    with pytest.raises(NotImplementedError):
+        Sandbox(backend="local").run(["true"], stdin="x")

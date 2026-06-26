@@ -5,40 +5,41 @@ description: Use when running a program or AI agent inside the resoluto-sandbox 
 
 # resoluto-sandbox (power user)
 
-Run any program — script, CLI, or AI agent in any language — in an isolated sandbox. **Mental model:** your program is *plain* — reads argv/stdin, writes stdout/files, NEVER imports `resoluto_sandbox`. Guarantee: what runs as `uv run agent.py` on your host runs byte-identically under `run()`; the backend only changes *where*.
+Run any program — script, CLI, or AI agent in any language — in an isolated sandbox. **Mental model:** your program is *plain* — reads argv, writes stdout/files, NEVER imports `resoluto_sandbox`. What runs as `uv run agent.py` on your host runs unchanged under `run()`; the backend changes only *where* (Docker container locally, Kata pod on k8s).
 
 ```python
 from resoluto_sandbox import Sandbox
 r = Sandbox(backend="local").run(["python", "agent.py"], workspace="./work",
-                                 stdin="hi", output_paths=["out/*.json"])
+                                 output_paths=["out/*.json"])
 # RunResult(pydantic): exit_code:int output/errors:str artifacts:list[str] result:dict|None reason:str ok(prop ==exit0)
 ```
 
-k8s merges stdout+stderr into `output` (`errors` empty by design).
+Both backends merge stdout+stderr into `output` (`errors` empty by design). `stdin` is NOT supported on either backend.
 
 ## Quick reference
 
 | Goal | How |
 |---|---|
-| Run on host (no isolation) | `Sandbox(backend="local").run(argv, ...)` |
-| Run in Kata pod | `Sandbox(backend=K8sBackend(image="<tag>")).run(argv, ...)` — needs `RESOLUTO_STORE_KIND` in env |
+| Run in Docker (OS-level isolation) | `Sandbox(backend="local").run(argv, ...)` — needs Docker + an image |
+| Run in Kata pod | `Sandbox(backend=SubstrateBackend(runtime=K8sSandboxRuntime(...), conduit=store_from_env(), image="<tag>", store_env=store_env_for_pod(os.environ))).run(argv, ...)` |
 | Collect outputs | `output_paths=["dist/*","*.json"]` → globbed into `r.artifacts`; mutated into `workspace` |
 | Structured result | program writes `result.json` in workspace → `r.result` |
 | Dependencies | put `uv run`/`pip install` in your argv, or use a prebuilt image |
-| Restrict k8s egress | `K8sBackend(image=..., egress=EgressConfig(store_cidr=..., llm_cidr=..., git_cidrs=[...]))` |
-| Pick store conduit | `K8sBackend(conduit=...)`; else `store_from_env()` via `RESOLUTO_STORE_KIND` |
+| Restrict k8s egress | `K8sSandboxRuntime(egress=EgressConfig(store_cidr=..., llm_cidr=..., git_cidrs=[...]))` |
+| Pick store conduit | inject `conduit=` to `SubstrateBackend`; else `store_from_env()` via `RESOLUTO_STORE_KIND` |
 | CLI | `resoluto-sandbox run [--backend local\|k8s] [--image T] -- <prog> [args]` ; also `doctor`, `image build --provider claude\|langchain\|openai\|all` |
 | Build SDK image | `resoluto-sandbox image build --provider claude` (tag locked to wheel version) |
 | Claude Max auth | local: log in once (`claude` / `claude setup-token`), do NOT set `ANTHROPIC_API_KEY` |
 
-Imports: `from resoluto_sandbox import Sandbox, RunResult`; `from resoluto_sandbox.backends.k8s import K8sBackend`; `from resoluto_sandbox.runtime.k8s import EgressConfig`.
+Imports: `from resoluto_sandbox import Sandbox, RunResult`; `from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod`; `from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig`; `from resoluto_sandbox.conduit.factory import store_from_env`.
 
-**k8s real limit:** no `stdin` (raises `NotImplementedError`). Dependencies must be baked into the image. Otherwise k8s is fully implemented: a real Kata pod via `drive_node`.
+**Limits on both backends:** no `stdin` (raises `NotImplementedError`). Dependencies must be baked into the image (or passed via argv for local). `RunResult.errors` is always empty; the in-sandbox runner merges both streams into output.
 
 ## Footguns
 
 - **k8s egress is UNRESTRICTED by default** (`egress=None`) — Kata kernel isolation only. Pass `EgressConfig` for default-deny.
-- **`local` = NO isolation** — host subprocess inheriting the host env. Convenience, not a security boundary.
+- **`local` = Docker (OS-level isolation, NOT egress-locked)** — runs in a Docker container. Needs Docker + an image. Trusted code only for egress. NOT a bare host subprocess.
+- **Local needs an image.** Default `resoluto-sandbox-runner:dev`; override with `Sandbox(backend="local", image="...")`. The image must contain python + the resoluto-sandbox wheel + your program's deps.
 - **Image tag == wheel version.** An image built for a different `resoluto-sandbox` version won't match — rebuild after upgrading.
 - **No wall-clock timeouts.** Liveness = substrate-silence (`dead_after_s=600` between chunks) + heartbeat; a live program runs as long as it stays alive.
 

@@ -10,16 +10,17 @@ Cross-links (do not duplicate): wire protocol → `../../../../spec/PROTOCOL.md`
 
 ```python
 from resoluto_sandbox import Sandbox, RunResult
-from resoluto_sandbox.backends.k8s import K8sBackend
-from resoluto_sandbox.runtime.k8s import EgressConfig
+from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
+from resoluto_sandbox.runtime.docker import DockerSandboxRuntime
 
 Sandbox(*, backend: "Backend | str" = "local")          # "local" | "k8s" | Backend instance
   .run(
       argv: Sequence[str],
       *,
-      workspace: str | None = None,        # program cwd; k8s mounts it at /workspace
-      stdin: str | bytes | None = None,    # local only — k8s raises NotImplementedError
-      env: dict[str, str] | None = None,   # overlays host env
+      workspace: str | None = None,        # program cwd; staged into the sandbox at /workspace
+      stdin: str | bytes | None = None,    # NOT supported on the substrate backend — raises NotImplementedError
+      env: dict[str, str] | None = None,   # overlays the sandbox environment
       output_paths: Sequence[str] | None = None,  # globs collected into RunResult.artifacts
       stream: IO[str] | None = None,       # live output sink; default sys.stdout
   ) -> RunResult
@@ -37,20 +38,24 @@ class RunResult(BaseModel):
     def ok(self) -> bool        # exit_code == 0
 ```
 
-Backend selection: `Sandbox(backend="local")` → `LocalBackend()`; `Sandbox(backend="k8s")` → `K8sBackend()` (no image → `.run` raises `ValueError`); any unknown string → `ValueError`.
+Backend selection (`client.py`): `Sandbox(backend="local")` builds a `SubstrateBackend` over a
+`DockerSandboxRuntime` + a bind-mounted `LocalConduit`; `Sandbox(backend="k8s")` builds one over a
+`K8sSandboxRuntime` + `store_from_env()` (no image → `.run` raises `ValueError`); any unknown string → `ValueError`.
 
 Dependencies are your program's concern — put `uv run`/`pip install` in your argv, or use a prebuilt image.
 
 ### k8s config — inject a configured backend
 ```python
-from resoluto_sandbox.backends.k8s import K8sBackend
-from resoluto_sandbox.runtime.k8s import EgressConfig
-from resoluto_sandbox.conduit.s3 import S3Conduit
+import os
+from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
+from resoluto_sandbox.conduit.factory import store_from_env
 
-sb = Sandbox(backend=K8sBackend(
-    image="<lane-image>",          # REQUIRED for k8s; .run() raises ValueError if None
-    conduit=None,                  # None → store_from_env() (RESOLUTO_STORE_KIND)
-    egress=None,                   # None → unrestricted egress (Kata kernel isolation only)
+sb = Sandbox(backend=SubstrateBackend(
+    runtime=K8sSandboxRuntime(context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"), egress=None),
+    conduit=store_from_env(),      # needs RESOLUTO_STORE_KIND
+    image="<lane-image>",          # REQUIRED; .run() raises ValueError if None
+    store_env=store_env_for_pod(os.environ),
 ))
 ```
 
@@ -86,7 +91,7 @@ uv run pytest
 RESOLUTO_LANE_IMAGE=<lane-image> uv run pytest -m integration
 ```
 
-`-m integration` tests (e.g. `tests/test_client_k8s.py::test_k8s_run_roundtrips`) round-trip `Sandbox(backend=K8sBackend(image=...)).run()` through a real Kata pod. They read `RESOLUTO_LANE_IMAGE` from env. Without the live box they will fail — that is correct; do not stub them green.
+`-m integration` tests round-trip a real substrate: `tests/test_client_k8s.py::test_k8s_run_roundtrips` runs `Sandbox(backend="k8s", image=...).run()` through a real Kata pod, and `tests/test_local_docker_integration.py` runs `Sandbox(backend="local", image=...).run()` through a real Docker container. They read `RESOLUTO_LANE_IMAGE` (k8s) / a local image from env. Without the box/Docker they fail or skip — that is correct; do not stub them green.
 
 ### Green-canary preflight (run BEFORE any `-m integration`)
 Integration tests require a live Kubernetes cluster (k3s, kind, EKS, or any distribution) with Kata + minio. Export `RESOLUTO_LANE_IMAGE` and the `RESOLUTO_STORE_*` variables before running. Unit tests need none of this — they run against stubs and the default `addopts` deselects `@integration` automatically.
@@ -104,15 +109,15 @@ set -o pipefail; uv run pytest 2>&1 | tail -40
 ## Invariants you MUST preserve when extending
 
 ### 1. core import stays light (pydantic-only) — litmus test
-`tests/test_core_import_is_light.py` spawns a fresh interpreter, imports `resoluto_sandbox`, and **fails if any of `kubernetes_asyncio`, `aioboto3`, `botocore`, `gcloud` got pulled into `sys.modules`**. The top-level surface (`__init__.py`, `contracts.py`, `client.py`) carries no platform deps. Heavy backends import **lazily, inside functions** (see `K8sBackend._run_async` importing `K8sSandboxRuntime`/`store_from_env`/`staging` at call time, and `conduit/factory.py` importing each concrete conduit inside its branch).
+`tests/test_core_import_is_light.py` spawns a fresh interpreter, imports `resoluto_sandbox`, and **fails if any of `kubernetes_asyncio`, `aioboto3`, `botocore`, `gcloud` got pulled into `sys.modules`**. The top-level surface (`__init__.py`, `contracts.py`, `client.py`) carries no platform deps. Heavy runtimes import **lazily, inside functions** (the `client.py` `"local"`/`"k8s"` preset builders import `DockerSandboxRuntime`/`K8sSandboxRuntime` at call time, and `conduit/factory.py` imports each concrete conduit inside its branch). `DockerSandboxRuntime` is stdlib-only (it shells the `docker` CLI), so only `K8sSandboxRuntime` / the S3/GCS conduits carry the platform deps.
 
 Footgun: a module-top `import aioboto3` / `from kubernetes_asyncio import ...` anywhere reachable from `import resoluto_sandbox` breaks this test. Keep platform imports function-local. Optional deps gate behind extras (`[k8s]`, `[s3]`, `[gcs]` in `pyproject.toml`).
 
 ### 2. unit tests NEVER launch a pod
-A non-`@integration` test must not call `K8sSandboxRuntime.launch()` / `drive_node` against a reachable cluster — it leaks unlabeled `ImagePullBackOff` pods that eat quota and starve real runs. To exercise k8s code in a unit test, stub the client/runtime; otherwise mark `@pytest.mark.integration`.
+A non-`@integration` test must not call `K8sSandboxRuntime.launch()` / `DockerSandboxRuntime.launch()` / `drive_node` against a real cluster or Docker daemon — k8s leaks unlabeled `ImagePullBackOff` pods that eat quota; Docker leaks containers. To exercise substrate code in a unit test, stub the runtime (`docker` CLI / k8s client); otherwise mark `@pytest.mark.integration`.
 
 ### 3. fail-fast — no fallbacks
-No try/except-swallow, no default-on-missing-input, no placeholders. Mirror the codebase: `store_from_env` raises `RuntimeError` on an unknown `RESOLUTO_STORE_KIND`; `K8sBackend` raises `ValueError`/`NotImplementedError` rather than degrading; `parse_k8s_memory` rejects garbage with an anchored regex; `check_runtime_class_guard` refuses a non-Kata `runtime_class` unless `RESOLUTO_TRUSTED_LOCAL` is set. Let it crash loud at the source.
+No try/except-swallow, no default-on-missing-input, no placeholders. Mirror the codebase: `store_from_env` raises `RuntimeError` on an unknown `RESOLUTO_STORE_KIND`; `SubstrateBackend` raises `ValueError`/`NotImplementedError` rather than degrading; `parse_k8s_memory` rejects garbage with an anchored regex; `check_runtime_class_guard` refuses a non-Kata `runtime_class` unless `RESOLUTO_TRUSTED_LOCAL` is set. Let it crash loud at the source.
 
 ### 4. pydantic end-to-end
 All wire/contract types are `pydantic.BaseModel` (`RunResult`, `SandboxLaunchSpec`, `NodeResult`, `SandboxStatus`, `SpanEvent`, `ObjectInfo`). No manual dict construction for these, no `.model_dump()` plumbing in the middle. Return models; let serialization happen at the edge. `RunResult.result` is an intentionally generic `dict` (parsed foreign `result.json`) — not a vocabulary the substrate owns.

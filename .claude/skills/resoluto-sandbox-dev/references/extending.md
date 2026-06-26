@@ -1,10 +1,11 @@
-# EXTENDING: add a Backend / add a Conduit
+# EXTENDING: add a SandboxRuntime / Backend / Conduit
 
-Two extension seams. A **Backend** runs a program and returns a `RunResult` (the
-substrate: subprocess, Kata pod, Docker, ECS…). A **Conduit** is the durable
-key/value rendezvous (localfs, S3-on-minio, GCS…) the k8s backend uses to ship
-inputs/outputs/telemetry. They are orthogonal: pick a backend, then (for `k8s`)
-pick a conduit.
+Three extension seams. A **SandboxRuntime** owns the isolation/placement for a new substrate
+(ECS, Fly, Temporal, a custom Docker wrapper, …) and wires into `SubstrateBackend` — this is
+the primary path for adding a new place-to-run. A **Backend** runs a program and returns a
+`RunResult` — use this for a completely new run approach that bypasses the store-mediated wire.
+A **Conduit** is the durable key/value rendezvous (localfs, S3-on-minio, GCS…) the substrate
+backend uses to ship inputs/outputs/telemetry. They are orthogonal.
 
 Cross-links: store-mediated wire protocol → `../../../../spec/PROTOCOL.md`. Layering/usage →
 `../SKILL.md` (SKILL body) and sibling reference docs in this dir.
@@ -20,8 +21,8 @@ Sandbox(backend="local" | "k8s" | <Backend instance>).run(
     argv,                       # Sequence[str] — the program + args
     *,
     workspace=None,             # str | None — program cwd (a directory)
-    stdin=None,                 # str | bytes | None
-    env=None,                   # dict[str, str] | None — overlays host env
+    stdin=None,                 # NOT SUPPORTED — NotImplementedError on both backends
+    env=None,                   # dict[str, str] | None — overlays sandbox env
     output_paths=None,          # Sequence[str] | None — globs, collected into artifacts
     stream=None,                # IO[str] | None — live output sink (default sys.stdout)
 ) -> RunResult
@@ -41,27 +42,135 @@ class RunResult(BaseModel):
     def ok(self) -> bool: return self.exit_code == 0
 ```
 
-`Sandbox.__init__` accepts a `Backend` instance OR the strings `"local"` /
-`"k8s"`. A configured k8s backend (image, conduit, egress) MUST be injected as an
-instance — `Sandbox(backend=K8sBackend(image=...))`. The bare string `"k8s"`
-constructs `K8sBackend()` with no image and fails at `run()`.
+`Sandbox.__init__` accepts a `Backend` instance OR the strings `"local"` / `"k8s"`. A
+configured k8s backend (image, conduit, egress) MUST be injected as an instance.
 
 ### Backend status (honest)
-- **`local`** (`LocalBackend`) — runs `argv` as a host subprocess. NO isolation.
-  Trusted code only. Supports `stdin`. Tees stdout/stderr live.
-- **`k8s`** (`K8sBackend`) — **fully implemented**: launches a real Kata pod via
-  `drive_node`, stages the workspace in, fetches `output_paths` back out, reaps.
-  One real limit:
-  - `stdin is not None` → `NotImplementedError`.
-  Also: `RunResult.errors` is always `""` on k8s — the in-pod runner emits
-  stdout+stderr merged as `log` span events, so everything lands in `output` by
-  design (not a dropped field).
+- **`local`** — `SubstrateBackend(DockerSandboxRuntime + LocalConduit)`: Docker container on this
+  host, OS-level isolation (namespaces/cgroups). NOT egress-locked. Needs Docker + an image.
+  `stdin` raises `NotImplementedError`. `RunResult.errors` is always `""`.
+- **`k8s`** — `SubstrateBackend(K8sSandboxRuntime + store_from_env())`: **fully implemented**:
+  launches a real Kata pod via `drive_node`, stages the workspace in, fetches `output_paths`
+  back out, reaps. `stdin` raises `NotImplementedError`. `RunResult.errors` is always `""`.
 
 Dependencies are your program's concern — put `uv run`/`pip install` in your argv, or use a prebuilt image.
 
 ---
 
+## Add a new SandboxRuntime (primary extension path)
+
+This reuses the entire store-mediated wire (runner_main, ChunkShipper/ChunkReader, staging,
+telemetry) and only adds the new placement mechanism. Implement `SandboxRuntime` and wire it
+into `SubstrateBackend`.
+
+### Contract (`contracts.py`)
+
+```python
+class SandboxRuntime(ABC):
+    @abstractmethod
+    async def launch(self, spec: SandboxLaunchSpec) -> SandboxHandle: ...
+    @abstractmethod
+    async def status(self, handle: SandboxHandle) -> SandboxStatus: ...
+    @abstractmethod
+    async def destroy(self, handle: SandboxHandle) -> None: ...
+    @abstractmethod
+    async def sweep(self, labels: dict[str, str]) -> int: ...   # leak backstop
+    async def logs(self, handle, *, tail=200) -> str: ...        # forensic only; optional override
+```
+
+`SandboxLaunchSpec` (pydantic): `image`, `flavor`, `env`, `args`, `store_prefix`, `labels`, plus
+optional k8s fields (`scheduling_gates`, `deadline_seconds`, etc.). `SandboxHandle`: opaque
+identifier returned by `launch`, passed to `status`/`destroy`/`logs`. `SandboxStatus`: `phase`
+string (`"pending"` / `"running"` / `"succeeded"` / `"failed"` / `"unknown"`), optional `reason`.
+
+### Steps
+
+1. Implement the four abstract methods.
+2. Wire it into `SubstrateBackend`:
+   ```python
+   from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+   from resoluto_sandbox.conduit.factory import store_from_env
+
+   backend = SubstrateBackend(
+       runtime=MyRuntime(...),
+       conduit=store_from_env(),   # or inject a Conduit directly
+       image="my-image:tag",
+       store_env=store_env_for_pod(os.environ),  # or {"RESOLUTO_STORE_KIND": "localfs", ...}
+   )
+   Sandbox(backend=backend)
+   ```
+3. Keep heavy SDK imports LAZY — inside methods, never at module top.
+
+### The DockerBackend example (illustrative — not a new Backend)
+
+The REAL local backend is `SubstrateBackend(DockerSandboxRuntime + LocalConduit)` which uses the
+full store-mediated wire (runner_main, telemetry, staging). The simple Docker wrapper below is
+illustrative for understanding the seam, but lacks the telemetry wire — it won't produce
+`result.json` or span events:
+
+```python
+# resoluto_sandbox/backends/docker_simple.py  — ILLUSTRATIVE ONLY
+from __future__ import annotations
+
+import subprocess
+import sys
+from pathlib import Path
+from typing import IO, Sequence
+
+from resoluto_sandbox.backends.artifacts import _collect, read_result_json
+from resoluto_sandbox.backends.base import Backend, RunResult
+
+
+class SimpleDockerBackend(Backend):
+    """Runs argv in a container via direct docker run (no telemetry wire).
+    For production use, prefer SubstrateBackend(DockerSandboxRuntime + LocalConduit)."""
+
+    def __init__(self, *, image: str) -> None:
+        self._image = image
+
+    def run(
+        self,
+        argv: Sequence[str],
+        *,
+        workspace: str | None = None,
+        stdin: str | bytes | None = None,
+        env: dict[str, str] | None = None,
+        output_paths: Sequence[str] | None = None,
+        stream: IO[str] | None = None,
+    ) -> RunResult:
+        cwd = Path(workspace).resolve() if workspace else Path.cwd()
+        if not cwd.is_dir():
+            raise NotADirectoryError(f"workspace is not a directory: {cwd}")
+
+        docker_argv = ["docker", "run", "--rm", "-w", "/workspace",
+                       "-v", f"{cwd}:/workspace"]
+        for k, v in (env or {}).items():
+            docker_argv += ["-e", f"{k}={v}"]
+        docker_argv += [self._image, *argv]
+
+        sink = stream if stream is not None else sys.stdout
+        proc = subprocess.run(docker_argv, capture_output=True, text=True)
+        sink.write(proc.stdout); sink.flush()
+
+        return RunResult(
+            exit_code=proc.returncode,
+            output=proc.stdout,
+            errors=proc.stderr,
+            artifacts=_collect(cwd, output_paths),
+            result=read_result_json(cwd),
+        )
+```
+
+For ECS/Fly/Temporal that go through the store-mediated path, mirror `SubstrateBackend._run_async`
+→ `drive_node`: stage the workspace into a conduit prefix with `staging.put_dir`, launch via your
+`SandboxRuntime`, then `staging.fetch_outputs` + `_collect` + `read_result_json`. See
+`spec/PROTOCOL.md` for the JSONL self-report wire.
+
+---
+
 ## Add a new Backend
+
+For a completely new run approach that does NOT use the store-mediated wire, subclass `Backend` directly.
 
 ### Contract
 Subclass `resoluto_sandbox.backends.base.Backend` and implement the single
@@ -85,97 +194,18 @@ Subclass `resoluto_sandbox.backends.base.Backend` and implement the single
 ### Footguns
 - Honor `stream`: default to `sys.stdout` when `None`, never silently drop output.
 - `child_env = {**os.environ, **env}` — `env` OVERLAYS the host env, it does not
-  replace it (match `LocalBackend`).
+  replace it.
 - Validate `workspace` is a directory and fail loud (`NotADirectoryError`) — no
   silent fallback to cwd if the caller passed a bad path.
 - Keep heavy/substrate deps LAZY — import the cloud SDK / k8s driver INSIDE
-  `run`/a helper, never at module top. `K8sBackend` imports `drive_node`,
-  `K8sSandboxRuntime`, `store_from_env`, staging helpers all inside
-  `_run_async` for exactly this reason. The local path must import nothing heavy.
-
-### Worked minimal Backend (Docker)
-
-```python
-# resoluto_sandbox/backends/docker.py
-from __future__ import annotations
-
-import subprocess
-import sys
-from pathlib import Path
-from typing import IO, Sequence
-
-from resoluto_sandbox.backends.artifacts import _collect, read_result_json
-from resoluto_sandbox.backends.base import Backend, RunResult
-
-
-class DockerBackend(Backend):
-    """Runs argv in a container. Mounts `workspace` at /workspace (rw) so collected
-    outputs land back on the host, matching the local/k8s backends."""
-
-    def __init__(self, *, image: str) -> None:
-        self._image = image
-
-    def run(
-        self,
-        argv: Sequence[str],
-        *,
-        workspace: str | None = None,
-        stdin: str | bytes | None = None,
-        env: dict[str, str] | None = None,
-        output_paths: Sequence[str] | None = None,
-        stream: IO[str] | None = None,
-    ) -> RunResult:
-        cwd = Path(workspace).resolve() if workspace else Path.cwd()
-        if not cwd.is_dir():
-            raise NotADirectoryError(f"workspace is not a directory: {cwd}")
-
-        docker_argv = ["docker", "run", "--rm", "-w", "/workspace",
-                       "-v", f"{cwd}:/workspace"]
-        for k, v in (env or {}).items():
-            docker_argv += ["-e", f"{k}={v}"]
-        if stdin is not None:
-            docker_argv.append("-i")
-        docker_argv += [self._image, *argv]
-
-        sink = stream if stream is not None else sys.stdout
-        proc = subprocess.run(
-            docker_argv,
-            input=stdin.decode() if isinstance(stdin, bytes) else stdin,
-            capture_output=True, text=True,
-        )
-        sink.write(proc.stdout); sink.flush()
-
-        return RunResult(
-            exit_code=proc.returncode,
-            output=proc.stdout,
-            errors=proc.stderr,
-            artifacts=_collect(cwd, output_paths),
-            result=read_result_json(cwd),
-        )
-```
-
-Use it:
-
-```python
-res = Sandbox(backend=DockerBackend(image="python:3.12-slim")).run(
-    ["python", "solve.py"], workspace="/abs/workspace", output_paths=["out/*.json"],
-)
-assert res.ok
-```
-
-For an ECS/Fly/Temporal backend that goes through the store-mediated path,
-mirror `K8sBackend.run` → `drive_node`: stage the workspace into a conduit
-prefix with `staging.put_dir`, launch via your `SandboxRuntime`, then
-`staging.fetch_outputs` + `_collect` + `read_result_json`. See `spec/PROTOCOL.md`
-for the JSONL self-report wire.
+  `run`/a helper, never at module top. Keep the local path import-light.
 
 ---
 
 ## Add a new Conduit
 
-A Conduit is the durable rendezvous the k8s/store-mediated path reads and writes
-(telemetry chunks, staged inputs, fetched outputs, resume copies). The local
-backend does NOT use one. Conduit is in `contracts.py`.
+A Conduit is the durable rendezvous the store-mediated path reads and writes
+(telemetry chunks, staged inputs, fetched outputs, resume copies). Conduit is in `contracts.py`.
 
 ### Status of shipped conduits
 - **`LocalConduit`** (`conduit/local.py`) — localfs, atomic writes. **Proven**
@@ -217,14 +247,12 @@ fs root is the store root; keys are full keys (no per-call root prefix).
 3. Keep the cloud SDK import LAZY — inside `__init__`/methods, never at module
    top — so importing `resoluto_sandbox` never pulls boto3/google-cloud.
 4. Register a `kind` in `conduit/factory.py::store_from_env`, reading your config
-   from `RESOLUTO_STORE_*` env vars. The factory is BOTH the host-side and in-pod
-   entry point — the pod builds the same conduit from env, so config must travel
+   from `RESOLUTO_STORE_*` env vars. The factory is BOTH the host-side and in-sandbox
+   entry point — the sandbox builds the same conduit from env, so config must travel
    as env. The k8s backend forwards `RESOLUTO_STORE_*` (and the prefix-scoped
    `RESOLUTO_STORE_WRITE_TOKEN`) into the pod.
 5. Inject it directly when you want to bypass env:
-   `Sandbox(backend=K8sBackend(image=..., conduit=YourConduit(...)))`. When
-   `conduit` is `None`, `K8sBackend` calls `store_from_env()` (requires
-   `RESOLUTO_STORE_KIND` set).
+   `Sandbox(backend=SubstrateBackend(..., conduit=YourConduit(...)))`.
 
 ### Footguns
 - Atomicity: a listed object MUST be fully durable. `LocalConduit` writes to a
@@ -284,22 +312,30 @@ Register the kind (`conduit/factory.py::store_from_env`):
 ```
 
 Then `RESOLUTO_STORE_KIND=redis RESOLUTO_STORE_URL=redis://...` selects it for
-both host and pod, or inject directly:
-`Sandbox(backend=K8sBackend(image=..., conduit=RedisConduit("redis://...")))`.
+both host and sandbox, or inject directly:
+`Sandbox(backend=SubstrateBackend(..., conduit=RedisConduit("redis://...")))`.
 
 ---
 
 ## k8s backend config knobs (reference)
 
 ```python
-from resoluto_sandbox.backends.k8s import K8sBackend
-from resoluto_sandbox.runtime.k8s import EgressConfig   # default-deny egress policy
+import os
+from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto_sandbox.conduit.factory import store_from_env
+from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
 
-K8sBackend(
-    image="registry/lane:tag",   # REQUIRED — bare "k8s" string has none
-    conduit=None,                # None → store_from_env() (needs RESOLUTO_STORE_KIND)
+runtime = K8sSandboxRuntime(
+    namespace="resoluto-sandboxes",
+    context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
     egress=None,                 # None → unrestricted egress (Kata kernel isolation only)
                                  # EgressConfig(...) → default-deny, allow declared CIDRs on TCP/443 + kube-dns
+)
+backend = SubstrateBackend(
+    runtime=runtime,
+    conduit=store_from_env(),    # needs RESOLUTO_STORE_KIND
+    image="registry/lane:tag",   # REQUIRED
+    store_env=store_env_for_pod(os.environ),
 )
 ```
 

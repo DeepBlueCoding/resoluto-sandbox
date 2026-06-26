@@ -2,12 +2,15 @@
 
 ---
 
-## Local backend — no network isolation
+## Local backend — OS-level isolation, no egress policy
 
-The local backend runs the program as a host subprocess on the host network with full host
-connectivity. It inherits the host's network interfaces, DNS, and firewall rules. There is no
-network policy to configure and no isolation from the host network — the local backend is a
-development and integration convenience, not a security boundary. Use it only with trusted code.
+The local backend runs the program in a Docker container on this host. Docker provides OS-level
+isolation (separate PID/mount/network namespaces, cgroups), but there is **no egress
+NetworkPolicy** restricting which hosts the workload can reach. The egress canary is skipped
+(`RESOLUTO_TRUSTED_LOCAL=1` is set by the local preset).
+
+Use `backend="local"` for trusted code or development. For locked-down egress or hardware
+isolation, use `backend="k8s"`.
 
 ---
 
@@ -15,27 +18,40 @@ development and integration convenience, not a security boundary. Use it only wi
 
 ### Default: unrestricted egress
 
-By default (`egress=None`) a lane pod launched by `K8sBackend` has **unrestricted egress**. The
-pod runs inside a Kata microVM which provides strong kernel isolation (separate OS kernel, no
-host process namespace), but there is **no NetworkPolicy** restricting which hosts the workload
-can reach. If you run untrusted code, pass an `EgressConfig`.
+By default (`egress=None`) a lane pod launched via `SubstrateBackend` + `K8sSandboxRuntime` has
+**unrestricted egress**. The pod runs inside a Kata microVM which provides strong kernel isolation
+(separate OS kernel, no host process namespace), but there is **no NetworkPolicy** restricting
+which hosts the workload can reach. If you run untrusted code, pass an `EgressConfig`.
 
 ### Locking down egress with EgressConfig
 
-`EgressConfig` holds the CIDRs your workload legitimately needs to reach. Pass it to `K8sBackend`
-and it applies a default-deny egress NetworkPolicy to the lane pod before any workload runs:
+`EgressConfig` holds the CIDRs your workload legitimately needs to reach. Pass it to
+`K8sSandboxRuntime` and it applies a default-deny egress NetworkPolicy to the lane pod before
+any workload runs:
 
 ```python
+import os
 from resoluto_sandbox import Sandbox
-from resoluto_sandbox.backends.k8s import K8sBackend
-from resoluto_sandbox.runtime.k8s import EgressConfig
+from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto_sandbox.conduit.factory import store_from_env
+from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
 
 egress = EgressConfig(
     store_cidr="192.168.1.197/32",        # your object store (minio / S3-compatible)
     llm_cidr="160.79.104.0/23",           # e.g. api.anthropic.com — resolve FQDN to CIDR yourself
     git_cidrs=["140.82.112.0/20"],        # optional: git hosts (empty list = no git egress)
 )
-sb = Sandbox(backend=K8sBackend(image="<registry>/resoluto-lane:dev", egress=egress))
+runtime = K8sSandboxRuntime(
+    namespace="resoluto-sandboxes",
+    context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
+    egress=egress,
+)
+sb = Sandbox(backend=SubstrateBackend(
+    runtime=runtime,
+    conduit=store_from_env(),
+    image="<registry>/resoluto-lane:dev",
+    store_env=store_env_for_pod(os.environ),
+))
 ```
 
 `EgressConfig` is imported from `resoluto_sandbox.runtime.k8s`. Do not add it to the top-level
@@ -102,8 +118,8 @@ covers the pass/fail logic.
 
 | Knob | Local backend | k8s backend |
 |---|---|---|
-| Egress allowlist (CIDRs) | not applicable — host network | `EgressConfig(store_cidr, llm_cidr, git_cidrs)` |
+| Egress allowlist (CIDRs) | not applicable — Docker (OS-level isolation, not egress-locked) | `EgressConfig(store_cidr, llm_cidr, git_cidrs)` passed to `K8sSandboxRuntime` |
 | IMDS block | not applicable | always on when `EgressConfig` is passed |
-| Egress canary | not applicable | on by default; skip with `RESOLUTO_TRUSTED_LOCAL=1` |
+| Egress canary | skipped (`RESOLUTO_TRUSTED_LOCAL=1` set by local preset) | on by default; skip with `RESOLUTO_TRUSTED_LOCAL=1` |
 | Runtime class | not applicable | `kata` (pinned; non-Kata requires `RESOLUTO_TRUSTED_LOCAL`) |
 | Kubecontext | not applicable | `RESOLUTO_SANDBOX_KUBECONTEXT` (fails closed if unset) |
