@@ -23,7 +23,7 @@ import tempfile
 from typing import IO, Sequence
 
 from resoluto_sandbox.backends.base import Backend, RunResult
-from resoluto_sandbox.backends.substrate import SubstrateBackend, _store_env_for_pod
+from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
 
 # A local image containing python + the resoluto-sandbox wheel + your program's deps.
 DEFAULT_LOCAL_IMAGE = "resoluto-sandbox-runner:dev"
@@ -67,7 +67,7 @@ def _build_k8s_backend(image: str | None) -> SubstrateBackend:
         context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT") or None,
         image_pull_policy=os.environ.get("RESOLUTO_LANE_IMAGE_PULL_POLICY", "IfNotPresent"),
     )
-    store_env = _store_env_for_pod(os.environ)
+    store_env = store_env_for_pod(os.environ)
     return SubstrateBackend(runtime=runtime, conduit=conduit, image=image, store_env=store_env)
 
 

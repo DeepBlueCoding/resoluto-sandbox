@@ -145,7 +145,7 @@ class SubstrateBackend(Backend):
         )
 
 
-def _store_env_for_pod(environ: "os._Environ[str] | dict[str, str]") -> dict[str, str]:
+def store_env_for_pod(environ: "os._Environ[str] | dict[str, str]") -> dict[str, str]:
     """Select the store env the untrusted k8s pod is allowed to inherit.
 
     Forwards RESOLUTO_STORE_* and RESOLUTO_TRUSTED_LOCAL. Host AWS_* creds are

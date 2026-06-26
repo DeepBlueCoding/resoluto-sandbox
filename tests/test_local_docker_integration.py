@@ -23,7 +23,6 @@ def test_local_docker_roundtrips(tmp_path):
         ["bash", "-lc", "echo hi > out.txt && echo done"],
         workspace=str(tmp_path),
         output_paths=["out.txt"],
-        env={"RESOLUTO_TRUSTED_LOCAL": "1"},
     )
     assert out.exit_code == 0, out
     assert "done" in out.output, out

@@ -1,8 +1,8 @@
 # Backends
 
 `Sandbox` delegates every run to a pluggable `Backend`. This page covers the two
-built-in backends, how to install the k8s stack on any Kubernetes distribution, and
-how to wire in a custom backend.
+presets, how to install the k8s stack on any Kubernetes distribution, and how to
+wire in a custom backend.
 
 ---
 
@@ -10,57 +10,43 @@ how to wire in a custom backend.
 
 | backend | isolation | where it runs | needs | use for |
 |---------|-----------|---------------|-------|---------|
-| `local` | none (host subprocess) | your host | nothing | dev, trusted code, fast iteration |
-| `k8s` | hardware (Kata microVM) per run | a Kubernetes cluster | k8s + Kata + S3 store + provider image | untrusted/adversarial code, production |
+| `local` | OS-level (Docker namespaces/cgroups) | your machine | Docker + an image | dev and most workloads, no cluster |
+| `k8s` | hardware (Kata microVM) + egress policy | a Kubernetes cluster | k8s + Kata + S3 store + image | untrusted code at scale, locked-down egress, production |
 
 ---
 
-## Architecture diagram
+## Architecture diagrams
 
 ```mermaid
 flowchart TD
-    P["Your program<br/>plain: argv/stdin in, stdout/files/exit out<br/>never imports resoluto_sandbox"]
-    S["Sandbox(backend=...)<br/>thin facade: composes and delegates<br/>.run(argv, ...) returns RunResult"]
-    B{"Backend (ABC)<br/>the extension seam"}
-    L["LocalBackend<br/>subprocess on this host"]
-    K["K8sBackend<br/>composes a SandboxRuntime + a Conduit"]
-    RT["SandboxRuntime (ABC)<br/>K8sSandboxRuntime: one Kata microVM pod per run"]
-    CD["Conduit (ABC)<br/>host/sandbox exchange<br/>Stdout / Local / S3 / Gcs(experimental)"]
-    P -->|run| S
-    S --> B
-    B --> L
-    B --> K
-    K --> RT
-    K --> CD
+    P["Your program — plain: argv/stdin in, stdout/files/exit out; never imports resoluto_sandbox"]
+    S["Sandbox(backend='local' | 'k8s' | injected Backend)<br/>thin facade"]
+    SB["SubstrateBackend<br/>one impl: drive_node + Conduit + runner_main"]
+    RT{"SandboxRuntime (ABC)<br/>the isolation / placement seam"}
+    D["DockerSandboxRuntime<br/>docker run — OS-level isolation, your machine"]
+    K["K8sSandboxRuntime<br/>Kata microVM pod — hardware isolation + egress, a cluster"]
+    CD["Conduit (ABC) — host/sandbox exchange<br/>LocalConduit (bind mount) or S3Conduit (cluster)"]
+    P --> S --> SB
+    SB --> RT
+    RT --> D
+    RT --> K
+    SB --> CD
 ```
 
-**Local run** (subprocess; output teed live + captured):
-
-```mermaid
-flowchart LR
-    A["Sandbox(backend='local').run(argv)"] --> LB[LocalBackend]
-    LB --> SP["subprocess(argv,<br/>cwd=workspace, env=host+overlay)"]
-    SP -->|"stdout / stderr"| TEE["tee: live to stream<br/>+ capture to buffers"]
-    SP -->|"exit code + glob(output_paths)"| RR
-    TEE --> RR["RunResult(output, errors,<br/>exit_code, artifacts, result)"]
-```
-
-**k8s run** (connectionless host⇄pod loop through the Conduit):
+**Run flow** (one flow for both backends; runtime + conduit differ):
 
 ```mermaid
 sequenceDiagram
     participant H as Host (your process)
-    participant C as Conduit (S3 / minio)
-    participant P as Kata pod (k8s)
-    H->>C: put_dir(workspace) - inbox/*.tar.gz
-    H->>P: drive_node - launch pod
-    C->>P: stage inputs into /workspace
-    P->>P: run argv (RESOLUTO_WORKLOAD_ARGV)
-    P->>C: ship spans + heartbeat - events-*.jsonl
-    C-->>H: tail ChunkReader (silence watchdog, no wall-clock timeout)
-    P->>C: write result.json + outbox/*.tar.gz
-    C-->>H: read result.json + fetch_outputs
-    Note over H: reap pod, RunResult(output from chunks, exit_code, artifacts)
+    participant C as Conduit (LocalConduit bind-mount, or S3)
+    participant W as Sandbox (Docker container, or Kata pod)
+    H->>C: put_dir(workspace) - inbox
+    H->>W: SandboxRuntime.launch (docker run / k8s pod)
+    C->>W: runner_main stages inputs into /workspace
+    W->>W: run your argv
+    W->>C: ship spans + heartbeat + result.json + outbox
+    C-->>H: tail ChunkReader (silence watchdog, no wall-clock timeout) + fetch_outputs
+    H->>H: destroy sandbox, RunResult(output, exit_code, artifacts)
 ```
 
 ---
@@ -69,36 +55,50 @@ sequenceDiagram
 
 ### How it runs
 
-`LocalBackend` launches the program as a direct subprocess on the calling host:
+`backend="local"` runs the program in a Docker container on this host via `DockerSandboxRuntime`.
+The host and container share a `LocalConduit` over a bind-mounted directory (`/conduit`). No
+cluster, no S3 — everything stays on your machine:
 
 ```
 Sandbox(backend="local").run(argv, workspace, output_paths)
-   └─ LocalBackend
-        subprocess(argv, cwd=workspace, env=host+overlay)
-          ├─ stdout ─┐ live → stream (default: your stdout)
-          ├─ stderr ─┘ captured
-          └─ exit code + glob(output_paths)
-   → RunResult(output, errors, exit_code, artifacts)     # no pods, no store
+   └─ SubstrateBackend (DockerSandboxRuntime + LocalConduit)
+        docker run --rm -v <conduit>:/conduit <image>
+          runner_main stages workspace → /workspace
+          runs argv
+          ships spans + heartbeat to /conduit
+          writes result.json + outbox to /conduit
+   → RunResult(output, exit_code, artifacts)     # no k8s, no S3
 ```
 
-The host environment is inherited; the `env` overlay is additive. An agent CLI that is
-already authenticated on the host needs no extra wiring.
+The egress canary is skipped (`RESOLUTO_TRUSTED_LOCAL=1` is set by the local preset), so local
+is NOT egress-locked. Docker provides OS-level isolation (separate PID/mount/network namespaces,
+cgroups), but NOT egress NetworkPolicy isolation — use `backend="k8s"` for locked-down egress
+or hardware isolation.
+
+### What you need
+
+- Docker running on this machine.
+- An image that contains python + the resoluto-sandbox wheel + your program's deps. Default:
+  `resoluto-sandbox-runner:dev`. Override with `Sandbox(backend="local", image="your-image:tag")`.
 
 ### When to use
 
-- Development and iteration (no infra needed).
-- Trusted code that has already been vetted.
+- Development and iteration (no cluster needed).
+- Trusted code where namespace isolation is sufficient.
 - Testing your program logic before graduating to k8s.
 
-> **NOT an isolation boundary.** `backend="local"` gives the program full access to
-> the host filesystem, network, and credentials. Do not use it for untrusted or
-> adversarial code. Use `backend="k8s"` for any code you do not fully control.
+> **Local gives OS-level isolation (Docker namespaces/cgroups), NOT egress-policy isolation.**
+> The egress canary is disabled. For locked-down egress or hardware isolation use `backend="k8s"`.
 
 ### `RunResult` on local
 
-`output` and `errors` are captured separately (stdout and stderr). Both are populated
-identically to the k8s backend — the conduit is a transport detail; the result shape
-is uniform across backends.
+The in-sandbox runner merges stdout and stderr as `log` span events, so `RunResult.output` carries
+the merged stream and `RunResult.errors` is always `""`. This is intentional, not a dropped field.
+
+### `stdin` on local
+
+`stdin` is NOT supported — `NotImplementedError` if you pass `stdin=`. Pass inputs via argv, env,
+or workspace files.
 
 ---
 
@@ -129,20 +129,35 @@ as long as it keeps emitting.
 
 ### Usage
 
-The image is not a `Sandbox` concern — inject a configured `K8sBackend`:
+The image is not a `Sandbox` concern — inject a configured `SubstrateBackend`:
 
 ```python
+import os
 from resoluto_sandbox import Sandbox
-from resoluto_sandbox.backends.k8s import K8sBackend
+from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto_sandbox.conduit.factory import store_from_env
+from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
 
-sb = Sandbox(backend=K8sBackend(image="<registry>/resoluto-lane:dev"))
+runtime = K8sSandboxRuntime(
+    namespace=os.environ.get("RESOLUTO_SANDBOX_NAMESPACE", "resoluto-sandboxes"),
+    context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
+)
+sb = Sandbox(backend=SubstrateBackend(
+    runtime=runtime,
+    conduit=store_from_env(),
+    image="<registry>/resoluto-lane:dev",
+    store_env=store_env_for_pod(os.environ),
+))
 result = sb.run(["bash", "-lc", "echo hi"], workspace="./proj", output_paths=["*.txt"])
 print(result.output)   # "hi"
 print(result.ok)       # True
 ```
 
-`Sandbox(backend="k8s")` without an injected backend raises `ValueError` at `run()` —
-always use the injected form.
+Or use the convenience preset (reads `RESOLUTO_LANE_IMAGE` and `RESOLUTO_STORE_KIND` from env):
+
+```python
+Sandbox(backend="k8s", image="<registry>/resoluto-lane:dev").run(...)
+```
 
 ### `RunResult` on k8s
 
@@ -168,16 +183,26 @@ By default, Kata provides kernel isolation but places no restriction on network 
 For untrusted code, add `EgressConfig` to apply a default-deny `NetworkPolicy`:
 
 ```python
-from resoluto_sandbox.backends.k8s import K8sBackend
-from resoluto_sandbox.runtime.k8s import EgressConfig
+import os
+from resoluto_sandbox import Sandbox
+from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto_sandbox.conduit.factory import store_from_env
+from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
 
-sb = Sandbox(backend=K8sBackend(
-    image="<registry>/resoluto-lane:dev",
+runtime = K8sSandboxRuntime(
+    namespace="resoluto-sandboxes",
+    context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
     egress=EgressConfig(
         store_cidr="10.0.0.5/32",      # your S3/minio endpoint — CIDR notation only
         llm_cidr="1.2.3.4/32",         # your LLM provider endpoint
         git_cidrs=["140.82.112.0/20"], # optional; [] = no git egress
     ),
+)
+sb = Sandbox(backend=SubstrateBackend(
+    runtime=runtime,
+    conduit=store_from_env(),
+    image="<registry>/resoluto-lane:dev",
+    store_env=store_env_for_pod(os.environ),
 ))
 ```
 
@@ -325,11 +350,22 @@ Replace all `<placeholders>` with your real values. Do not commit secrets.
 ### 7. Smoke test
 
 ```python
-from resoluto_sandbox import Sandbox
-from resoluto_sandbox.backends.k8s import K8sBackend
 import os
+from resoluto_sandbox import Sandbox
+from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto_sandbox.conduit.factory import store_from_env
+from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
 
-sb = Sandbox(backend=K8sBackend(image=os.environ["RESOLUTO_LANE_IMAGE"]))
+runtime = K8sSandboxRuntime(
+    namespace="resoluto-sandboxes",
+    context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
+)
+sb = Sandbox(backend=SubstrateBackend(
+    runtime=runtime,
+    conduit=store_from_env(),
+    image=os.environ["RESOLUTO_LANE_IMAGE"],
+    store_env=store_env_for_pod(os.environ),
+))
 result = sb.run(["bash", "-lc", "echo hi from kata"])
 print(result.output)   # "hi from kata"
 assert result.ok
@@ -343,7 +379,23 @@ right cluster.
 
 ## Adding another backend
 
-Implement the `Backend` ABC (one method: `run(...) -> RunResult`) and inject it:
+To add a new isolation target, implement `SandboxRuntime` (the isolation/placement seam)
+and wire it into `SubstrateBackend`:
+
+```python
+from resoluto_sandbox.backends.substrate import SubstrateBackend
+from resoluto_sandbox.conduit import LocalConduit
+
+sb = Sandbox(backend=SubstrateBackend(
+    runtime=MyRuntime(...),
+    conduit=LocalConduit("/tmp/conduit"),
+    image="my-image:tag",
+    store_env={"RESOLUTO_STORE_KIND": "localfs", "RESOLUTO_STORE_ROOT": "/conduit"},
+))
+```
+
+For a completely new run approach (not store-mediated), implement the `Backend` ABC
+(one method: `run(...) -> RunResult`) and inject it:
 
 ```python
 from resoluto_sandbox.backends.base import Backend, RunResult
@@ -356,8 +408,6 @@ class MyBackend(Backend):
 Sandbox(backend=MyBackend(...)).run(argv, ...)
 ```
 
-No facade changes are needed — `Sandbox` holds any `Backend` instance. Reuse an
-existing `Conduit` for the host↔sandbox exchange to avoid reinventing the transport.
-
-For a full guide including `Conduit` and `SandboxRuntime` extension points, see
+No facade changes are needed — `Sandbox` holds any `Backend` instance. For a full guide
+including `Conduit` and `SandboxRuntime` extension points, see
 [`../.claude/skills/resoluto-sandbox-dev/references/extending.md`](../.claude/skills/resoluto-sandbox-dev/references/extending.md).
