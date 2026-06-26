@@ -96,7 +96,7 @@ async def drive_node_raw(
     dead_after_s: float = 120.0,
     unstartable_polls: int = 15,
     external_gone_polls: int = 15,
-    clock: Callable[[], float] = time.time,
+    clock: Callable[[], float] = time.monotonic,
 ) -> NodeOutcome:
     """The ONE launch → tail → reap loop with the hardened liveness contract. Returns the
     substrate `NodeOutcome`; the caller reads its own work product. `result_ready` (optional)
@@ -165,7 +165,7 @@ async def drive_node(
     on_event: OnEvent | None = None,
     poll_interval_s: float = 2.0,
     dead_after_s: float = 120.0,
-    clock: Callable[[], float] = time.time,
+    clock: Callable[[], float] = time.monotonic,
 ) -> NodeResult:
     """Drive one node and read its work product as a `NodeResult` (the generic contract).
     The launch/tail/reap loop is `drive_node_raw`; this wraps it with `result.json`→NodeResult

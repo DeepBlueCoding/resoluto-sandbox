@@ -137,7 +137,7 @@ class ChunkReader:
         prefix: str,
         *,
         dead_after_s: float = 120.0,
-        clock: Callable[[], float] = time.time,
+        clock: Callable[[], float] = time.monotonic,  # monotonic: a host suspend must not count as silence
         progress_filter: Callable[[str], bool] | None = None,
     ) -> None:
         self._store = store
