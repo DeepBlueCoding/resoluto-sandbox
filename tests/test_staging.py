@@ -36,6 +36,30 @@ async def test_put_then_stage_round_trips_a_worktree_including_dotgit(store, tmp
     assert (ws / ".git" / "HEAD").read_text() == "ref: refs/heads/main\n"  # history rode along
 
 
+async def test_excluded_dir_is_dropped_but_protected_path_survives(store, tmp_path):
+    # `.claude` is an excluded name, but a repo can TRACK files under it. `protect` must
+    # override the exclude for those paths (and their ancestor dirs) so they aren't dropped
+    # — a dropped tracked file becomes a phantom deletion downstream.
+    src = tmp_path / "src"
+    (src / ".claude" / "skills").mkdir(parents=True)
+    (src / ".claude" / "skills" / "kept.md").write_text("TRACKED\n")
+    (src / ".claude" / "settings.local.json").write_text("untracked junk")
+    (src / "node_modules").mkdir()
+    (src / "node_modules" / "dep.js").write_text("bloat")
+    (src / "README.md").write_text("ORIGINAL\n")
+
+    protect = frozenset({".claude", ".claude/skills", ".claude/skills/kept.md"})
+    await put_dir(store, "run/r1/nodes/n", str(src), protect=protect)
+
+    ws = tmp_path / "ws"
+    await stage_inputs(store, "run/r1/nodes/n", str(ws))
+
+    assert (ws / ".claude" / "skills" / "kept.md").read_text() == "TRACKED\n"  # protected → survives
+    assert not (ws / ".claude" / "settings.local.json").exists()  # unprotected under .claude → dropped
+    assert not (ws / "node_modules").exists()  # ordinary exclude still applies
+    assert (ws / "README.md").read_text() == "ORIGINAL\n"
+
+
 async def test_collect_then_fetch_round_trips_declared_outputs(store, tmp_path):
     ws = tmp_path / "ws"
     ws.mkdir()

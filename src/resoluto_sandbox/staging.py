@@ -36,9 +36,22 @@ _DEFAULT_EXCLUDES = frozenset({
 })
 
 
-def _archive(root: Path, paths: list[str] | None, exclude: frozenset[str] = frozenset()) -> bytes:
+def _archive(
+    root: Path,
+    paths: list[str] | None,
+    exclude: frozenset[str] = frozenset(),
+    protect: frozenset[str] = frozenset(),
+) -> bytes:
+    """`protect` is a set of POSIX paths (relative to `root`, ancestor dirs included)
+    that must survive the `exclude` filter — e.g. git-tracked files under an otherwise
+    excluded dir. Dropping a tracked file would make a downstream commit record it as a
+    deletion, so a protected path is never excluded (absolute symlinks are still dropped
+    since they cannot be safely re-extracted)."""
+    def _norm(name: str) -> str:
+        return name[2:] if name.startswith("./") else name
+
     def _filter(ti: tarfile.TarInfo) -> tarfile.TarInfo | None:
-        if exclude and exclude.intersection(Path(ti.name).parts):
+        if not (_norm(ti.name) in protect) and exclude and exclude.intersection(Path(ti.name).parts):
             return None
         # An absolute symlink can never be safely re-extracted (AbsoluteLinkError),
         # so dropping it at archive time is the only non-crashing option.
@@ -65,13 +78,16 @@ def _extract(data: bytes, dest: Path) -> None:
 async def put_dir(
     store: Conduit, prefix: str, local_dir: str, *,
     name: str = "workspace", exclude: frozenset[str] = _DEFAULT_EXCLUDES,
+    protect: frozenset[str] = frozenset(),
 ) -> str:
     """HOST side: tar a local worktree and PUT it as the sandbox's input. Returns
     the object key. Inputs: store, the lane prefix, the worktree path. Dependency/
     build/cache trees (`exclude`) are dropped — they bloat the archive and carry
-    absolute symlinks that break safe extraction."""
+    absolute symlinks that break safe extraction. `protect` (POSIX paths relative to
+    `local_dir`, ancestor dirs included) overrides `exclude` so a tracked file under an
+    excluded dir is never dropped — the caller (which owns git) supplies the tracked set."""
     key = f"{prefix.rstrip('/')}/{INBOX}/{name}.tar.gz"
-    await store.put(key, _archive(Path(local_dir), None, exclude))
+    await store.put(key, _archive(Path(local_dir), None, exclude, protect))
     return key
 
 
