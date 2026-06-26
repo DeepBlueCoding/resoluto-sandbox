@@ -56,5 +56,5 @@ Proven conduits: `local`/`stdout` (local backend) and `s3` against minio (k8s). 
 - `references/architecture.md` — load this when you need the layer map (Backend vs Conduit vs SandboxRuntime/Admission seams) and the store-mediated comms model.
 - `references/extending.md` — load this when adding a new Backend, Conduit, or runtime, or wiring a new `RESOLUTO_STORE_KIND`.
 - `references/internals.md` — load this when working inside `drive_node`, `runner`/`runner_main`, `telemetry` (ChunkShipper/ChunkReader), `staging`, or the k8s runtime.
-- `references/testing-and-contributing.md` — load this when running/writing tests (unit vs `@integration` on k3s+Kata) or preparing a contribution.
+- `references/testing-and-contributing.md` — load this when running/writing tests (unit vs `@integration` on a Kubernetes+Kata cluster) or preparing a contribution.
 - `spec/PROTOCOL.md` — load this when changing the host↔sandbox wire (JSONL chunks, result.json, gzip-tar archives) or implementing a non-Python client.

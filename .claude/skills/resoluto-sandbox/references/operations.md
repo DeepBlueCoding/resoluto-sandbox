@@ -9,6 +9,41 @@ Substrate images are `Dockerfile.base` + `images/{claude,langchain,openai}.Docke
 
 ---
 
+## Backends
+
+```
+your program  (plain: reads argv/stdin -> writes stdout/files/exit; never imports resoluto_sandbox)
+      |  argv / workspace                         ^  output / errors / artifacts
+      v                                           |
+┌─────────────────────────────────────────────────────────────┐
+│ Sandbox(backend=...)            thin facade: composes + delegates
+│   .run(argv, ...) -> RunResult(exit_code, output, errors, …)  │
+├─────────────────────────────────────────────────────────────┤
+│ Backend  (ABC)      ← the extension seam: implement to add a substrate
+│    ├── LocalBackend  → subprocess on this host
+│    └── K8sBackend    → composes a SandboxRuntime + a Conduit
+├──────────────────────────────┬──────────────────────────────┤
+│ SandboxRuntime (ABC)         │  Conduit (ABC)  host<->sandbox exchange
+│   K8sSandboxRuntime          │    StdoutConduit | LocalConduit
+│   (Kata microVM pod on k8s)  │    S3Conduit | GcsConduit(exp.)
+└──────────────────────────────┴──────────────────────────────┘
+```
+
+| backend | isolation | where it runs | needs | use for |
+|---------|-----------|---------------|-------|---------|
+| `local` | none (host subprocess) | your host | nothing | dev, trusted code, fast iteration |
+| `k8s` | hardware (Kata microVM) per run | a Kubernetes cluster | k8s + Kata + S3 store + image | untrusted/adversarial code, production |
+
+`RunResult.output` and `RunResult.errors` are populated in the same fields by both backends — the
+Conduit is transport; the result shape is uniform regardless of which store carries the bytes.
+
+For the full backends guide (local detail, k8s detail, vendor-neutral k8s install guide for any
+Kubernetes distribution): [`../../../../docs/backends.md`](../../../../docs/backends.md).
+
+---
+
+---
+
 ## 1. Public API (use this, not the CLI internals)
 
 ```python
@@ -224,7 +259,7 @@ in-cluster config it REFUSES to launch (could target the wrong/production cluste
 
 ---
 
-## 6. Env knobs the k8s path reads (from store.env / the host env)
+## 6. Env knobs the k8s path reads
 
 Store wiring (consumed by `store_from_env`, forwarded to the pod via `_store_env_for_pod`,
 which forwards `RESOLUTO_STORE_*` and `RESOLUTO_TRUSTED_LOCAL`):

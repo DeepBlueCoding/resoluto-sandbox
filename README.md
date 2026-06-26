@@ -63,6 +63,40 @@ Claude Max/Pro subscription auth path (no API key needed).
 
 ---
 
+## Architecture
+
+```
+your program  (plain: reads argv/stdin -> writes stdout/files/exit; never imports resoluto_sandbox)
+      |  argv / workspace                         ^  output / errors / artifacts
+      v                                           |
+┌─────────────────────────────────────────────────────────────┐
+│ Sandbox(backend=...)            thin facade: composes + delegates
+│   .run(argv, ...) -> RunResult(exit_code, output, errors, …)  │
+├─────────────────────────────────────────────────────────────┤
+│ Backend  (ABC)      ← the extension seam: implement to add a substrate
+│    ├── LocalBackend  → subprocess on this host
+│    └── K8sBackend    → composes a SandboxRuntime + a Conduit
+├──────────────────────────────┬──────────────────────────────┤
+│ SandboxRuntime (ABC)         │  Conduit (ABC)  host<->sandbox exchange
+│   K8sSandboxRuntime          │    StdoutConduit | LocalConduit
+│   (Kata microVM pod on k8s)  │    S3Conduit | GcsConduit(exp.)
+└──────────────────────────────┴──────────────────────────────┘
+```
+
+---
+
+## Backends
+
+| backend | isolation | where it runs | needs | use for |
+|---------|-----------|---------------|-------|---------|
+| `local` | none (host subprocess) | your host | nothing | dev, trusted code, fast iteration |
+| `k8s` | hardware (Kata microVM) per run | a Kubernetes cluster | k8s + Kata + S3 store + provider image | untrusted/adversarial code, production |
+
+For the full guide including the vendor-neutral k8s stack install (works on k3s, kind, EKS, GKE,
+AKS, and any Kubernetes distribution), see [`docs/backends.md`](docs/backends.md).
+
+---
+
 ## Dependencies
 
 Dependencies are your program's concern — put `uv run`/`pip install` in your argv, or use a prebuilt image.
@@ -71,9 +105,10 @@ Dependencies are your program's concern — put `uv run`/`pip install` in your a
 
 ## k8s backend
 
-Requires a live k3s+Kata cluster, `RESOLUTO_STORE_KIND` (plus the matching store env vars) set in
-the environment, and `RESOLUTO_SANDBOX_KUBECONTEXT` pinned (the backend fails closed if this is
-unset). The image is a backend concern — inject a configured `K8sBackend`:
+Requires a Kubernetes cluster (k3s, kind, EKS, or any distribution) with Kata Containers,
+`RESOLUTO_STORE_KIND` (plus the matching store env vars) set in the environment, and
+`RESOLUTO_SANDBOX_KUBECONTEXT` pinned (the backend fails closed if this is unset).
+The image is a backend concern — inject a configured `K8sBackend`:
 
 ```python
 from resoluto_sandbox import Sandbox
@@ -130,7 +165,7 @@ if the program wrote one), `ok` (property: `exit_code == 0`).
 | `Conduit` abstraction + `LocalConduit`, `StdoutConduit`, `S3Conduit` (minio/S3-compatible, proven) | **works today** |
 | `GcsConduit` | **provided, unverified** — experimental; not tested end-to-end |
 | Language-neutral wire spec | **published** — see `spec/PROTOCOL.md` |
-| `backend="k8s"` — Kata microVM isolation via injected `K8sBackend` | **implemented** — requires k3s+Kata cluster + store env + kubecontext |
+| `backend="k8s"` — Kata microVM isolation via injected `K8sBackend` | **implemented** — requires a Kubernetes cluster (k3s, kind, EKS, …) + Kata + store env + kubecontext |
 | Prebuilt image matrix (`-base`, `-runner`, langchain, openai variants) + `image build` CLI | design / roadmap |
 | Worker migration utilities | design / roadmap |
 
@@ -138,6 +173,7 @@ if the program wrote one), `ok` (property: `exit_code == 0`).
 
 ## Further reading
 
+- `docs/backends.md` — backends overview, local and k8s detail, vendor-neutral k8s stack install guide
 - `docs/auth.md` — Claude Max/Pro subscription auth (local and container)
 - `docs/networking.md` — egress isolation on the k8s backend (EgressConfig, NetworkPolicy, canary)
 - `spec/PROTOCOL.md` — language-neutral host ↔ sandbox wire protocol (JSON Schemas included)

@@ -60,9 +60,9 @@ from resoluto_sandbox.backends.k8s import K8sBackend
 sb = Sandbox(backend=K8sBackend(image="<registry>/resoluto-lane:dev"))
 ```
 
-Requirements: a live k3s+Kata cluster, `RESOLUTO_STORE_KIND` (plus the matching store env
-vars) set in the environment, and `RESOLUTO_SANDBOX_KUBECONTEXT` pinned (fails closed
-otherwise). Limits: `stdin` raises `NotImplementedError` on this backend —
+Requirements: a Kubernetes cluster (k3s, kind, EKS, or any distribution) with Kata Containers,
+`RESOLUTO_STORE_KIND` (plus the matching store env vars) set in the environment, and
+`RESOLUTO_SANDBOX_KUBECONTEXT` pinned (fails closed otherwise). Limits: `stdin` raises `NotImplementedError` on this backend —
 dependencies must be baked into the image. `RunResult.errors` is always empty; the in-pod
 runner merges stdout and stderr into the output stream.
 

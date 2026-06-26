@@ -66,4 +66,4 @@ CLAUDE_CODE_OAUTH_TOKEN=...` first, or use the `~/.claude/.credentials.json` mou
 use subscription billing.
 
 **`backend="k8s"` needs an injected `K8sBackend(image=...)`.**  `Sandbox(backend="k8s")` with no
-injected backend raises `ValueError` at `run()`. Use `Sandbox(backend=K8sBackend(image="<registry>/resoluto-lane:dev"))`. Also requires a live k3s+Kata cluster, `RESOLUTO_STORE_KIND` set, and `RESOLUTO_SANDBOX_KUBECONTEXT` pinned (fails closed otherwise). `stdin` raises `NotImplementedError` on k8s — deps must be baked into the image. `RunResult.errors` is always empty on k8s; the in-pod runner merges both streams into output.
+injected backend raises `ValueError` at `run()`. Use `Sandbox(backend=K8sBackend(image="<registry>/resoluto-lane:dev"))`. Also requires a Kubernetes cluster (k3s, kind, EKS, or any distribution) with Kata Containers, `RESOLUTO_STORE_KIND` set, and `RESOLUTO_SANDBOX_KUBECONTEXT` pinned (fails closed otherwise). `stdin` raises `NotImplementedError` on k8s — deps must be baked into the image. `RunResult.errors` is always empty on k8s; the in-pod runner merges both streams into output.

@@ -47,7 +47,7 @@ Imports: `from resoluto_sandbox import Sandbox, RunResult`; `from resoluto_sandb
 - `references/usage.md` — calling `run()`: full args, output collection, `result.json`, CLI.
 - `references/agents.md` — bringing your own agent (any language) or Claude Max-subscription auth.
 - `references/networking.md` — `EgressConfig`/NetworkPolicy, conduits, store env. local/stdout and S3-against-minio proven; `GcsConduit` experimental/unverified.
-- `references/operations.md` — building/publishing images, k3s+Kata, debugging pod phase/`reason`.
+- `references/operations.md` — building/publishing images, k8s+Kata setup (any distribution), debugging pod phase/`reason`.
 - `references/recipes.md` — copy-paste end-to-end snippets.
 
 Wire protocol: `../../../spec/PROTOCOL.md`. Overview: `../../../README.md`.
