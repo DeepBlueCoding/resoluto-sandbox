@@ -9,7 +9,7 @@ isolation (separate PID/mount/network namespaces, cgroups), but there is **no eg
 NetworkPolicy** restricting which hosts the workload can reach. The egress canary is skipped
 (`RESOLUTO_TRUSTED_LOCAL=1` is set by the local preset).
 
-Use `backend="local"` for trusted code or development. For locked-down egress or hardware
+Use `backend="docker"` for trusted code or development. For locked-down egress or hardware
 isolation, use `backend="k8s"`.
 
 ---

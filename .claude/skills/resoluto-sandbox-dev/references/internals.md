@@ -16,7 +16,7 @@ host tails + reaps. Liveness = monotonic chunk-arrival + heartbeats. **No wall-c
 ```python
 from resoluto_sandbox import Sandbox, RunResult
 
-sb = Sandbox(backend="local")            # default: Docker container on this host
+sb = Sandbox(backend="docker")            # default: Docker container on this host
 res = sb.run(["python", "agent.py", "--x"],
             workspace="/abs/dir",         # program cwd, staged into the sandbox
             env={"FOO": "1"},             # overlays the sandbox environment
@@ -45,7 +45,7 @@ the resulting `NodeResult` to a `RunResult`. Isolation/placement is the injected
 
 | backend | runtime | conduit | isolation | stdin | errors |
 |---|---|---|---|---|---|
-| `local` | `DockerSandboxRuntime` (`docker run`) | `LocalConduit` (bind mount) | OS-level (namespaces/cgroups) | ❌ | `""` |
+| `docker` | `DockerSandboxRuntime` (`docker run`) | `LocalConduit` (bind mount) | OS-level (namespaces/cgroups) | ❌ | `""` |
 | `k8s` | `K8sSandboxRuntime` (Kata pod) | `S3Conduit` | hardware (Kata microVM) + optional egress | ❌ | `""` |
 
 Both runtimes run the SAME image entrypoint `args=["python","-m","resoluto_sandbox.runner_main"]`; the

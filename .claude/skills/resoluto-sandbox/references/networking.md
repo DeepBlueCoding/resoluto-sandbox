@@ -7,7 +7,7 @@ For the run protocol and backend contracts see `../../../../spec/PROTOCOL.md`; f
 
 | Backend | Isolation | Egress | When |
 |---|---|---|---|
-| `local` | Docker (OS-level: namespaces/cgroups) | unrestricted — egress canary SKIPPED (`RESOLUTO_TRUSTED_LOCAL=1`) | trusted code, dev |
+| `docker` | Docker (OS-level: namespaces/cgroups) | unrestricted — egress canary SKIPPED (`RESOLUTO_TRUSTED_LOCAL=1`) | trusted code, dev |
 | `k8s` + `egress=None` | Kata microVM kernel isolation | UNRESTRICTED (no NetworkPolicy) | semi-trusted, kernel isolation enough |
 | `k8s` + `egress=EgressConfig(...)` | Kata microVM + default-deny egress NetworkPolicy | only declared CIDRs :443 + DNS :53; IMDS always blocked | untrusted code |
 
@@ -22,7 +22,7 @@ from resoluto_sandbox.conduit.factory import store_from_env                     
 from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig         # k8s runtime + CIDR allowlist
 ```
 
-`Sandbox(backend="local" | "k8s" | <Backend instance>)` then:
+`Sandbox(backend="docker" | "k8s" | <Backend instance>)` then:
 
 ```python
 RunResult = Sandbox.run(
@@ -182,7 +182,7 @@ print(result.artifacts)         # collected output_paths
 
 ```python
 from resoluto_sandbox import Sandbox
-result = Sandbox(backend="local").run(["python", "agent.py"], workspace=".")
+result = Sandbox(backend="docker").run(["python", "agent.py"], workspace=".")
 ```
 Docker container on the host. OS-level isolation (namespaces/cgroups). No egress NetworkPolicy.
 `EgressConfig` does not apply. Trusted code only. Needs Docker + an image (default `resoluto-sandbox-runner:dev`).

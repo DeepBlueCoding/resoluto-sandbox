@@ -11,7 +11,7 @@ prose see [docs/auth.md](../../../../docs/auth.md),
 ```python
 from resoluto_sandbox import Sandbox
 
-Sandbox(backend="local" | "k8s" | <Backend instance>)   # default "local"
+Sandbox(backend="docker" | "k8s" | <Backend instance>)   # default "docker"
 sb.run(
     argv,                       # Sequence[str] — the program, e.g. ["uv","run","agent.py","prompt"]
     *,
@@ -52,7 +52,7 @@ inherits env you pass via `env=`. You need Docker + an image with `claude` CLI b
 ```python
 from resoluto_sandbox import Sandbox
 
-r = Sandbox(backend="local").run(
+r = Sandbox(backend="docker").run(
     ["uv", "run", "examples/claude_agent.py", "Say hello in five words"],
     workspace="examples",
     env={"CLAUDE_CODE_OAUTH_TOKEN": "..."},  # or mount credentials via the image
@@ -172,7 +172,7 @@ sb = Sandbox(backend=SubstrateBackend(
 ))
 ```
 
-For local, `Sandbox(backend="local", image="myregistry/my-base:tag")` runs your image
+For docker, `Sandbox(backend="docker", image="myregistry/my-base:tag")` runs your image
 in a Docker container on this host.
 
 ### 6. Stream vs capture output
@@ -194,7 +194,7 @@ Both backends merge stdout→`output` (errors stays `""`).
 
 ## FOOTGUNS
 
-- **`local` = Docker (OS-level isolation, NOT egress-locked).** `backend="local"` runs a Docker
+- **`docker` = Docker (OS-level isolation, NOT egress-locked).** `backend="docker"` runs a Docker
   container with OS-level isolation (separate namespaces/cgroups), but NO egress NetworkPolicy.
   Needs Docker running + an image (default `resoluto-sandbox-runner:dev`; override with `image=`).
   The image must contain python + the resoluto-sandbox wheel + your program's deps. Trusted code

@@ -27,14 +27,14 @@ isolated Docker container and capture its output:
 ```python
 from resoluto_sandbox import Sandbox
 
-result = Sandbox(backend="local").run(
+result = Sandbox(backend="docker").run(
     ["python", "-c", "print('hello from the sandbox')"]
 )
 print(result.output)   # hello from the sandbox
 print(result.ok)       # True
 ```
 
-`backend="local"` runs the program in a Docker container on this host (OS-level isolation: separate
+`backend="docker"` runs the program in a Docker container on this host (OS-level isolation: separate
 PID/mount/network namespaces, cgroups). The result captures output, the exit code, and any files you
 asked to collect. `stdin` is not supported on either backend — pass inputs via argv, env, or workspace
 files.
@@ -46,14 +46,14 @@ files.
 The sandbox enforces one contract: **your program never imports `resoluto_sandbox`**. It reads
 `argv` and writes to `stdout`/files and exits. That is the whole interface.
 
-A script that works directly also works inside the sandbox. On `backend="local"` it runs in a Docker
+A script that works directly also works inside the sandbox. On `backend="docker"` it runs in a Docker
 container with OS-level isolation; on `backend="k8s"` it runs in a Kata microVM. The program itself
 is unmodified in either case:
 
 ```python
 from resoluto_sandbox import Sandbox
 
-result = Sandbox(backend="local").run(
+result = Sandbox(backend="docker").run(
     ["uv", "run", "examples/claude_agent.py", "Summarise the Zen of Python"]
 )
 print(result.output)
@@ -73,7 +73,7 @@ k8s). The program, the result shape, and the `Sandbox` facade are identical acro
 ```mermaid
 flowchart TD
     P["Your program — plain: argv/stdin in, stdout/files/exit out; never imports resoluto_sandbox"]
-    S["Sandbox(backend='local' | 'k8s' | injected Backend)<br/>thin facade"]
+    S["Sandbox(backend='docker' | 'k8s' | injected Backend)<br/>thin facade"]
     SB["SubstrateBackend<br/>one impl: drive_node + Conduit + runner_main"]
     RT{"SandboxRuntime (ABC)<br/>the isolation / placement seam"}
     D["DockerSandboxRuntime<br/>docker run — OS-level isolation, your machine"]
@@ -108,7 +108,7 @@ sequenceDiagram
 
 | backend | isolation | where it runs | needs | use for |
 |---------|-----------|---------------|-------|---------|
-| `local` | OS-level (Docker namespaces/cgroups) | your machine | Docker + an image | dev and most workloads, no cluster |
+| `docker` | OS-level (Docker namespaces/cgroups) | your machine | Docker + an image | dev and most workloads, no cluster |
 | `k8s` | hardware (Kata microVM) + egress policy | a Kubernetes cluster | k8s + Kata + S3 store + image | untrusted code at scale, locked-down egress, production |
 
 For the full guide including the vendor-neutral k8s stack install (works on k3s, kind, EKS, GKE,
@@ -119,7 +119,7 @@ AKS, and any Kubernetes distribution), see [`docs/backends.md`](docs/backends.md
 ## Dependencies
 
 Dependencies are your program's concern — put `uv run`/`pip install` in your argv, or use a prebuilt
-image. For `backend="local"`, the image must contain python + the resoluto-sandbox wheel + your
+image. For `backend="docker"`, the image must contain python + the resoluto-sandbox wheel + your
 program's deps.
 
 ---
@@ -165,7 +165,7 @@ into the output stream.
 ## CLI
 
 ```bash
-resoluto-sandbox run -- echo hi                       # local backend (default)
+resoluto-sandbox run -- echo hi                       # docker backend (default)
 resoluto-sandbox run --backend k8s --image <img> -- python agent.py  # k8s backend
 resoluto-sandbox doctor                               # check what is available on this machine
 ```
@@ -177,7 +177,7 @@ resoluto-sandbox doctor                               # check what is available 
 ## `Sandbox.run()` reference
 
 ```python
-Sandbox(backend="local").run(
+Sandbox(backend="docker").run(
     argv,                        # program + arguments
     *,
     workspace=None,              # working directory for the program (default: cwd)
@@ -197,7 +197,7 @@ if the program wrote one), `ok` (property: `exit_code == 0`).
 
 | Feature | Status |
 |---|---|
-| `backend="local"` — Docker container on host, OS-level isolation (namespaces/cgroups), live output | **works today** |
+| `backend="docker"` — Docker container on host, OS-level isolation (namespaces/cgroups), live output | **works today** |
 | CLI: `run` + `doctor` | **works today** |
 | `Conduit` abstraction + `LocalConduit`, `StdoutConduit`, `S3Conduit` (minio/S3-compatible, proven) | **works today** |
 | `GcsConduit` | **provided, unverified** — experimental; not tested end-to-end |

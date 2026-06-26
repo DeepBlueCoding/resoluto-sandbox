@@ -3,7 +3,7 @@
 The sandbox runs a **plain program**. Your program reads argv and writes
 stdout/files; it NEVER imports `resoluto_sandbox`. What runs as
 `uv run agent.py` (or `./agent`, `node agent.js`, …) on your machine runs
-unchanged under `Sandbox().run(...)`. On `backend="local"` it runs in a Docker
+unchanged under `Sandbox().run(...)`. On `backend="docker"` it runs in a Docker
 container with OS-level isolation; on `backend="k8s"` it runs in a Kata microVM.
 
 This is the agent-author view. For the wire protocol see [`spec/PROTOCOL.md`](../../../../spec/PROTOCOL.md);
@@ -50,7 +50,7 @@ gate/lane/git vocabulary by design. `result.json` is optional; absence ⇒ `RunR
 ```python
 from resoluto_sandbox import Sandbox
 
-Sandbox(*, backend: Backend | str = "local")   # "local" | "k8s" | injected Backend instance
+Sandbox(*, backend: Backend | str = "docker")   # "docker" | "k8s" | injected Backend instance
 
 .run(
     argv: Sequence[str],
@@ -117,11 +117,12 @@ auth itself, in this preference order (full detail in [`docs/auth.md`](../../../
 > **To bill your subscription, use (1) or (2) and ensure `ANTHROPIC_API_KEY` is NOT set.**
 > If an API key is present the CLI uses it and bills the API instead of your subscription.
 
-### Local backend — nothing to configure
+### Docker backend — supply credentials explicitly
 
-`Sandbox(backend="local")` runs your program in a Docker container that inherits the
-env you pass. If you are already logged in to Claude Code on this machine, pass the
-credentials via env or mount:
+`Sandbox(backend="docker")` runs your program in a Docker container. The container does NOT
+automatically inherit your host environment — credentials must reach the container via `env=`
+or a mounted credentials file. If you are already logged in to Claude Code on this machine,
+pass the credentials explicitly:
 
 ```bash
 # One-time interactive login on your Max/Pro account, if needed:

@@ -17,7 +17,7 @@ repo_root = Path(__file__).resolve().parent.parent
 hello_script = repo_root / "examples" / "01_local_hello.py"
 
 sink = io.StringIO()
-result = Sandbox(backend="local").run(
+result = Sandbox(backend="docker").run(
     [sys.executable, str(hello_script), "sandbox"],
     workspace=str(repo_root),
     stream=sink,

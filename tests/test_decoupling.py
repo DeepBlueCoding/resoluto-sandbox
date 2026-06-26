@@ -21,7 +21,7 @@ def test_same_program_runs_unchanged_via_sandbox(tmp_path):
         pytest.skip(f"local image {_IMAGE} not present")
     script = tmp_path / "echo_prompt.py"
     script.write_text("import sys; print('OUT:' + (sys.argv[1] if len(sys.argv) > 1 else ''))")
-    via = Sandbox(backend="local", image=_IMAGE).run(
+    via = Sandbox(backend="docker", image=_IMAGE).run(
         ["python", "echo_prompt.py", "hi"],
         workspace=str(tmp_path),
     ).output

@@ -17,7 +17,7 @@ Cross-links: store-mediated wire protocol → `../../../../spec/PROTOCOL.md`. La
 ```python
 from resoluto_sandbox.client import Sandbox
 
-Sandbox(backend="local" | "k8s" | <Backend instance>).run(
+Sandbox(backend="docker" | "k8s" | <Backend instance>).run(
     argv,                       # Sequence[str] — the program + args
     *,
     workspace=None,             # str | None — program cwd (a directory)
@@ -42,11 +42,11 @@ class RunResult(BaseModel):
     def ok(self) -> bool: return self.exit_code == 0
 ```
 
-`Sandbox.__init__` accepts a `Backend` instance OR the strings `"local"` / `"k8s"`. A
+`Sandbox.__init__` accepts a `Backend` instance OR the strings `"docker"` / `"k8s"`. A
 configured k8s backend (image, conduit, egress) MUST be injected as an instance.
 
 ### Backend status (honest)
-- **`local`** — `SubstrateBackend(DockerSandboxRuntime + LocalConduit)`: Docker container on this
+- **`docker`** — `SubstrateBackend(DockerSandboxRuntime + LocalConduit)`: Docker container on this
   host, OS-level isolation (namespaces/cgroups). NOT egress-locked. Needs Docker + an image.
   `stdin` raises `NotImplementedError`. `RunResult.errors` is always `""`.
 - **`k8s`** — `SubstrateBackend(K8sSandboxRuntime + store_from_env())`: **fully implemented**:
@@ -188,7 +188,7 @@ Subclass `resoluto_sandbox.backends.base.Backend` and implement the single
 3. Return `RunResult(exit_code=, output=, errors=, artifacts=, result=, reason=)`.
    Put substrate forensics (eviction/OOM/terminated reason) in `reason`.
 4. Inject it: `Sandbox(backend=YourBackend(...))`. No registry, no string name —
-   instances are passed directly. (Only `"local"`/`"k8s"` are name-resolvable in
+   instances are passed directly. (Only `"docker"`/`"k8s"` are name-resolvable in
    `client.py`; do not add new string names — inject the instance.)
 
 ### Footguns

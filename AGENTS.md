@@ -9,7 +9,7 @@ Power-user reference for an LLM coding agent working in this repo.
 ```python
 from resoluto_sandbox import Sandbox, RunResult
 
-result: RunResult = Sandbox(backend="local").run(
+result: RunResult = Sandbox(backend="docker").run(
     argv,                   # list[str]: the program + its arguments
     *,
     workspace=None,         # str | None: cwd for the program; default is os.getcwd()
@@ -29,7 +29,7 @@ result: RunResult = Sandbox(backend="local").run(
 
 The program you run is **plain** — it reads `argv`, writes to `stdout` / files, and
 exits. It NEVER imports `resoluto_sandbox`. A script that works as `uv run agent.py` on your
-machine works inside the sandbox too; `backend="local"` runs it in a Docker container with
+machine works inside the sandbox too; `backend="docker"` runs it in a Docker container with
 OS-level isolation, `backend="k8s"` runs it in a Kata microVM. The backend changes only where
 it runs, not what runs.
 
@@ -40,7 +40,7 @@ Dependencies are your program's concern — put `uv run`/`pip install` in your a
 ## CLI commands
 
 ```bash
-resoluto-sandbox run [--backend local] [--workspace DIR] -- <program> [args...]
+resoluto-sandbox run [--backend docker] [--workspace DIR] -- <program> [args...]
 resoluto-sandbox doctor
 ```
 
@@ -51,11 +51,11 @@ command exits with code 2.
 
 ## Footguns
 
-**Local uses Docker, needs an image.** `backend="local"` runs the program in a Docker container
+**Docker backend needs an image.** `backend="docker"` runs the program in a Docker container
 (OS-level isolation: separate PID/mount/network namespaces, cgroups). It requires Docker to be
 running and an image that contains python + the resoluto-sandbox wheel + your program's deps
 (default `resoluto-sandbox-runner:dev`; override with `image=`). The egress canary is skipped
-(`RESOLUTO_TRUSTED_LOCAL=1` is set by the local preset), so local is NOT egress-locked — use
+(`RESOLUTO_TRUSTED_LOCAL=1` is set by the docker preset), so the docker backend is NOT egress-locked — use
 `backend="k8s"` for locked-down egress or hardware isolation.
 
 **`-e CLAUDE_CODE_OAUTH_TOKEN` with nothing exported = empty auth.** `docker run -e

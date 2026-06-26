@@ -12,7 +12,7 @@ ONE `SubstrateBackend` drives both presets. The only thing that varies is the in
 from resoluto_sandbox.client import Sandbox
 
 # select by name (presets)
-sb = Sandbox(backend="local")          # SubstrateBackend(DockerSandboxRuntime + LocalConduit)
+sb = Sandbox(backend="docker")          # SubstrateBackend(DockerSandboxRuntime + LocalConduit)
 sb = Sandbox(backend="k8s")            # SubstrateBackend(K8sSandboxRuntime + store_from_env()) — needs RESOLUTO_LANE_IMAGE
 
 # or inject a configured SubstrateBackend (the real k8s path with egress/conduit config)
@@ -34,9 +34,9 @@ sb = Sandbox(backend=SubstrateBackend(
 ))
 ```
 
-`Sandbox.__init__(*, backend: Backend | str = "local", image: str | None = None)`:
+`Sandbox.__init__(*, backend: Backend | str = "docker", image: str | None = None)`:
 - a `Backend` instance → held as-is
-- `"local"` → builds `SubstrateBackend(DockerSandboxRuntime + LocalConduit)` with `RESOLUTO_TRUSTED_LOCAL=1`
+- `"docker"` → builds `SubstrateBackend(DockerSandboxRuntime + LocalConduit)` with `RESOLUTO_TRUSTED_LOCAL=1`
 - `"k8s"` → builds `SubstrateBackend(K8sSandboxRuntime + store_from_env())` (needs `RESOLUTO_LANE_IMAGE`)
 - anything else → `ValueError`
 

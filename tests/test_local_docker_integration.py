@@ -1,4 +1,4 @@
-"""Integration test: Sandbox(backend='local') round-trips through a REAL Docker
+"""Integration test: Sandbox(backend='docker') round-trips through a REAL Docker
 container sharing a LocalConduit bind mount (no cluster, no S3)."""
 import subprocess
 
@@ -18,7 +18,7 @@ def _image_present(ref: str) -> bool:
 def test_local_docker_roundtrips(tmp_path):
     if not _image_present(_IMAGE):
         pytest.skip(f"local image {_IMAGE} not present (docker images | grep resoluto-sandbox)")
-    sb = Sandbox(backend="local", image=_IMAGE)
+    sb = Sandbox(backend="docker", image=_IMAGE)
     out = sb.run(
         ["bash", "-lc", "echo hi > out.txt && echo done"],
         workspace=str(tmp_path),

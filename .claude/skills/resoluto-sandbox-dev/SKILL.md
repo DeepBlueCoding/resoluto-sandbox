@@ -21,7 +21,7 @@ from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
 import os
 
 # local: Docker container on this host
-r = Sandbox(backend="local").run(["agent.py"], workspace="/work")
+r = Sandbox(backend="docker").run(["agent.py"], workspace="/work")
 print(r.output, r.ok)   # RunResult(exit_code, output, errors, artifacts, result, reason, ok)
 
 # k8s: Kata pod — inject SubstrateBackend
@@ -39,13 +39,13 @@ Sandbox(backend=SubstrateBackend(
 )).run(["python", "agent.py"], workspace="/work", output_paths=["out/*.json"])
 ```
 
-`Sandbox(backend="local"|"k8s"|<Backend instance>)`. `.run(argv, *, workspace, stdin, env, output_paths, stream) -> RunResult`. On both backends: `stdin` raises `NotImplementedError`; `RunResult.errors` is empty (output carries merged stdout+stderr). `k8s` also needs `RESOLUTO_STORE_KIND` in env.
+`Sandbox(backend="docker"|"k8s"|<Backend instance>)`. `.run(argv, *, workspace, stdin, env, output_paths, stream) -> RunResult`. On both backends: `stdin` raises `NotImplementedError`; `RunResult.errors` is empty (output carries merged stdout+stderr). `k8s` also needs `RESOLUTO_STORE_KIND` in env.
 
 ## Quick reference
 
 | Operation | How |
 |-----------|-----|
-| Run locally | `Sandbox(backend="local").run(argv, workspace=...)` — needs Docker + an image |
+| Run locally | `Sandbox(backend="docker").run(argv, workspace=...)` — needs Docker + an image |
 | Run in Kata pod | `Sandbox(backend=SubstrateBackend(runtime=K8sSandboxRuntime(...), conduit=..., image=..., store_env=store_env_for_pod(os.environ))).run(...)` |
 | Restrict pod egress | `K8sSandboxRuntime(egress=EgressConfig(store_cidr=, llm_cidr=, git_cidrs=[]))` (CIDRs only, no FQDNs) |
 | Collect outputs | `output_paths=["out/*.json"]` → globbed into `RunResult.artifacts` (extracted into `workspace`) |

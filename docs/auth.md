@@ -13,21 +13,46 @@ that the Claude Agent SDK forks resolves auth on its own, from any of these
 > `ANTHROPIC_API_KEY` is NOT set.** If an API key is present the CLI uses it and
 > bills the API instead of your subscription.
 
-## Local backend (simplest)
+## Docker backend
 
-`Sandbox(backend="local")` runs your program as a subprocess that **inherits your
-host environment**. So if you are already logged in to Claude Code on this
-machine, it just works — nothing to configure:
+`Sandbox(backend="docker")` runs your program in a Docker container. Unlike a bare
+subprocess, the container does **NOT** automatically inherit your host environment —
+credentials must reach the container explicitly. Three options:
+
+**Option 1 — mount your subscription login file (simplest for local dev):**
 
 ```bash
 claude            # one-time interactive login on your Max/Pro account (if needed)
 
-python -c "from resoluto_sandbox import Sandbox; \
-  print(Sandbox().run(['uv','run','examples/claude_agent.py','Say hello in five words']).output)"
+docker run --rm \
+  -v "$HOME/.claude/.credentials.json:/root/.claude/.credentials.json:ro" \
+  ...
 ```
 
-The subprocess sees your `~/.claude/.credentials.json`, authenticates with your
-subscription, and prints Claude's answer.
+Or pass the credential via `env=` in `Sandbox.run()`:
+
+```python
+Sandbox(backend="docker").run(
+    ["uv", "run", "examples/claude_agent.py", "Say hello in five words"],
+    env={"CLAUDE_CODE_OAUTH_TOKEN": "<your-token>"},
+)
+```
+
+**Option 2 — generate a long-lived token:**
+
+```bash
+claude setup-token   # prints an OAuth token; copy it
+export CLAUDE_CODE_OAUTH_TOKEN=...
+
+Sandbox(backend="docker").run(argv, env={"CLAUDE_CODE_OAUTH_TOKEN": os.environ["CLAUDE_CODE_OAUTH_TOKEN"]})
+```
+
+**Option 3 — bake the credential into your image** (for CI or shared environments):
+build a custom image that includes the credential at build time. Not recommended for
+personal subscriptions — only for service accounts.
+
+The old "inherits host env automatically" behaviour was true when local ran as a host
+subprocess; it is no longer true now that local is a Docker container.
 
 ## Container image
 

@@ -14,7 +14,7 @@ from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_
 from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
 from resoluto_sandbox.runtime.docker import DockerSandboxRuntime
 
-Sandbox(*, backend: "Backend | str" = "local")          # "local" | "k8s" | Backend instance
+Sandbox(*, backend: "Backend | str" = "docker")          # "docker" | "k8s" | Backend instance
   .run(
       argv: Sequence[str],
       *,
@@ -38,7 +38,7 @@ class RunResult(BaseModel):
     def ok(self) -> bool        # exit_code == 0
 ```
 
-Backend selection (`client.py`): `Sandbox(backend="local")` builds a `SubstrateBackend` over a
+Backend selection (`client.py`): `Sandbox(backend="docker")` builds a `SubstrateBackend` over a
 `DockerSandboxRuntime` + a bind-mounted `LocalConduit`; `Sandbox(backend="k8s")` builds one over a
 `K8sSandboxRuntime` + `store_from_env()` (no image → `.run` raises `ValueError`); any unknown string → `ValueError`.
 
@@ -91,7 +91,7 @@ uv run pytest
 RESOLUTO_LANE_IMAGE=<lane-image> uv run pytest -m integration
 ```
 
-`-m integration` tests round-trip a real substrate: `tests/test_client_k8s.py::test_k8s_run_roundtrips` runs `Sandbox(backend="k8s", image=...).run()` through a real Kata pod, and `tests/test_local_docker_integration.py` runs `Sandbox(backend="local", image=...).run()` through a real Docker container. They read `RESOLUTO_LANE_IMAGE` (k8s) / a local image from env. Without the box/Docker they fail or skip — that is correct; do not stub them green.
+`-m integration` tests round-trip a real substrate: `tests/test_client_k8s.py::test_k8s_run_roundtrips` runs `Sandbox(backend="k8s", image=...).run()` through a real Kata pod, and `tests/test_local_docker_integration.py` runs `Sandbox(backend="docker", image=...).run()` through a real Docker container. They read `RESOLUTO_LANE_IMAGE` (k8s) / a local image from env. Without the box/Docker they fail or skip — that is correct; do not stub them green.
 
 ### Green-canary preflight (run BEFORE any `-m integration`)
 Integration tests require a live Kubernetes cluster (k3s, kind, EKS, or any distribution) with Kata + minio. Export `RESOLUTO_LANE_IMAGE` and the `RESOLUTO_STORE_*` variables before running. Unit tests need none of this — they run against stubs and the default `addopts` deselects `@integration` automatically.

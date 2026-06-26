@@ -31,7 +31,7 @@ your program  (plain: reads argv -> writes stdout/files/exit; never imports reso
 
 | backend | isolation | where it runs | needs | use for |
 |---------|-----------|---------------|-------|---------|
-| `local` | OS-level (Docker namespaces/cgroups) | your machine | Docker + an image | dev and most workloads, no cluster |
+| `docker` | OS-level (Docker namespaces/cgroups) | your machine | Docker + an image | dev and most workloads, no cluster |
 | `k8s` | hardware (Kata microVM) + egress policy | a Kubernetes cluster | k8s + Kata + S3 store + image | untrusted code at scale, locked-down egress, production |
 
 `RunResult.output` carries merged stdout+stderr (both backends). `RunResult.errors` is always
@@ -47,7 +47,7 @@ Kubernetes distribution): [`../../../../docs/backends.md`](../../../../docs/back
 ```python
 from resoluto_sandbox.client import Sandbox  # the ONLY entrypoint
 
-sb = Sandbox(backend="local")            # or "k8s", or a Backend instance (see §5)
+sb = Sandbox(backend="docker")            # or "k8s", or a Backend instance (see §5)
 result = sb.run(
     argv,                                 # Sequence[str], the program + args
     workspace=None,                       # str dir = program cwd; outputs land here in place
@@ -92,7 +92,7 @@ Exit code = the program's exit code. Streams output live to `sys.stdout`.
 Flags:
 | flag | default | values |
 |---|---|---|
-| `--backend` | `local` | `local`, `k8s` |
+| `--backend` | `docker` | `docker`, `k8s` |
 | `--workspace` | `None` | dir (program cwd) |
 | `--image` | `None` | image tag (REQUIRED for `--backend k8s`) |
 

@@ -15,7 +15,7 @@ Cross-links (don't duplicate these):
 ```python
 from resoluto_sandbox import Sandbox   # re-exported; canonical: resoluto_sandbox.client
 
-result = Sandbox(backend="local").run(["agent.py", "--task", "fix the bug"], workspace="/abs/repo")
+result = Sandbox(backend="docker").run(["agent.py", "--task", "fix the bug"], workspace="/abs/repo")
 print(result.output)      # the program's answer
 assert result.ok          # exit_code == 0
 ```
@@ -23,13 +23,13 @@ assert result.ok          # exit_code == 0
 There is exactly ONE public call shape. `Sandbox(...)` holds a `Backend`; `.run(...)`
 delegates to it. Everything else is a backend implementation detail.
 
-### `Sandbox(*, backend="local"|"k8s"|<Backend>, image=None)`
+### `Sandbox(*, backend="docker"|"k8s"|<Backend>, image=None)`
 
 ```python
-def __init__(self, *, backend: Backend | str = "local", image: str | None = None) -> None
+def __init__(self, *, backend: Backend | str = "docker", image: str | None = None) -> None
 ```
 
-- `backend="local"` → builds `SubstrateBackend(runtime=DockerSandboxRuntime, conduit=LocalConduit, ...)` (default).
+- `backend="docker"` → builds `SubstrateBackend(runtime=DockerSandboxRuntime, conduit=LocalConduit, ...)` (default).
 - `backend="k8s"`   → builds `SubstrateBackend(runtime=K8sSandboxRuntime, conduit=store_from_env(), ...)` (needs `RESOLUTO_LANE_IMAGE` and `RESOLUTO_STORE_KIND`).
 - `backend=<Backend instance>` → injected as-is (the supported way to configure k8s with egress, custom conduit, etc.).
 - anything else → `ValueError("unknown backend ...")`.
@@ -106,9 +106,9 @@ Two ways to pick a backend. Strings are for the trivial cases; **inject a config
 
 ```python
 # By string (no config knobs)
-Sandbox(backend="local")                    # Docker container, default image
-Sandbox(backend="local", image="my:img")    # Docker container, custom image
-Sandbox(backend="k8s", image="<tag>")       # k8s preset — reads RESOLUTO_STORE_KIND from env
+Sandbox(backend="docker")                    # Docker container, default image
+Sandbox(backend="docker", image="my:img")    # Docker container, custom image
+Sandbox(backend="k8s", image="<tag>")        # k8s preset — reads RESOLUTO_STORE_KIND from env
 
 # By injection (DI) — the supported path for k8s config with egress/custom conduit
 import os
@@ -139,7 +139,7 @@ facade does `isinstance(backend, Backend)` and uses it directly.
 
 ## SubstrateBackend (Docker) vs SubstrateBackend (Kata) — behavior differences
 
-| concern | `local` (Docker) | `k8s` (Kata) |
+| concern | `docker` (Docker) | `k8s` (Kata) |
 |---|---|---|
 | isolation | OS-level — Docker namespaces/cgroups, NOT egress-locked. Trusted code ONLY. | Kata microVM (kernel isolation), curated env, optional egress NetworkPolicy. Use for untrusted/adversarial code. |
 | output | captured (from `log` span events) + live-teed to `stream` | captured (from `log` span events) + live-teed to `stream` |
@@ -192,7 +192,7 @@ Built from env by `store_from_env()` (`RESOLUTO_STORE_KIND`), or injected via
 
 Docker local run, capture answer + an artifact:
 ```python
-r = Sandbox(backend="local").run(
+r = Sandbox(backend="docker").run(
     ["analyze.py", "--input", "data.csv"],
     workspace="/abs/job",
     output_paths=["report.md", "out/*.json"],

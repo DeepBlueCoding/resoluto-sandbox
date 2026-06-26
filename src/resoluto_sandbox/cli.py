@@ -13,7 +13,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="cmd")
 
     run_p = sub.add_parser("run", help="Run a program in a sandbox")
-    run_p.add_argument("--backend", default="local", choices=["local", "k8s"])
+    run_p.add_argument("--backend", default="docker", choices=["docker", "k8s"])
     run_p.add_argument("--workspace", default=None)
     run_p.add_argument("--image", default=None)
 

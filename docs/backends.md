@@ -10,7 +10,7 @@ wire in a custom backend.
 
 | backend | isolation | where it runs | needs | use for |
 |---------|-----------|---------------|-------|---------|
-| `local` | OS-level (Docker namespaces/cgroups) | your machine | Docker + an image | dev and most workloads, no cluster |
+| `docker` | OS-level (Docker namespaces/cgroups) | your machine | Docker + an image | dev and most workloads, no cluster |
 | `k8s` | hardware (Kata microVM) + egress policy | a Kubernetes cluster | k8s + Kata + S3 store + image | untrusted code at scale, locked-down egress, production |
 
 ---
@@ -20,7 +20,7 @@ wire in a custom backend.
 ```mermaid
 flowchart TD
     P["Your program — plain: argv/stdin in, stdout/files/exit out; never imports resoluto_sandbox"]
-    S["Sandbox(backend='local' | 'k8s' | injected Backend)<br/>thin facade"]
+    S["Sandbox(backend='docker' | 'k8s' | injected Backend)<br/>thin facade"]
     SB["SubstrateBackend<br/>one impl: drive_node + Conduit + runner_main"]
     RT{"SandboxRuntime (ABC)<br/>the isolation / placement seam"}
     D["DockerSandboxRuntime<br/>docker run — OS-level isolation, your machine"]
@@ -51,16 +51,16 @@ sequenceDiagram
 
 ---
 
-## local
+## docker
 
 ### How it runs
 
-`backend="local"` runs the program in a Docker container on this host via `DockerSandboxRuntime`.
+`backend="docker"` runs the program in a Docker container on this host via `DockerSandboxRuntime`.
 The host and container share a `LocalConduit` over a bind-mounted directory (`/conduit`). No
 cluster, no S3 — everything stays on your machine:
 
 ```
-Sandbox(backend="local").run(argv, workspace, output_paths)
+Sandbox(backend="docker").run(argv, workspace, output_paths)
    └─ SubstrateBackend (DockerSandboxRuntime + LocalConduit)
         docker run --rm -v <conduit>:/conduit <image>
           runner_main stages workspace → /workspace
@@ -70,16 +70,16 @@ Sandbox(backend="local").run(argv, workspace, output_paths)
    → RunResult(output, exit_code, artifacts)     # no k8s, no S3
 ```
 
-The egress canary is skipped (`RESOLUTO_TRUSTED_LOCAL=1` is set by the local preset), so local
-is NOT egress-locked. Docker provides OS-level isolation (separate PID/mount/network namespaces,
-cgroups), but NOT egress NetworkPolicy isolation — use `backend="k8s"` for locked-down egress
-or hardware isolation.
+The egress canary is skipped (`RESOLUTO_TRUSTED_LOCAL=1` is set by the docker preset), so the
+docker backend is NOT egress-locked. Docker provides OS-level isolation (separate PID/mount/network
+namespaces, cgroups), but NOT egress NetworkPolicy isolation — use `backend="k8s"` for
+locked-down egress or hardware isolation.
 
 ### What you need
 
 - Docker running on this machine.
 - An image that contains python + the resoluto-sandbox wheel + your program's deps. Default:
-  `resoluto-sandbox-runner:dev`. Override with `Sandbox(backend="local", image="your-image:tag")`.
+  `resoluto-sandbox-runner:dev`. Override with `Sandbox(backend="docker", image="your-image:tag")`.
 
 ### When to use
 
@@ -87,15 +87,15 @@ or hardware isolation.
 - Trusted code where namespace isolation is sufficient.
 - Testing your program logic before graduating to k8s.
 
-> **Local gives OS-level isolation (Docker namespaces/cgroups), NOT egress-policy isolation.**
+> **The docker backend gives OS-level isolation (Docker namespaces/cgroups), NOT egress-policy isolation.**
 > The egress canary is disabled. For locked-down egress or hardware isolation use `backend="k8s"`.
 
-### `RunResult` on local
+### `RunResult` on docker
 
 The in-sandbox runner merges stdout and stderr as `log` span events, so `RunResult.output` carries
 the merged stream and `RunResult.errors` is always `""`. This is intentional, not a dropped field.
 
-### `stdin` on local
+### `stdin` on docker
 
 `stdin` is NOT supported — `NotImplementedError` if you pass `stdin=`. Pass inputs via argv, env,
 or workspace files.

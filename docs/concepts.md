@@ -21,7 +21,7 @@ stage → run → collect
 
 1. **Stage** — the `Sandbox` resolves which backend to use, then stages the workspace into the
    `Conduit` (a bind-mounted directory for local, an S3 prefix for k8s).
-2. **Run** — the program executes. On `backend="local"` this is a Docker container on the host
+2. **Run** — the program executes. On `backend="docker"` this is a Docker container on the host
    (OS-level isolation: separate PID/mount/network namespaces, cgroups) sharing a bind-mounted
    `LocalConduit`. On `backend="k8s"` this is a Kata microVM pod. In both cases the in-sandbox
    `runner_main` stages inputs, runs the program, and ships output via the `Conduit`. Live output
@@ -37,9 +37,9 @@ stage → run → collect
 `Sandbox` holds one `Backend` (selected by name or injected). ONE `SubstrateBackend` drives
 both presets; the only thing that varies is the injected `SandboxRuntime`.
 
-### `local`
+### `docker`
 
-`backend="local"` builds a `SubstrateBackend` wired to a `DockerSandboxRuntime` and a
+`backend="docker"` builds a `SubstrateBackend` wired to a `DockerSandboxRuntime` and a
 `LocalConduit`. The program runs in a Docker container on this host; the host and container
 share a bind-mounted directory as the conduit. OS-level isolation (namespaces/cgroups) is
 provided, but NOT egress NetworkPolicy isolation — use `k8s` for locked-down egress.

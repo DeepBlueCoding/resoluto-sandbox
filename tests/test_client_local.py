@@ -37,14 +37,14 @@ def _patch_docker_substrate(monkeypatch, *, on_event_payload=None, captured=None
 
 def test_local_preset_builds_substrate_backend(monkeypatch):
     _patch_docker_substrate(monkeypatch)
-    sb = Sandbox(backend="local")
+    sb = Sandbox(backend="docker")
     assert isinstance(sb._backend, SubstrateBackend)
 
 
 def test_local_spec_carries_workload_and_localfs_store_env(monkeypatch):
     captured: dict = {}
     _patch_docker_substrate(monkeypatch, captured=captured)
-    Sandbox(backend="local").run(["python", "agent.py"])
+    Sandbox(backend="docker").run(["python", "agent.py"])
     spec = captured["spec"]
     assert spec.env["RESOLUTO_WORKLOAD_ARGV"] == '["python", "agent.py"]'
     assert spec.env["RESOLUTO_STORE_KIND"] == "localfs"
@@ -56,15 +56,15 @@ def test_local_spec_carries_workload_and_localfs_store_env(monkeypatch):
 
 def test_local_default_image_and_override(monkeypatch):
     _patch_docker_substrate(monkeypatch)
-    from resoluto_sandbox.client import DEFAULT_LOCAL_IMAGE
-    assert Sandbox(backend="local")._backend._image == DEFAULT_LOCAL_IMAGE
-    assert Sandbox(backend="local", image="my:img")._backend._image == "my:img"
+    from resoluto_sandbox.client import DEFAULT_DOCKER_IMAGE
+    assert Sandbox(backend="docker")._backend._image == DEFAULT_DOCKER_IMAGE
+    assert Sandbox(backend="docker", image="my:img")._backend._image == "my:img"
 
 
 def test_local_log_event_streams_into_output(monkeypatch):
     ev = SpanEvent(run_id="r", span_id="s", kind="log", event="log", ts=1.0, data={"line": "hi"})
     _patch_docker_substrate(monkeypatch, on_event_payload=ev)
-    out = Sandbox(backend="local").run(["true"])
+    out = Sandbox(backend="docker").run(["true"])
     assert "hi" in out.output
     assert out.exit_code == 0
 
@@ -72,7 +72,7 @@ def test_local_log_event_streams_into_output(monkeypatch):
 def test_local_maps_node_result_reason_and_exit(monkeypatch):
     nr = NodeResult(status="failure", exit_code=1, reason="boom")
     _patch_docker_substrate(monkeypatch, node_result=nr)
-    out = Sandbox(backend="local").run(["true"])
+    out = Sandbox(backend="docker").run(["true"])
     assert isinstance(out, RunResult)
     assert out.exit_code == 1
     assert out.reason == "boom"
@@ -82,4 +82,4 @@ def test_local_maps_node_result_reason_and_exit(monkeypatch):
 def test_stdin_raises_not_implemented(monkeypatch):
     _patch_docker_substrate(monkeypatch)
     with pytest.raises(NotImplementedError):
-        Sandbox(backend="local").run(["true"], stdin="x")
+        Sandbox(backend="docker").run(["true"], stdin="x")
