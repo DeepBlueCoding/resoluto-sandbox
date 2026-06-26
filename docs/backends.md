@@ -17,22 +17,50 @@ how to wire in a custom backend.
 
 ## Architecture diagram
 
+```mermaid
+flowchart TD
+    P["Your program<br/>plain: argv/stdin in, stdout/files/exit out<br/>never imports resoluto_sandbox"]
+    S["Sandbox(backend=...)<br/>thin facade: composes and delegates<br/>.run(argv, ...) returns RunResult"]
+    B{"Backend (ABC)<br/>the extension seam"}
+    L["LocalBackend<br/>subprocess on this host"]
+    K["K8sBackend<br/>composes a SandboxRuntime + a Conduit"]
+    RT["SandboxRuntime (ABC)<br/>K8sSandboxRuntime: one Kata microVM pod per run"]
+    CD["Conduit (ABC)<br/>host/sandbox exchange<br/>Stdout / Local / S3 / Gcs(experimental)"]
+    P -->|run| S
+    S --> B
+    B --> L
+    B --> K
+    K --> RT
+    K --> CD
 ```
-your program  (plain: reads argv/stdin -> writes stdout/files/exit; never imports resoluto_sandbox)
-      |  argv / workspace                         ^  output / errors / artifacts
-      v                                           |
-┌─────────────────────────────────────────────────────────────┐
-│ Sandbox(backend=...)            thin facade: composes + delegates
-│   .run(argv, ...) -> RunResult(exit_code, output, errors, …)  │
-├─────────────────────────────────────────────────────────────┤
-│ Backend  (ABC)      ← the extension seam: implement to add a substrate
-│    ├── LocalBackend  → subprocess on this host
-│    └── K8sBackend    → composes a SandboxRuntime + a Conduit
-├──────────────────────────────┬──────────────────────────────┤
-│ SandboxRuntime (ABC)         │  Conduit (ABC)  host<->sandbox exchange
-│   K8sSandboxRuntime          │    StdoutConduit | LocalConduit
-│   (Kata microVM pod on k8s)  │    S3Conduit | GcsConduit(exp.)
-└──────────────────────────────┴──────────────────────────────┘
+
+**Local run** (subprocess; output teed live + captured):
+
+```mermaid
+flowchart LR
+    A["Sandbox(backend='local').run(argv)"] --> LB[LocalBackend]
+    LB --> SP["subprocess(argv,<br/>cwd=workspace, env=host+overlay)"]
+    SP -->|"stdout / stderr"| TEE["tee: live to stream<br/>+ capture to buffers"]
+    SP -->|"exit code + glob(output_paths)"| RR
+    TEE --> RR["RunResult(output, errors,<br/>exit_code, artifacts, result)"]
+```
+
+**k8s run** (connectionless host⇄pod loop through the Conduit):
+
+```mermaid
+sequenceDiagram
+    participant H as Host (your process)
+    participant C as Conduit (S3 / minio)
+    participant P as Kata pod (k8s)
+    H->>C: put_dir(workspace) - inbox/*.tar.gz
+    H->>P: drive_node - launch pod
+    C->>P: stage inputs into /workspace
+    P->>P: run argv (RESOLUTO_WORKLOAD_ARGV)
+    P->>C: ship spans + heartbeat - events-*.jsonl
+    C-->>H: tail ChunkReader (silence watchdog, no wall-clock timeout)
+    P->>C: write result.json + outbox/*.tar.gz
+    C-->>H: read result.json + fetch_outputs
+    Note over H: reap pod, RunResult(output from chunks, exit_code, artifacts)
 ```
 
 ---
