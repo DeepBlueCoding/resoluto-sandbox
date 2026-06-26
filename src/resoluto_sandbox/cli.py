@@ -65,11 +65,7 @@ def _cmd_run(args: argparse.Namespace, rest: list[str]) -> int:
 
     from resoluto_sandbox.client import Sandbox
 
-    if args.backend == "k8s":
-        from resoluto_sandbox.backends.k8s import K8sBackend
-        sb = Sandbox(backend=K8sBackend(image=args.image))
-    else:
-        sb = Sandbox(backend=args.backend)
+    sb = Sandbox(backend=args.backend, image=args.image)
     result = sb.run(program_argv, workspace=args.workspace, stream=sys.stdout)
     return result.exit_code
 
