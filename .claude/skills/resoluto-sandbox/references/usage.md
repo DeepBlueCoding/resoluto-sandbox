@@ -16,7 +16,7 @@ Cross-links (don't duplicate these):
 from resoluto_sandbox import Sandbox   # re-exported; canonical: resoluto_sandbox.client
 
 result = Sandbox(backend="local").run(["agent.py", "--task", "fix the bug"], workspace="/abs/repo")
-print(result.stdout)      # the program's answer
+print(result.output)      # the program's answer
 assert result.ok          # exit_code == 0
 ```
 
@@ -46,19 +46,19 @@ def run(
     env: dict[str, str] | None = None,
     output_paths: Sequence[str] | None = None,
     stream: IO[str] | None = None,
-    deps: Deps | None = None,
 ) -> RunResult
 ```
 
 | kwarg | meaning | local | k8s |
 |---|---|---|---|
-| `argv` | program + args; `argv[0]` is resolved relative to `workspace` for dep detection | yes | yes |
+| `argv` | program + args | yes | yes |
 | `workspace` | program cwd (must be an existing dir; staged into pod for k8s). `None` → `Path.cwd()` (local) | yes | yes (staged in + mutated in place by `output_paths`) |
 | `stdin` | `str`/`bytes` fed on stdin | yes | **NotImplementedError** |
 | `env` | overlay on top of host env (`{**os.environ, **env}`) | yes | yes (overlaid on the curated pod env) |
 | `output_paths` | globs collected into `RunResult.artifacts` after the run | yes | yes |
-| `stream` | live stdout sink; `None` → `sys.stdout` | yes | yes |
-| `deps` | `Deps` strategy for launching the program (see below) | yes | **NotImplementedError** (bake into image) |
+| `stream` | live output sink; `None` → `sys.stdout` | yes | yes |
+
+Dependencies are your program's concern — put `uv run`/`pip install` in your argv, or use a prebuilt image.
 
 Footgun: `workspace` that isn't a directory → `NotADirectoryError` (local). On k8s,
 artifacts/`result.json` are only fetched back when BOTH `output_paths` AND `workspace`
@@ -73,8 +73,8 @@ From `resoluto_sandbox.backends.base`:
 ```python
 class RunResult(BaseModel):
     exit_code: int
-    stdout: str
-    stderr: str
+    output: str
+    errors: str
     artifacts: list[str] = []
     result: dict | None = None
     reason: str = ""
@@ -86,12 +86,12 @@ class RunResult(BaseModel):
 
 - `exit_code` — process exit code. On k8s, when the runner reports no explicit code it
   is derived: `0` if pod status was `success`, else `1`.
-- `stdout` — the program's answer (live-teed to `stream` as it runs).
-- `stderr` — **local only.** On k8s this is `""` BY DESIGN (see merged-stream note below).
+- `output` — the program's output (live-teed to `stream` as it runs).
+- `errors` — **local only.** On k8s this is `""` BY DESIGN (see merged-stream note below).
 - `artifacts` — absolute/glob-collected paths from `output_paths` (empty if none requested).
 - `result` — parsed `result.json` if the program wrote one in `workspace`, else `None`.
   (Schema: `spec/result.schema.json`.) This is how a program returns structured data
-  without polluting stdout.
+  without polluting output.
 - `reason` — substrate forensics: evicted/OOMKilled/observed pod phase. **k8s only**;
   always `""` for local.
 - `.ok` — convenience for `exit_code == 0`.
@@ -140,12 +140,11 @@ facade does `isinstance(backend, Backend)` and uses it directly.
 | concern | `LocalBackend` | `K8sBackend` |
 |---|---|---|
 | isolation | NONE — host subprocess, host env inherited. Trusted code ONLY. | Kata microVM (kernel isolation), curated env, optional egress NetworkPolicy. Use for untrusted/adversarial code. |
-| stdout | captured + live-teed to `stream` | captured (from `log` span events) + live-teed to `stream` |
-| stderr | captured separately into `RunResult.stderr` | **MERGED into `stdout`; `RunResult.stderr == ""`** (in-pod runner emits both as `log` events) — intentional, not a dropped field |
+| output | captured + live-teed to `stream` | captured (from `log` span events) + live-teed to `stream` |
+| errors | captured separately into `RunResult.errors` | **MERGED into `output`; `RunResult.errors == ""`** (in-pod runner emits both as `log` events) — intentional, not a dropped field |
 | `result` | `result.json` read from `workspace` | `result.json` fetched back only if `output_paths` AND `workspace` set |
 | `reason` | always `""` | pod forensics (OOMKilled/evicted/phase) |
 | `stdin` | supported | **NotImplementedError** |
-| `deps` | supported (`uv run`, `--with-requirements`, image, vendored) | **NotImplementedError** — bake deps into the image |
 | env requirement | none | `RESOLUTO_STORE_KIND` must be set (conduit from env) unless you inject `conduit=` |
 
 k8s pod env is curated by `_store_env_for_pod`: forwards `RESOLUTO_STORE_*` and
@@ -170,19 +169,6 @@ drops a `result.json`. It imports NOTHING from `resoluto_sandbox`. The contract:
 This is what makes the sandbox swappable: same program, same inputs, same outputs across
 `local` and `k8s`. Don't reach into `resoluto_sandbox` from the workload — if you find
 yourself importing the package inside the program you run, you've broken the seam.
-
-### `deps` (local only) — how the program is launched
-
-`Deps(kind="auto"|"inline"|"requirements"|"image"|"vendored", requirements=None)` from
-`resoluto_sandbox.deps`. `resolve_invocation` maps `(argv, deps)` to the actual launch argv:
-
-- `auto` (default) — detect: PEP 723 inline script → `uv run`; `requirements.txt` present
-  → `uv run --with-requirements`; `pyproject.toml` present → `uv run`; else run argv as-is.
-- `inline` → `["uv", "run", *argv]`
-- `requirements` → `["uv", "run", "--with-requirements", <workspace/requirements.txt>, *argv]`
-- `image` / `vendored` → argv unchanged (deps already present)
-
-On k8s, deps are pre-baked into the image — passing `deps` raises `NotImplementedError`.
 
 ---
 
@@ -209,7 +195,7 @@ r = Sandbox(backend="local").run(
     workspace="/abs/job",
     output_paths=["report.md", "out/*.json"],
 )
-print(r.stdout); print(r.artifacts); print(r.result)   # result.json parsed if written
+print(r.output); print(r.artifacts); print(r.result)   # result.json parsed if written
 ```
 
 Untrusted run in a Kata pod, with egress lockdown:

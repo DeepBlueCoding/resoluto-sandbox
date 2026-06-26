@@ -2,7 +2,7 @@
 
 Action-first reference for running/extending this sandbox. Verified against source:
 `src/resoluto_sandbox/{cli,images,version_guard}.py`, `conduit/factory.py`,
-`backends/{base,k8s}.py`, `runtime/k8s.py`, `client.py`, `deps.py`.
+`backends/{base,k8s}.py`, `runtime/k8s.py`, `client.py`.
 
 Cross-links (don't duplicate): protocol/event/chunk semantics → `../../../../spec/PROTOCOL.md`.
 Substrate images are `Dockerfile.base` + `images/{claude,langchain,openai}.Dockerfile`; substrate internals (storage driver, stepped loop) → [`../../resoluto-sandbox-dev/references/internals.md`](../../resoluto-sandbox-dev/references/internals.md).
@@ -21,8 +21,7 @@ result = sb.run(
     stdin=None,                           # str|bytes piped to stdin   (LOCAL ONLY)
     env=None,                             # dict[str,str] overlaid on host env
     output_paths=None,                    # Sequence[str] globs collected into artifacts
-    stream=None,                          # IO[str], live stdout (default sys.stdout)
-    deps=None,                            # Deps strategy               (LOCAL ONLY)
+    stream=None,                          # IO[str], live output (default sys.stdout)
 ) -> RunResult
 ```
 
@@ -30,8 +29,8 @@ result = sb.run(
 
 ```python
 exit_code: int
-stdout: str            # program stdout (k8s: MERGED stdout+stderr, see §5)
-stderr: str            # local: program stderr; k8s: "" by design
+output: str            # program output (k8s: MERGED stdout+stderr, see §5)
+errors: str            # local: program stderr; k8s: "" by design
 artifacts: list[str]   # collected output_paths (absolute paths)
 result: dict | None    # parsed result.json if the program wrote one, else None
 reason: str            # substrate forensics (evicted/OOMKilled/observed phase); "" for local
@@ -41,6 +40,8 @@ ok -> bool             # property: exit_code == 0
 The program you run is plain — reads argv/stdin, writes stdout/files, NEVER imports
 `resoluto_sandbox`. Guarantee: a program that runs as `uv run agent.py` locally runs
 byte-identically under `run()`.
+
+Dependencies are your program's concern — put `uv run`/`pip install` in your argv, or use a prebuilt image.
 
 ---
 
@@ -53,7 +54,7 @@ Three subcommands: `run`, `doctor`, `image build`. Unknown/no subcommand → pri
 resoluto-sandbox run [opts] -- <program> [args...]
 ```
 Program argv comes AFTER `--`. Any stray arg before `--` → error, exit 2. No program → exit 2.
-Exit code = the program's exit code. Streams stdout live to `sys.stdout`.
+Exit code = the program's exit code. Streams output live to `sys.stdout`.
 
 Flags:
 | flag | default | values |
@@ -61,27 +62,17 @@ Flags:
 | `--backend` | `local` | `local`, `k8s` |
 | `--workspace` | `None` | dir (program cwd) |
 | `--image` | `None` | k8s image tag (REQUIRED for `--backend k8s`) |
-| `--deps-kind` | `None` | `auto`, `inline`, `requirements`, `image`, `vendored` (LOCAL ONLY) |
-| `--requirements` | `None` | PATH; implies `--deps-kind requirements` if `--deps-kind` omitted |
-
-Deps resolution (`_cmd_run`): `--deps-kind` set → `Deps(kind=..., requirements=...)`;
-else `--requirements` alone → `Deps(kind="requirements", ...)`; else `deps=None`.
-For `--backend k8s` the CLI builds `K8sBackend(image=args.image)` (no conduit/egress wired
-— inject them programmatically via §5 if you need them).
 
 ```bash
-# local, PEP-723 / inline deps auto-detected
+# local run
 resoluto-sandbox run --workspace . -- python agent.py --task build
-
-# local with a requirements file
-resoluto-sandbox run --requirements requirements.txt -- python tool.py
 
 # k8s (image REQUIRED)
 resoluto-sandbox run --backend k8s --image resoluto-sandbox:0.2.3-claude -- python agent.py
 ```
 
 ### `doctor`
-Readiness report, always exit 0. Checks: `docker` (k8s/images), `uv` (inline deps),
+Readiness report, always exit 0. Checks: `docker` (k8s/images), `uv` (useful for Python programs),
 `RESOLUTO_SANDBOX_KUBECONTEXT` (k8s). Prints `[OK]`/`[MISSING]` per check.
 
 ### `image build` (`images.py`)
@@ -209,14 +200,12 @@ prefix, runs `python -m resoluto_sandbox.runner_main`, fetches `output_paths` ba
 `workspace` in place, reads `result.json`. Liveness = substrate silence watchdog
 (`dead_after_s=600`), NO wall-clock timeout.
 
-### TWO real k8s limits (not roadmap — hard `NotImplementedError`):
+### k8s hard limit:
 - **`stdin` is unsupported** → `NotImplementedError`. Don't pass `stdin=` with `backend="k8s"`.
-- **`deps` is unsupported** → `NotImplementedError("bake them into the image")`. Pre-bake deps
-  into the provider image; deps strategies are a LOCAL-only convenience.
 
-### k8s stdout/stderr divergence (intentional)
-The in-pod runner emits stdout AND stderr as `log` span events, so `RunResult.stdout` carries the
-MERGED stream and `RunResult.stderr == ""`. This is by design, not a dropped field.
+### k8s output divergence (intentional)
+The in-pod runner emits stdout AND stderr as `log` span events, so `RunResult.output` carries the
+MERGED stream and `RunResult.errors == ""`. This is by design, not a dropped field.
 
 ### Egress allowlist — `EgressConfig` (frozen dataclass, `runtime/k8s.py`)
 ```python
@@ -271,17 +260,3 @@ Runtime/placement:
 > `RESOLUTO_TRUSTED_LOCAL` is set; otherwise it raises and demands a scoped
 > `RESOLUTO_STORE_WRITE_TOKEN`. Prefer the scoped write token; reserve `RESOLUTO_TRUSTED_LOCAL=1`
 > for dev.
-
----
-
-## 7. Deps strategies (LOCAL only) — `deps.py`
-
-`Deps(kind, requirements=None)`, `kind ∈ {auto, inline, requirements, image, vendored}`.
-`resolve_invocation` maps to launch argv:
-- `inline` → `uv run <argv>`
-- `requirements` → `uv run --with-requirements <workspace>/<req|requirements.txt> <argv>`
-- `image` / `vendored` → `<argv>` unchanged
-- `auto` detects: PEP-723 header in `argv[0]` → inline; `requirements.txt` present → requirements;
-  `pyproject.toml` present → inline; else → image.
-
-k8s ignores all of this (bake deps into the image — see §5).

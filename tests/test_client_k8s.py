@@ -16,4 +16,4 @@ def test_k8s_run_roundtrips(tmp_path):
     assert out.exit_code == 0, out
     assert any(p.endswith("out.txt") for p in out.artifacts)
     assert (tmp_path / "out.txt").read_text().strip() == "hi"
-    assert "done" in out.stdout, out
+    assert "done" in out.output, out

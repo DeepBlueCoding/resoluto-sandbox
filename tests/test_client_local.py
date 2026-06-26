@@ -10,8 +10,8 @@ def test_run_captures_stdout_and_exit_code():
     out = sb.run([sys.executable, "-c", "print('hello from the box')"])
     assert out.exit_code == 0
     assert out.ok is True
-    assert out.stdout.strip() == "hello from the box"
-    assert out.stderr == ""
+    assert out.output.strip() == "hello from the box"
+    assert out.errors == ""
 
 
 def test_run_propagates_nonzero_exit():
@@ -19,13 +19,13 @@ def test_run_propagates_nonzero_exit():
     out = sb.run([sys.executable, "-c", "import sys; sys.stderr.write('boom\\n'); sys.exit(3)"])
     assert out.exit_code == 3
     assert out.ok is False
-    assert "boom" in out.stderr
+    assert "boom" in out.errors
 
 
 def test_run_feeds_stdin():
     sb = Sandbox(backend="local")
     out = sb.run([sys.executable, "-c", "import sys; print(sys.stdin.read().upper())"], stdin="abc")
-    assert out.stdout.strip() == "ABC"
+    assert out.output.strip() == "ABC"
 
 
 def test_run_uses_workspace_as_cwd_and_collects_artifacts(tmp_path):
@@ -43,7 +43,7 @@ def test_run_uses_workspace_as_cwd_and_collects_artifacts(tmp_path):
 def test_run_overlays_env():
     sb = Sandbox(backend="local")
     out = sb.run([sys.executable, "-c", "import os; print(os.environ['ONLY_HERE'])"], env={"ONLY_HERE": "42"})
-    assert out.stdout.strip() == "42"
+    assert out.output.strip() == "42"
 
 
 def test_run_surfaces_result_json(tmp_path):
@@ -76,12 +76,6 @@ def test_k8s_run_raises_without_store_kind(monkeypatch):
     except (KeyError, RuntimeError):
         return
     raise AssertionError("expected KeyError or RuntimeError when RESOLUTO_STORE_KIND is absent")
-
-
-def test_run_image_deps_is_passthrough(tmp_path):
-    from resoluto_sandbox.deps import Deps
-    out = Sandbox(backend="local").run([sys.executable, "-c", "print('ok')"], deps=Deps(kind="image"))
-    assert out.stdout.strip() == "ok"
 
 
 def test_run_survives_child_closing_stdin_early():

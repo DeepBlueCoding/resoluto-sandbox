@@ -23,7 +23,7 @@ machine, it just works — nothing to configure:
 claude            # one-time interactive login on your Max/Pro account (if needed)
 
 python -c "from resoluto_sandbox import Sandbox; \
-  print(Sandbox().run(['uv','run','examples/claude_agent.py','Say hello in five words']).stdout)"
+  print(Sandbox().run(['uv','run','examples/claude_agent.py','Say hello in five words']).output)"
 ```
 
 The subprocess sees your `~/.claude/.credentials.json`, authenticates with your

@@ -22,5 +22,5 @@ result = Sandbox(backend="local").run(
     workspace=str(repo_root),
     stream=sink,
 )
-print(result.stdout, end="")
+print(result.output, end="")
 sys.exit(result.exit_code)

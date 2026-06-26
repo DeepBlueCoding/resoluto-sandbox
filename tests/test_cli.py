@@ -33,16 +33,3 @@ def test_run_stray_args_before_dashdash_is_usage_error(capsys):
     assert "unexpected arguments before '--'" in err
 
 
-def test_run_requirements_flag_builds_deps(monkeypatch):
-    from resoluto_sandbox import RunResult
-    captured = {}
-    class FakeSandbox:
-        def __init__(self, **kw): pass
-        def run(self, argv, **kw):
-            captured["deps"] = kw.get("deps")
-            return RunResult(exit_code=0, stdout="", stderr="")
-    import resoluto_sandbox.client as _client_mod
-    monkeypatch.setattr(_client_mod, "Sandbox", FakeSandbox)
-    from resoluto_sandbox.cli import main
-    main(["run", "--backend", "local", "--deps-kind", "requirements", "--requirements", "r.txt", "--", "echo", "hi"])
-    assert captured["deps"].requirements == "r.txt"

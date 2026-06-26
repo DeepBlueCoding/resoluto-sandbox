@@ -31,16 +31,15 @@ RunResult = Sandbox.run(
     stdin=None,                 # str | bytes | None  (k8s: NotImplementedError — see footguns)
     env=None,                   # dict[str,str] | None — overlays host env
     output_paths=None,          # Sequence[str] | None — globs collected into RunResult.artifacts
-    stream=None,                # IO[str] | None — live stdout sink (default sys.stdout)
-    deps=None,                  # Deps | None  (k8s: NotImplementedError — bake into image)
+    stream=None,                # IO[str] | None — live output sink (default sys.stdout)
 )
 ```
 
 `RunResult` (pydantic):
 ```
 exit_code: int
-stdout: str          # k8s: MERGED stdout+stderr (in-pod runner emits both as log spans)
-stderr: str          # k8s: always "" by design
+output: str          # k8s: MERGED stdout+stderr (in-pod runner emits both as log spans)
+errors: str          # k8s: always "" by design
 artifacts: list[str] # collected output_paths
 result: dict | None  # parsed result.json if the program wrote one, else None
 reason: str          # substrate forensics (evicted/OOMKilled/observed phase); "" for local
@@ -59,9 +58,10 @@ K8sBackend(image=None, conduit=None, egress=None)
 
 ## Status: this is implemented, not roadmap
 
-The `k8s` backend is FULLY implemented — `K8sBackend.run` launches a real Kata pod via `drive_node`, applies the NetworkPolicy, stages workspace in / artifacts out. The ONLY two real limits on `k8s`:
+The `k8s` backend is FULLY implemented — `K8sBackend.run` launches a real Kata pod via `drive_node`, applies the NetworkPolicy, stages workspace in / artifacts out. The ONLY real limit on `k8s`:
 - `stdin is not None` → `NotImplementedError("stdin is not supported on backend='k8s'")`
-- `deps is not None` → `NotImplementedError("deps is not supported on backend='k8s' (bake them into the image)")`
+
+Dependencies must be baked into the image.
 
 Conduits: `local`/`StdoutConduit` (local backend) and S3-against-minio (k8s) are PROVEN. `GcsConduit` is experimental/unverified — do not rely on it for isolation guarantees.
 
@@ -159,7 +159,7 @@ result = sb.run(
     output_paths=["out/**"],
 )
 assert result.ok, result.reason
-print(result.stdout)            # merged stdout+stderr on k8s
+print(result.output)            # merged stdout+stderr on k8s
 print(result.artifacts)         # collected output_paths
 ```
 

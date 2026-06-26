@@ -16,12 +16,6 @@ def main(argv: list[str] | None = None) -> int:
     run_p.add_argument("--backend", default="local", choices=["local", "k8s"])
     run_p.add_argument("--workspace", default=None)
     run_p.add_argument("--image", default=None)
-    run_p.add_argument(
-        "--deps-kind",
-        default=None,
-        choices=["auto", "inline", "requirements", "image", "vendored"],
-    )
-    run_p.add_argument("--requirements", default=None, metavar="PATH")
 
     sub.add_parser("doctor", help="Check local backend readiness")
 
@@ -70,20 +64,13 @@ def _cmd_run(args: argparse.Namespace, rest: list[str]) -> int:
         return 2
 
     from resoluto_sandbox.client import Sandbox
-    from resoluto_sandbox.deps import Deps
 
-    if args.deps_kind:
-        deps = Deps(kind=args.deps_kind, requirements=args.requirements)
-    elif args.requirements:
-        deps = Deps(kind="requirements", requirements=args.requirements)
-    else:
-        deps = None
     if args.backend == "k8s":
         from resoluto_sandbox.backends.k8s import K8sBackend
         sb = Sandbox(backend=K8sBackend(image=args.image))
     else:
         sb = Sandbox(backend=args.backend)
-    result = sb.run(program_argv, workspace=args.workspace, deps=deps, stream=sys.stdout)
+    result = sb.run(program_argv, workspace=args.workspace, stream=sys.stdout)
     return result.exit_code
 
 
@@ -91,7 +78,7 @@ def _cmd_doctor() -> int:
     """Print a readiness report for the local backend. Returns 0."""
     checks = [
         ("docker", shutil.which("docker") is not None, "needed for k8s/images"),
-        ("uv", shutil.which("uv") is not None, "needed for inline deps"),
+        ("uv", shutil.which("uv") is not None, "useful for running Python programs"),
         ("RESOLUTO_SANDBOX_KUBECONTEXT", "RESOLUTO_SANDBOX_KUBECONTEXT" in os.environ, "needed for k8s"),
     ]
     for label, ok, note in checks:

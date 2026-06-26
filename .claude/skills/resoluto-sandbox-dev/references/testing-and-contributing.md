@@ -12,7 +12,6 @@ Cross-links (do not duplicate): wire protocol → `../../../../spec/PROTOCOL.md`
 from resoluto_sandbox import Sandbox, RunResult
 from resoluto_sandbox.backends.k8s import K8sBackend
 from resoluto_sandbox.runtime.k8s import EgressConfig
-from resoluto_sandbox.deps import Deps
 
 Sandbox(*, backend: "Backend | str" = "local")          # "local" | "k8s" | Backend instance
   .run(
@@ -22,16 +21,15 @@ Sandbox(*, backend: "Backend | str" = "local")          # "local" | "k8s" | Back
       stdin: str | bytes | None = None,    # local only — k8s raises NotImplementedError
       env: dict[str, str] | None = None,   # overlays host env
       output_paths: Sequence[str] | None = None,  # globs collected into RunResult.artifacts
-      stream: IO[str] | None = None,       # live stdout sink; default sys.stdout
-      deps: Deps | None = None,            # local only — k8s raises NotImplementedError
+      stream: IO[str] | None = None,       # live output sink; default sys.stdout
   ) -> RunResult
 ```
 
 ```python
 class RunResult(BaseModel):
     exit_code: int
-    stdout: str
-    stderr: str                 # k8s: ALWAYS "" — runner merges stdout+stderr into stdout (by design)
+    output: str
+    errors: str                # k8s: ALWAYS "" — runner merges stdout+stderr into output (by design)
     artifacts: list[str] = []   # collected output_paths, abs paths under workspace
     result: dict | None = None  # parsed result.json if the program wrote one, else None
     reason: str = ""            # substrate forensics (evicted/OOMKilled/observed_phase); "" for local
@@ -40,6 +38,8 @@ class RunResult(BaseModel):
 ```
 
 Backend selection: `Sandbox(backend="local")` → `LocalBackend()`; `Sandbox(backend="k8s")` → `K8sBackend()` (no image → `.run` raises `ValueError`); any unknown string → `ValueError`.
+
+Dependencies are your program's concern — put `uv run`/`pip install` in your argv, or use a prebuilt image.
 
 ### k8s config — inject a configured backend
 ```python
@@ -60,12 +60,9 @@ EgressConfig(store_cidr="10.0.0.5/32", llm_cidr="160.79.104.0/23", git_cidrs=["1
 # non-CIDR (missing "/") → ValueError at construction
 ```
 
-### k8s real limits (NOT roadmap — the backend IS implemented via `drive_node` → real Kata pod)
+### k8s real limit (NOT roadmap — the backend IS implemented via `drive_node` → real Kata pod)
 - `stdin is not None` → `NotImplementedError("stdin is not supported on backend='k8s'")`
-- `deps is not None` → `NotImplementedError("deps is not supported on backend='k8s' (bake them into the image)")`
 - Everything else (workspace stage-in via `put_dir`, live `log` span streaming, `output_paths` fetch-out via `fetch_outputs`, `result.json` parse) works against a live pod. Requires `RESOLUTO_STORE_KIND` in env (the conduit) and a reachable k3s+Kata.
-
-`deps` (`deps.py`, local backend only) — `Deps(kind="auto"|"inline"|"requirements"|"image"|"vendored", requirements=None)`. `auto` detects PEP-723 / `requirements.txt` / `pyproject.toml` and launches via `uv run`.
 
 ### Conduits (host↔pod rendezvous; selected by `RESOLUTO_STORE_KIND` in `conduit/factory.py`)
 | kind | class | status |
@@ -118,7 +115,7 @@ A non-`@integration` test must not call `K8sSandboxRuntime.launch()` / `drive_no
 No try/except-swallow, no default-on-missing-input, no placeholders. Mirror the codebase: `store_from_env` raises `RuntimeError` on an unknown `RESOLUTO_STORE_KIND`; `K8sBackend` raises `ValueError`/`NotImplementedError` rather than degrading; `parse_k8s_memory` rejects garbage with an anchored regex; `check_runtime_class_guard` refuses a non-Kata `runtime_class` unless `RESOLUTO_TRUSTED_LOCAL` is set. Let it crash loud at the source.
 
 ### 4. pydantic end-to-end
-All wire/contract types are `pydantic.BaseModel` (`RunResult`, `SandboxLaunchSpec`, `NodeResult`, `SandboxStatus`, `SpanEvent`, `ObjectInfo`, `Deps`). No manual dict construction for these, no `.model_dump()` plumbing in the middle. Return models; let serialization happen at the edge. `RunResult.result` is an intentionally generic `dict` (parsed foreign `result.json`) — not a vocabulary the substrate owns.
+All wire/contract types are `pydantic.BaseModel` (`RunResult`, `SandboxLaunchSpec`, `NodeResult`, `SandboxStatus`, `SpanEvent`, `ObjectInfo`). No manual dict construction for these, no `.model_dump()` plumbing in the middle. Return models; let serialization happen at the edge. `RunResult.result` is an intentionally generic `dict` (parsed foreign `result.json`) — not a vocabulary the substrate owns.
 
 ### 5. no comments except minimal docstrings
 Match existing style: a one-line (or short) function/class docstring stating inputs/outputs; no inline narration. Don't add explanatory comments to code.

@@ -12,7 +12,6 @@ from uuid import uuid4
 from resoluto_sandbox.backends.artifacts import _collect, read_result_json
 from resoluto_sandbox.backends.base import Backend, RunResult
 from resoluto_sandbox.contracts import Conduit
-from resoluto_sandbox.deps import Deps
 
 
 def _append_log_event(ev, out_lines: list[str], sink) -> None:
@@ -29,8 +28,8 @@ def _append_log_event(ev, out_lines: list[str], sink) -> None:
 class K8sBackend(Backend):
     """Runs the program in a Kata pod via ``drive_node``.
 
-    For k8s, ``RunResult.stdout`` carries the runner's MERGED stdout+stderr (the
-    in-pod runner emits both as ``log`` span events), so ``RunResult.stderr`` is
+    For k8s, ``RunResult.output`` carries the runner's MERGED stdout+stderr (the
+    in-pod runner emits both as ``log`` span events), so ``RunResult.errors`` is
     empty by design — the divergence from the local backend is intentional, not a
     dropped field.
 
@@ -60,12 +59,9 @@ class K8sBackend(Backend):
         env: dict[str, str] | None = None,
         output_paths: Sequence[str] | None = None,
         stream: IO[str] | None = None,
-        deps: Deps | None = None,
     ) -> RunResult:
         if stdin is not None:
             raise NotImplementedError("stdin is not supported on backend='k8s'")
-        if deps is not None:
-            raise NotImplementedError("deps is not supported on backend='k8s' (bake them into the image)")
         if self._image is None:
             raise ValueError("backend='k8s' requires K8sBackend(image=...)")
         return asyncio.run(self._run_async(argv, workspace=workspace, env=env,
@@ -147,8 +143,8 @@ class K8sBackend(Backend):
         exit_code = result.exit_code if result.exit_code is not None else (0 if result.status == "success" else 1)
         return RunResult(
             exit_code=exit_code,
-            stdout="".join(out_lines),
-            stderr="",
+            output="".join(out_lines),
+            errors="",
             artifacts=artifacts,
             result=node_result,
             reason=(result.reason or result.observed_phase or ""),

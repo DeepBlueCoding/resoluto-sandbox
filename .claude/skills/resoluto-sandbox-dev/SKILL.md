@@ -17,7 +17,7 @@ from resoluto_sandbox.backends.k8s import K8sBackend
 from resoluto_sandbox.runtime.k8s import EgressConfig
 
 r = Sandbox(backend="local").run(["agent.py"], workspace="/work", stdin="hi")
-print(r.stdout, r.ok)   # RunResult(exit_code, stdout, stderr, artifacts, result, reason, ok)
+print(r.output, r.ok)   # RunResult(exit_code, output, errors, artifacts, result, reason, ok)
 
 # k8s: backend is injected and configured (image is a backend concern)
 egress = EgressConfig(store_cidr="10.0.0.5/32", llm_cidr="1.2.3.4/32")
@@ -25,7 +25,7 @@ Sandbox(backend=K8sBackend(image="ghcr.io/...:TAG", egress=egress)).run(
     ["python", "agent.py"], workspace="/work", output_paths=["out/*.json"])
 ```
 
-`Sandbox(backend="local"|"k8s"|<Backend instance>)`. `.run(argv, *, workspace, stdin, env, output_paths, stream, deps) -> RunResult`. On `k8s`: `stdin`/`deps` raise `NotImplementedError` (bake deps into the image); `RunResult.stderr` is empty (stdout carries merged stdout+stderr); needs `RESOLUTO_STORE_KIND` in env.
+`Sandbox(backend="local"|"k8s"|<Backend instance>)`. `.run(argv, *, workspace, stdin, env, output_paths, stream) -> RunResult`. On `k8s`: `stdin` raises `NotImplementedError` (bake deps into the image); `RunResult.errors` is empty (output carries merged stdout+stderr); needs `RESOLUTO_STORE_KIND` in env.
 
 ## Quick reference
 
