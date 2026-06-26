@@ -4,7 +4,6 @@ from typing import IO, Sequence
 import pytest
 
 from resoluto_sandbox import Backend, RunResult, Sandbox
-from resoluto_sandbox.deps import Deps
 
 
 class _CapturingBackend(Backend):
@@ -23,7 +22,6 @@ class _CapturingBackend(Backend):
         env=None,
         output_paths=None,
         stream=None,
-        deps=None,
     ) -> RunResult:
         self.received = dict(
             argv=list(argv),
@@ -32,18 +30,16 @@ class _CapturingBackend(Backend):
             env=env,
             output_paths=output_paths,
             stream=stream,
-            deps=deps,
         )
         return self._result
 
 
 def test_di_backend_is_accepted_and_delegated_to():
     import sys
-    fixed = RunResult(exit_code=0, stdout="injected", stderr="")
+    fixed = RunResult(exit_code=0, output="injected", errors="")
     capturing = _CapturingBackend(fixed)
     sb = Sandbox(backend=capturing)
     sentinel_env = {"K": "V"}
-    sentinel_deps = Deps(kind="inline")
     result = sb.run(
         ["anything"],
         workspace="/tmp",
@@ -51,10 +47,9 @@ def test_di_backend_is_accepted_and_delegated_to():
         env=sentinel_env,
         output_paths=["*.out"],
         stream=sys.stdout,
-        deps=sentinel_deps,
     )
     assert result is fixed
-    assert result.stdout == "injected"
+    assert result.output == "injected"
     assert result.ok is True
     r = capturing.received
     assert r["argv"] == ["anything"]
@@ -63,7 +58,6 @@ def test_di_backend_is_accepted_and_delegated_to():
     assert r["env"] == sentinel_env
     assert r["output_paths"] == ["*.out"]
     assert r["stream"] is sys.stdout
-    assert r["deps"] is sentinel_deps
 
 
 def test_unknown_backend_string_raises():

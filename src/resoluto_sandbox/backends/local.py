@@ -10,7 +10,6 @@ from typing import IO, Sequence
 
 from resoluto_sandbox.backends.artifacts import _collect, read_result_json
 from resoluto_sandbox.backends.base import Backend, RunResult
-from resoluto_sandbox.deps import Deps, resolve_invocation
 
 
 class LocalBackend(Backend):
@@ -29,7 +28,6 @@ class LocalBackend(Backend):
         env: dict[str, str] | None = None,
         output_paths: Sequence[str] | None = None,
         stream: IO[str] | None = None,
-        deps: Deps | None = None,
     ) -> RunResult:
         cwd = Path(workspace).resolve() if workspace else Path.cwd()
         if not cwd.is_dir():
@@ -37,10 +35,9 @@ class LocalBackend(Backend):
 
         child_env = {**os.environ, **env} if env else None
 
-        launch_argv = resolve_invocation(argv, deps or Deps(), cwd)
         sink = stream if stream is not None else sys.stdout
         proc = subprocess.Popen(
-            launch_argv,
+            list(argv),
             cwd=str(cwd),
             env=child_env,
             stdin=subprocess.PIPE if stdin is not None else None,
@@ -72,8 +69,8 @@ class LocalBackend(Backend):
         artifacts = _collect(cwd, output_paths)
         return RunResult(
             exit_code=exit_code,
-            stdout="".join(out_buf),
-            stderr="".join(err_buf),
+            output="".join(out_buf),
+            errors="".join(err_buf),
             artifacts=artifacts,
             result=read_result_json(cwd),
         )

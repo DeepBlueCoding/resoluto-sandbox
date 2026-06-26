@@ -11,10 +11,10 @@ Run any program — script, CLI, or AI agent in any language — in an isolated 
 from resoluto_sandbox import Sandbox
 r = Sandbox(backend="local").run(["python", "agent.py"], workspace="./work",
                                  stdin="hi", output_paths=["out/*.json"])
-# RunResult(pydantic): exit_code:int stdout/stderr:str artifacts:list[str] result:dict|None reason:str ok(prop ==exit0)
+# RunResult(pydantic): exit_code:int output/errors:str artifacts:list[str] result:dict|None reason:str ok(prop ==exit0)
 ```
 
-k8s merges stdout+stderr into `stdout` (`stderr` empty by design).
+k8s merges stdout+stderr into `output` (`errors` empty by design).
 
 ## Quick reference
 
@@ -24,16 +24,16 @@ k8s merges stdout+stderr into `stdout` (`stderr` empty by design).
 | Run in Kata pod | `Sandbox(backend=K8sBackend(image="<tag>")).run(argv, ...)` — needs `RESOLUTO_STORE_KIND` in env |
 | Collect outputs | `output_paths=["dist/*","*.json"]` → globbed into `r.artifacts`; mutated into `workspace` |
 | Structured result | program writes `result.json` in workspace → `r.result` |
-| Inline deps | PEP-723 header or `deps=Deps(kind="inline")` → `uv run` (local only) |
+| Dependencies | put `uv run`/`pip install` in your argv, or use a prebuilt image |
 | Restrict k8s egress | `K8sBackend(image=..., egress=EgressConfig(store_cidr=..., llm_cidr=..., git_cidrs=[...]))` |
 | Pick store conduit | `K8sBackend(conduit=...)`; else `store_from_env()` via `RESOLUTO_STORE_KIND` |
 | CLI | `resoluto-sandbox run [--backend local\|k8s] [--image T] -- <prog> [args]` ; also `doctor`, `image build --provider claude\|langchain\|openai\|all` |
 | Build SDK image | `resoluto-sandbox image build --provider claude` (tag locked to wheel version) |
 | Claude Max auth | local: log in once (`claude` / `claude setup-token`), do NOT set `ANTHROPIC_API_KEY` |
 
-Imports: `from resoluto_sandbox import Sandbox, RunResult, Deps`; `from resoluto_sandbox.backends.k8s import K8sBackend`; `from resoluto_sandbox.runtime.k8s import EgressConfig`.
+Imports: `from resoluto_sandbox import Sandbox, RunResult`; `from resoluto_sandbox.backends.k8s import K8sBackend`; `from resoluto_sandbox.runtime.k8s import EgressConfig`.
 
-**k8s real limits:** no `stdin` and no `deps` (both raise `NotImplementedError` — bake deps into the image). Otherwise k8s is fully implemented: a real Kata pod via `drive_node`.
+**k8s real limit:** no `stdin` (raises `NotImplementedError`). Dependencies must be baked into the image. Otherwise k8s is fully implemented: a real Kata pod via `drive_node`.
 
 ## Footguns
 
@@ -44,7 +44,7 @@ Imports: `from resoluto_sandbox import Sandbox, RunResult, Deps`; `from resoluto
 
 ## Deep references
 
-- `references/usage.md` — calling `run()`: full args, `Deps` kinds, output collection, `result.json`, CLI.
+- `references/usage.md` — calling `run()`: full args, output collection, `result.json`, CLI.
 - `references/agents.md` — bringing your own agent (any language) or Claude Max-subscription auth.
 - `references/networking.md` — `EgressConfig`/NetworkPolicy, conduits, store env. local/stdout and S3-against-minio proven; `GcsConduit` experimental/unverified.
 - `references/operations.md` — building/publishing images, k3s+Kata, debugging pod phase/`reason`.

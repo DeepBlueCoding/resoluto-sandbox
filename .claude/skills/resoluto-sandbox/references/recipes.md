@@ -19,16 +19,15 @@ sb.run(
     stdin=None,                 # str|bytes — local only; k8s raises NotImplementedError
     env=None,                   # dict[str,str] — overlays host env
     output_paths=None,          # Sequence[str] globs → collected into RunResult.artifacts
-    stream=None,                # IO[str] — live stdout sink; None → echoes to sys.stdout
-    deps=None,                  # Deps — local only; k8s raises NotImplementedError
+    stream=None,                # IO[str] — live output sink; None → echoes to sys.stdout
 ) -> RunResult
 ```
 
 ```python
 class RunResult(BaseModel):
     exit_code: int
-    stdout: str                 # k8s: MERGED stdout+stderr; stderr stays ""
-    stderr: str                 # local only; "" on k8s by design
+    output: str                 # k8s: MERGED stdout+stderr; errors stays ""
+    errors: str                 # local only; "" on k8s by design
     artifacts: list[str] = []   # collected output_paths (absolute paths)
     result: dict | None = None  # parsed result.json if the program wrote one, else None
     reason: str = ""            # substrate forensics (evicted/OOMKilled/canary fail); "" for local
@@ -38,6 +37,8 @@ class RunResult(BaseModel):
 
 The program is PLAIN: reads argv/stdin, writes stdout/files. It never imports
 `resoluto_sandbox`. Same program runs byte-identically local and k8s.
+
+Dependencies are your program's concern — put `uv run`/`pip install` in your argv, or use a prebuilt image.
 
 ---
 
@@ -51,7 +52,7 @@ Inherits host env, so an already-logged-in `claude` CLI just works. NO key wirin
 from resoluto_sandbox import Sandbox
 
 r = Sandbox().run(["uv", "run", "examples/claude_agent.py", "Say hello in five words"])
-print(r.stdout)
+print(r.output)
 ```
 
 Prereq: `claude` once (interactive login) so `~/.claude/.credentials.json` exists.
@@ -72,7 +73,7 @@ r = sb.run(
     ["python", "claude_agent.py", "Say hello in five words"],
     workspace="/abs/path/to/examples",     # staged into the pod at /workspace
 )
-print(r.stdout, r.reason)
+print(r.output, r.reason)
 ```
 
 Subscription auth inside the pod: bake `CLAUDE_CODE_OAUTH_TOKEN` (from
@@ -119,7 +120,7 @@ fail-closes if the policy was not enforced. Full table: [docs/networking.md](../
 ### 5. Bring your own OCI image
 
 The image is a backend concern — pass it to `K8sBackend(image=...)`. The image
-must bake every runtime dep your program needs (`deps=` is rejected on k8s). The
+must bake every runtime dep your program needs. The
 pod entrypoint is fixed to `python -m resoluto_sandbox.runner_main`; your `argv`
 is delivered via env and executed by the runner inside `/workspace`.
 
@@ -129,34 +130,21 @@ sb = Sandbox(backend=K8sBackend(image="myregistry/my-lane:2026-06"))
 
 `K8sBackend()` with no image raises `ValueError` at `run()` time.
 
-### 6. Stream vs capture stdout
+### 6. Stream vs capture output
 
 `stream=None` (default) ECHOES live to `sys.stdout` AND captures into
-`RunResult.stdout`. To capture without polluting your console, pass any `IO[str]`:
+`RunResult.output`. To capture without polluting your console, pass any `IO[str]`:
 
 ```python
 import io
 buf = io.StringIO()
 r = sb.run(["uv", "run", "agent.py", "prompt"], stream=buf)
 captured_live = buf.getvalue()    # streamed lines
-full = r.stdout                   # same content, fully captured
+full = r.output                   # same content, fully captured
 ```
 
 Local tees stdout→`stream` and stderr→`sys.stderr` separately. k8s merges both
-into `stdout` (stderr stays `""`).
-
-### 7. deps strategy (local only)
-
-`Deps(kind=...)` controls how a local program is launched. `auto` (default)
-detects: PEP-723 inline script → `uv run`; `requirements.txt` → `uv run
---with-requirements`; `pyproject.toml` → `uv run`; else exec as-is.
-
-```python
-from resoluto_sandbox.deps import Deps
-sb.run(["agent.py", "prompt"], workspace="/abs/work", deps=Deps(kind="inline"))
-```
-
-k8s rejects `deps` — bake them into the image instead.
+into `output` (errors stays `""`).
 
 ---
 
@@ -204,9 +192,8 @@ k8s rejects `deps` — bake them into the image instead.
   contract parity with S3 — no real-GCS integration test. Run the conformance
   suite against a live bucket before relying on it.
 
-- **k8s has two hard limits:** `stdin` and `deps` both raise
-  `NotImplementedError`. Feed inputs via argv/files/`env`; bake deps into the
-  image.
+- **k8s hard limit:** `stdin` raises `NotImplementedError`. Feed inputs via argv/files/`env`;
+  bake deps into the image.
 
 - **`EgressConfig` must come from `resoluto_sandbox.runtime.k8s`,** not the
   top-level package (the top-level import would eagerly pull in

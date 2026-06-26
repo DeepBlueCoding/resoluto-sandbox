@@ -6,18 +6,18 @@ from typing import IO, Sequence
 
 from pydantic import BaseModel
 
-from resoluto_sandbox.deps import Deps
-
 
 class RunResult(BaseModel):
-    """Outcome of one ``run()``. ``stdout`` is the program's answer; ``artifacts``
-    are the collected ``output_paths``; ``result`` is a parsed ``result.json`` if
-    the program wrote one (otherwise ``None``); ``reason`` carries substrate
+    """Outcome of one ``run()``. ``output`` is the program's output (its answer/content);
+    ``errors`` is its diagnostic output; both are reconstructed from the backend's
+    transport (subprocess streams locally, wire chunks on k8s). ``artifacts`` are
+    absolute paths of collected ``output_paths``; ``result`` is a parsed ``result.json``
+    if the program wrote one (otherwise ``None``); ``reason`` carries substrate
     forensics (e.g. an evicted/OOMKilled pod) when available; empty for local."""
 
     exit_code: int
-    stdout: str
-    stderr: str
+    output: str
+    errors: str
     artifacts: list[str] = []
     result: dict | None = None
     reason: str = ""
@@ -41,5 +41,4 @@ class Backend(ABC):
         env: dict[str, str] | None = None,
         output_paths: Sequence[str] | None = None,
         stream: IO[str] | None = None,
-        deps: Deps | None = None,
     ) -> RunResult: ...

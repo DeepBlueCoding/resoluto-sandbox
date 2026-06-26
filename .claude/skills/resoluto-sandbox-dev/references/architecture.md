@@ -33,8 +33,7 @@ RunResult = sb.run(
     stdin: str | bytes | None = None,  # fed on stdin       — LOCAL ONLY (k8s raises)
     env: dict[str, str] | None = None, # overlays host env
     output_paths: Sequence[str] | None = None,  # globs → RunResult.artifacts
-    stream: IO[str] | None = None,     # live stdout sink (default sys.stdout)
-    deps: Deps | None = None,          # dep strategy       — LOCAL ONLY (k8s raises)
+    stream: IO[str] | None = None,     # live output sink (default sys.stdout)
 )
 ```
 
@@ -43,14 +42,16 @@ RunResult = sb.run(
 | field | type | meaning |
 |-------|------|---------|
 | `exit_code` | `int` | process exit code |
-| `stdout` | `str` | program's answer. **k8s:** MERGED stdout+stderr |
-| `stderr` | `str` | local only; **empty on k8s by design** (merged into stdout) |
+| `output` | `str` | program's answer. **k8s:** MERGED stdout+stderr |
+| `errors` | `str` | local only; **empty on k8s by design** (merged into output) |
 | `artifacts` | `list[str]` | collected `output_paths` |
 | `result` | `dict \| None` | parsed `result.json` if the program wrote one, else `None` |
 | `reason` | `str` | substrate forensics (evicted/OOMKilled pod, …); empty for local |
 | `ok` | `bool` (property) | `exit_code == 0` |
 
 The program you run is plain: it reads argv/stdin, writes stdout/files, and never imports `resoluto_sandbox`. Guarantee: a program that runs as `uv run agent.py` on your machine runs byte-identically under `run()`.
+
+Dependencies are your program's concern — put `uv run`/`pip install` in your argv, or use a prebuilt image.
 
 ## The three seams (ABCs)
 
@@ -62,16 +63,15 @@ The substrate seam. One abstract method; inputs/outputs identical across impleme
 class Backend(ABC):
     @abstractmethod
     def run(self, argv, *, workspace=None, stdin=None, env=None,
-            output_paths=None, stream=None, deps=None) -> RunResult: ...
+            output_paths=None, stream=None) -> RunResult: ...
 ```
 
 Implementations:
-- **`LocalBackend`** — subprocess on this host, inheriting host env (an already-logged-in agent CLI authenticates with no extra wiring). Streams live to `stream`. Honors `stdin` and `deps`.
+- **`LocalBackend`** — subprocess on this host, inheriting host env (an already-logged-in agent CLI authenticates with no extra wiring). Streams live to `stream`. Honors `stdin`.
 - **`K8sBackend(*, image=None, conduit=None, egress=None)`** — fully implemented: launches a real Kata pod via the internal `drive_node` primitive; in-pod runner self-reports JSONL chunks to a `Conduit`; the host tails the store and reaps. Requires `RESOLUTO_STORE_KIND` in the env. `run()` calls `asyncio.run(...)` internally (sync surface, async core).
 
-**k8s footguns (the only two real limits):**
+**k8s footguns:**
 - `stdin is not None` → `NotImplementedError("stdin is not supported on backend='k8s'")`
-- `deps is not None` → `NotImplementedError("deps is not supported on backend='k8s' (bake them into the image)")`
 - `image is None` → `ValueError("backend='k8s' requires K8sBackend(image=...)")`
 
 Everything else on k8s works. It is NOT a roadmap stub.
@@ -127,9 +127,9 @@ You normally don't touch `SandboxRuntime` directly — `K8sBackend` drives it fo
 
 ## pydantic-only core (the import-light litmus)
 
-`contracts.py` and the backend/deps models are pydantic `BaseModel` + ABCs with NO platform deps (no kubernetes, no boto3 at module top). Heavy clients are imported lazily INSIDE methods (`store_from_env` imports `S3Conduit` only on the `s3` branch; `K8sSandboxRuntime._client` imports `kubernetes_asyncio` lazily). Litmus: importing `resoluto_sandbox.contracts` must not pull a cloud SDK. Keep new contracts dep-light; push platform imports down into the concrete impl.
+`contracts.py` and the backend models are pydantic `BaseModel` + ABCs with NO platform deps (no kubernetes, no boto3 at module top). Heavy clients are imported lazily INSIDE methods (`store_from_env` imports `S3Conduit` only on the `s3` branch; `K8sSandboxRuntime._client` imports `kubernetes_asyncio` lazily). Litmus: importing `resoluto_sandbox.contracts` must not pull a cloud SDK. Keep new contracts dep-light; push platform imports down into the concrete impl.
 
-Key pydantic contracts: `RunResult`, `Deps`, `SandboxLaunchSpec`, `SandboxHandle`, `SandboxStatus`, `NodeResult`, `ObjectInfo`, `SpanEvent`. `EgressConfig` is a frozen `@dataclass` (not pydantic) in `runtime.k8s`.
+Key pydantic contracts: `RunResult`, `SandboxLaunchSpec`, `SandboxHandle`, `SandboxStatus`, `NodeResult`, `ObjectInfo`, `SpanEvent`. `EgressConfig` is a frozen `@dataclass` (not pydantic) in `runtime.k8s`.
 
 ## Where each concern lives
 
@@ -139,7 +139,6 @@ Key pydantic contracts: `RunResult`, `Deps`, `SandboxLaunchSpec`, `SandboxHandle
 | substrate seam + `RunResult` | `backends/base.py` |
 | local subprocess | `backends/local.py` |
 | Kata pod via `drive_node` | `backends/k8s.py` |
-| dep strategy (`uv run`, requirements, image) | `deps.py` |
 | host↔pod exchange seam | `contracts.py` (`Conduit`) + `conduit/*` |
 | conduit-from-env | `conduit/factory.py` |
 | placement seam | `contracts.py` (`SandboxRuntime`) + `runtime/k8s.py` |
@@ -180,7 +179,7 @@ from resoluto_sandbox.backends.base import Backend, RunResult
 class EcsBackend(Backend):
     def __init__(self, *, image: str, conduit=None, ...): ...
     def run(self, argv, *, workspace=None, stdin=None, env=None,
-            output_paths=None, stream=None, deps=None) -> RunResult:
+            output_paths=None, stream=None) -> RunResult:
         # run argv; collect output_paths into artifacts; parse result.json into .result
         # raise NotImplementedError for genuinely unsupported kwargs (don't silently drop)
         ...
@@ -208,7 +207,7 @@ If your substrate also needs novel placement, implement `SandboxRuntime` too and
        ▼                      ▼
  LocalBackend            K8sBackend(image=, conduit=, egress=)
  subprocess              Kata pod via drive_node
- stdin+deps OK           (no stdin, no deps — bake into image)
+ stdin OK                (no stdin — bake deps into image)
        │                      │ tail / reap
        │                      ▼
        │            ┌───────────────────┐

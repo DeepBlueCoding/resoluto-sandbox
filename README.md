@@ -29,12 +29,12 @@ from resoluto_sandbox import Sandbox
 result = Sandbox(backend="local").run(
     ["python", "-c", "print('hello from the sandbox')"]
 )
-print(result.stdout)   # hello from the sandbox
+print(result.output)   # hello from the sandbox
 print(result.ok)       # True
 ```
 
-`backend="local"` runs the program as a subprocess on this host. The result captures stdout,
-stderr, the exit code, and any files you asked to collect.
+`backend="local"` runs the program as a subprocess on this host. The result captures output,
+errors, the exit code, and any files you asked to collect.
 
 ---
 
@@ -55,7 +55,7 @@ from resoluto_sandbox import Sandbox
 result = Sandbox(backend="local").run(
     ["uv", "run", "examples/claude_agent.py", "Summarise the Zen of Python"]
 )
-print(result.stdout)
+print(result.output)
 ```
 
 See `examples/claude_agent.py` for a minimal Claude agent and `docs/auth.md` for the
@@ -65,21 +65,7 @@ Claude Max/Pro subscription auth path (no API key needed).
 
 ## Dependencies
 
-`Deps(kind=...)` controls how the program's dependencies are supplied:
-
-| kind | behaviour |
-|---|---|
-| `auto` (default) | detects PEP 723 inline script / `requirements.txt` / `pyproject.toml` automatically |
-| `inline` | wraps the call with `uv run` to install inline deps |
-| `requirements` | passes `--with-requirements requirements.txt` to `uv run` |
-| `image` | the program is already installed in the image — pass argv through as-is |
-| `vendored` | same as `image`; use when deps are vendored in the workspace |
-
-```python
-from resoluto_sandbox import Sandbox, Deps
-
-result = Sandbox().run(["agent.py", "--prompt", "hello"], deps=Deps(kind="inline"))
-```
+Dependencies are your program's concern — put `uv run`/`pip install` in your argv, or use a prebuilt image.
 
 ---
 
@@ -97,9 +83,7 @@ sb = Sandbox(backend=K8sBackend(image="<registry>/resoluto-lane:dev"))
 out = sb.run(["bash", "-lc", "echo hi"], workspace="./proj", output_paths=["*.txt"])
 ```
 
-Limits on `backend="k8s"`: **no `stdin`** (raises `NotImplementedError`) and **no `deps`** (raises
-`NotImplementedError` — dependencies must be baked into the image). `RunResult.stderr` is always
-empty on this backend; the in-pod runner merges stdout and stderr into the stdout stream.
+Limits on `backend="k8s"`: **no `stdin`** (raises `NotImplementedError`); dependencies must be baked into the image. `RunResult.errors` is always empty on this backend; the in-pod runner merges stdout and stderr into the output stream.
 
 `Sandbox(backend="k8s")` without an injected backend builds `K8sBackend(image=None)`, which raises
 a clear `ValueError` on `run()` asking you to inject `K8sBackend(image=...)` instead.
@@ -114,8 +98,7 @@ resoluto-sandbox run --backend k8s --image <img> -- python agent.py  # k8s backe
 resoluto-sandbox doctor                               # check what is available on this machine
 ```
 
-`--deps-kind` is silently accepted but has no effect on `--backend k8s` — deps must be baked into
-the image. `--` separates sandbox options from the program argv.
+`--` separates sandbox options from the program argv.
 
 ---
 
@@ -129,12 +112,11 @@ Sandbox(backend="local").run(
     stdin=None,                  # str or bytes fed to stdin
     env=None,                    # dict overlaid on the host environment
     output_paths=None,           # list of glob patterns to collect as artifacts
-    stream=None,                 # live stdout sink; None (default) echoes to sys.stdout; pass a StringIO/file to capture
-    deps=None,                   # Deps() strategy; default is Deps(kind="auto")
+    stream=None,                 # live output sink; None (default) echoes to sys.stdout; pass a StringIO/file to capture
 ) -> RunResult
 ```
 
-`RunResult` fields: `exit_code`, `stdout`, `stderr`, `artifacts`, `result` (parsed `result.json`
+`RunResult` fields: `exit_code`, `output`, `errors`, `artifacts`, `result` (parsed `result.json`
 if the program wrote one), `ok` (property: `exit_code == 0`).
 
 ---
@@ -143,8 +125,7 @@ if the program wrote one), `ok` (property: `exit_code == 0`).
 
 | Feature | Status |
 |---|---|
-| `backend="local"` — subprocess on host, full env inheritance, live stdout | **works today** |
-| `Deps` strategies: `auto`, `inline`, `requirements`, `image`, `vendored` | **works today** |
+| `backend="local"` — subprocess on host, full env inheritance, live output | **works today** |
 | CLI: `run` + `doctor` | **works today** |
 | `Conduit` abstraction + `LocalConduit`, `StdoutConduit`, `S3Conduit` (minio/S3-compatible, proven) | **works today** |
 | `GcsConduit` | **provided, unverified** — experimental; not tested end-to-end |

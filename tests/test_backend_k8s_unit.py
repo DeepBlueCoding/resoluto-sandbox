@@ -52,7 +52,7 @@ def test_log_line_key_is_captured_into_stdout(monkeypatch):
     _patch_substrate(monkeypatch, on_event_payload=ev)
     backend = K8sBackend(image="img:dev", conduit=_FakeConduit())
     out = backend.run(["true"])
-    assert "hi" in out.stdout
+    assert "hi" in out.output
     assert out.exit_code == 0
 
 
@@ -98,12 +98,9 @@ def test_image_none_raises_value_error():
         K8sBackend(image=None).run(["true"])
 
 
-def test_stdin_and_deps_raise_not_implemented():
-    from resoluto_sandbox.deps import Deps
+def test_stdin_raises_not_implemented():
     with pytest.raises(NotImplementedError):
         K8sBackend(image="img:dev").run(["true"], stdin="x")
-    with pytest.raises(NotImplementedError):
-        K8sBackend(image="img:dev").run(["true"], deps=Deps(kind="image"))
 
 
 def test_run_result_reason_populated_from_node_result(monkeypatch):

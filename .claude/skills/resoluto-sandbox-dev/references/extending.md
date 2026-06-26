@@ -23,8 +23,7 @@ Sandbox(backend="local" | "k8s" | <Backend instance>).run(
     stdin=None,                 # str | bytes | None
     env=None,                   # dict[str, str] | None — overlays host env
     output_paths=None,          # Sequence[str] | None — globs, collected into artifacts
-    stream=None,                # IO[str] | None — live stdout sink (default sys.stdout)
-    deps=None,                  # Deps | None — dependency strategy (local only)
+    stream=None,                # IO[str] | None — live output sink (default sys.stdout)
 ) -> RunResult
 ```
 
@@ -33,8 +32,8 @@ Sandbox(backend="local" | "k8s" | <Backend instance>).run(
 ```python
 class RunResult(BaseModel):
     exit_code: int
-    stdout: str
-    stderr: str
+    output: str
+    errors: str
     artifacts: list[str] = []     # resolved output_paths
     result: dict | None = None    # parsed result.json if the program wrote one
     reason: str = ""              # substrate forensics (e.g. OOMKilled pod); "" for local
@@ -49,15 +48,16 @@ constructs `K8sBackend()` with no image and fails at `run()`.
 
 ### Backend status (honest)
 - **`local`** (`LocalBackend`) — runs `argv` as a host subprocess. NO isolation.
-  Trusted code only. Supports `stdin` and `deps`. Tees stdout/stderr live.
+  Trusted code only. Supports `stdin`. Tees stdout/stderr live.
 - **`k8s`** (`K8sBackend`) — **fully implemented**: launches a real Kata pod via
   `drive_node`, stages the workspace in, fetches `output_paths` back out, reaps.
-  Two real limits, both raise `NotImplementedError`:
-  - `stdin is not None` → unsupported.
-  - `deps is not None` → unsupported (bake deps into the image instead).
-  Also: `RunResult.stderr` is always `""` on k8s — the in-pod runner emits
-  stdout+stderr merged as `log` span events, so everything lands in `stdout` by
+  One real limit:
+  - `stdin is not None` → `NotImplementedError`.
+  Also: `RunResult.errors` is always `""` on k8s — the in-pod runner emits
+  stdout+stderr merged as `log` span events, so everything lands in `output` by
   design (not a dropped field).
+
+Dependencies are your program's concern — put `uv run`/`pip install` in your argv, or use a prebuilt image.
 
 ---
 
@@ -69,14 +69,14 @@ Subclass `resoluto_sandbox.backends.base.Backend` and implement the single
 
 ### Steps
 1. Implement `run`: resolve `workspace` as the cwd, execute `argv` in your
-   substrate, capture exit code + stdout/stderr, tee to `stream` (default
+   substrate, capture exit code + output/errors, tee to `stream` (default
    `sys.stdout`) if you want live output.
 2. Reuse the shared artifact helpers from `backends/artifacts.py`:
    - `_collect(cwd: Path, output_paths) -> list[str]` — glob-resolves
      `output_paths` (recursive) under `cwd` into a sorted path list.
    - `read_result_json(cwd: Path) -> dict | None` — parses `result.json` under
      `cwd` if present (filename is `telemetry.RESULT_FILENAME`).
-3. Return `RunResult(exit_code=, stdout=, stderr=, artifacts=, result=, reason=)`.
+3. Return `RunResult(exit_code=, output=, errors=, artifacts=, result=, reason=)`.
    Put substrate forensics (eviction/OOM/terminated reason) in `reason`.
 4. Inject it: `Sandbox(backend=YourBackend(...))`. No registry, no string name —
    instances are passed directly. (Only `"local"`/`"k8s"` are name-resolvable in
@@ -106,7 +106,6 @@ from typing import IO, Sequence
 
 from resoluto_sandbox.backends.artifacts import _collect, read_result_json
 from resoluto_sandbox.backends.base import Backend, RunResult
-from resoluto_sandbox.deps import Deps
 
 
 class DockerBackend(Backend):
@@ -125,10 +124,7 @@ class DockerBackend(Backend):
         env: dict[str, str] | None = None,
         output_paths: Sequence[str] | None = None,
         stream: IO[str] | None = None,
-        deps: Deps | None = None,
     ) -> RunResult:
-        if deps is not None:
-            raise NotImplementedError("deps unsupported — bake them into the image")
         cwd = Path(workspace).resolve() if workspace else Path.cwd()
         if not cwd.is_dir():
             raise NotADirectoryError(f"workspace is not a directory: {cwd}")
@@ -151,8 +147,8 @@ class DockerBackend(Backend):
 
         return RunResult(
             exit_code=proc.returncode,
-            stdout=proc.stdout,
-            stderr=proc.stderr,
+            output=proc.stdout,
+            errors=proc.stderr,
             artifacts=_collect(cwd, output_paths),
             result=read_result_json(cwd),
         )

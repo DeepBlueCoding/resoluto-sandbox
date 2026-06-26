@@ -9,6 +9,8 @@ exits with a code. It never imports `resoluto_sandbox`. This decoupling is the c
 a script that works as `uv run agent.py` on your machine works unchanged inside the sandbox.
 Test runners, LLM agents, shell scripts — all qualify.
 
+Dependencies are your program's concern — put `uv run`/`pip install` in your argv, or use a prebuilt image.
+
 ---
 
 ## Run lifecycle
@@ -17,14 +19,13 @@ Test runners, LLM agents, shell scripts — all qualify.
 stage → run → collect
 ```
 
-1. **Stage** — the `Sandbox` resolves which backend to use and wraps the argv through the
-   `Deps` strategy (e.g. prepending `uv run` for PEP 723 scripts).
+1. **Stage** — the `Sandbox` resolves which backend to use.
 2. **Run** — the program executes. On `backend="local"` this is a subprocess on the host
-   that inherits the host environment and streams stdout live to `stream` (default
+   that inherits the host environment and streams output live to `stream` (default
    `sys.stdout`). The program's stdin, env overlay, and working directory are supplied as
    arguments to `run()`.
-3. **Collect** — when the program exits, `RunResult` is assembled from the captured stdout,
-   stderr, exit code, any `output_paths` globs matched in the workspace, and a parsed
+3. **Collect** — when the program exits, `RunResult` is assembled from the captured output,
+   errors, exit code, any `output_paths` globs matched in the workspace, and a parsed
    `result.json` if the program wrote one.
 
 ---
@@ -61,9 +62,9 @@ sb = Sandbox(backend=K8sBackend(image="<registry>/resoluto-lane:dev"))
 
 Requirements: a live k3s+Kata cluster, `RESOLUTO_STORE_KIND` (plus the matching store env
 vars) set in the environment, and `RESOLUTO_SANDBOX_KUBECONTEXT` pinned (fails closed
-otherwise). Limits: `stdin` and `deps` both raise `NotImplementedError` on this backend —
-dependencies must be baked into the image. `RunResult.stderr` is always empty; the in-pod
-runner merges stdout and stderr into the stdout stream.
+otherwise). Limits: `stdin` raises `NotImplementedError` on this backend —
+dependencies must be baked into the image. `RunResult.errors` is always empty; the in-pod
+runner merges stdout and stderr into the output stream.
 
 The language-neutral wire format is documented in `spec/PROTOCOL.md`.
 
@@ -87,14 +88,3 @@ read-after-write can be a backend; a new one is a single subclass.
 
 The wire encoding is UTF-8 JSON for structured objects and gzip-tar for file archives.
 See `spec/PROTOCOL.md` for the full key namespace and JSON Schemas.
-
----
-
-## Dependency strategies
-
-`Deps(kind=...)` controls how a program's dependencies are resolved at launch time:
-
-- `auto` — detect from the script or workspace (PEP 723 inline, `requirements.txt`,
-  `pyproject.toml`).
-- `inline` / `requirements` — delegate to `uv run`.
-- `image` / `vendored` — deps are already present; argv is passed through unchanged.

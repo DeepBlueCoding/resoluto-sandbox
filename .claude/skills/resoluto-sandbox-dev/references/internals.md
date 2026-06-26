@@ -14,7 +14,7 @@ host tails + reaps. Liveness = monotonic chunk-arrival + heartbeats. **No wall-c
 ## 1. Public API (the one entrypoint)
 
 ```python
-from resoluto_sandbox import Sandbox, RunResult, Deps
+from resoluto_sandbox import Sandbox, RunResult
 
 sb = Sandbox(backend="local")            # default: subprocess on this host
 res = sb.run(["python", "agent.py", "--x"],
@@ -22,12 +22,11 @@ res = sb.run(["python", "agent.py", "--x"],
             stdin="payload",              # str|bytes|None  (LOCAL ONLY)
             env={"FOO": "1"},             # overlays host env
             output_paths=["out/*.json"],  # globs collected into res.artifacts
-            stream=sys.stdout,            # live stdout sink; None = sys.stdout
-            deps=Deps(kind="auto"))       # dep strategy (LOCAL ONLY)
+            stream=sys.stdout)            # live output sink; None = sys.stdout
 res.ok          # bool == (exit_code == 0)
 res.exit_code   # int
-res.stdout      # str
-res.stderr      # str  (k8s: ALWAYS "" — merged into stdout, by design)
+res.output      # str
+res.errors      # str  (k8s: ALWAYS "" — merged into output, by design)
 res.artifacts   # list[str]  collected output_paths
 res.result      # dict | None  parsed result.json if the program wrote one
 res.reason      # str  substrate forensics (evicted/OOMKilled/observed_phase); "" for local
@@ -40,18 +39,17 @@ runs as `uv run agent.py` on your host runs byte-identically under `run()`.
 
 ### Backends and their two REAL k8s limits
 
-| backend | substrate | stdin | deps | stderr |
-|---|---|---|---|---|
-| `local` (`LocalBackend`) | subprocess, inherits host env | ✅ | ✅ | populated |
-| `k8s` (`K8sBackend`) | real Kata pod via `drive_node` — **fully implemented** | ❌ raises `NotImplementedError` | ❌ raises `NotImplementedError` (bake into image) | always `""` |
+| backend | substrate | stdin | errors |
+|---|---|---|---|
+| `local` (`LocalBackend`) | subprocess, inherits host env | ✅ | populated |
+| `k8s` (`K8sBackend`) | real Kata pod via `drive_node` — **fully implemented** | ❌ raises `NotImplementedError` | always `""` |
 
 The k8s backend is NOT a stub. `K8sBackend.run` launches a `runtime_class="kata"`, `flavor="plain"`
 pod whose `args=["python","-m","resoluto_sandbox.runner_main"]`, stages `workspace` in, tails span
-events, fetches artifacts out. The only two unsupported knobs are `stdin` and `deps` — both fail loud:
+events, fetches artifacts out. The one unsupported knob is `stdin` — it fails loud:
 
 ```python
 if stdin is not None: raise NotImplementedError("stdin is not supported on backend='k8s'")
-if deps is not None:  raise NotImplementedError("deps is not supported on backend='k8s' (bake them into the image)")
 if self._image is None: raise ValueError("backend='k8s' requires K8sBackend(image=...)")
 ```
 

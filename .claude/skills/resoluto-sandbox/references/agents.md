@@ -17,8 +17,8 @@ Your program is the unit of work. The contract is the OS process contract — no
 | `argv` (`argv[1:]`) | host → program | the task/prompt/args |
 | `stdin` | host → program | optional input stream (**local backend only**, see limits) |
 | `env` | host → program | overlaid on host env |
-| `stdout` | program → host | the answer → `RunResult.stdout` |
-| `stderr` | program → host | diagnostics → `RunResult.stderr` (local only; empty on k8s) |
+| `stdout` | program → host | the answer → `RunResult.output` |
+| `stderr` | program → host | diagnostics → `RunResult.errors` (local only; empty on k8s) |
 | exit code | program → host | `0` = ok → `RunResult.exit_code`, `RunResult.ok` |
 | files under `workspace` | program → host | collected via `output_paths` → `RunResult.artifacts` |
 | `result.json` in workspace | program → host | optional typed verdict → `RunResult.result` (dict or `None`) |
@@ -58,22 +58,23 @@ Sandbox(*, backend: Backend | str = "local")   # "local" | "k8s" | injected Back
     stdin: str | bytes | None = None,   # local only — NotImplementedError on k8s
     env: dict[str, str] | None = None,  # overlays host env
     output_paths: Sequence[str] | None = None,  # globs collected into RunResult.artifacts
-    stream: IO[str] | None = None,      # live stdout sink, default sys.stdout
-    deps: Deps | None = None,           # local only — NotImplementedError on k8s
+    stream: IO[str] | None = None,      # live output sink, default sys.stdout
 ) -> RunResult
 ```
 
 ```python
 class RunResult(BaseModel):
     exit_code: int
-    stdout: str
-    stderr: str                 # empty on k8s by design (stdout carries merged stdout+stderr)
+    output: str
+    errors: str                # empty on k8s by design (output carries merged stdout+stderr)
     artifacts: list[str] = []   # filesystem paths under workspace
     result: dict | None = None  # parsed result.json, else None
     reason: str = ""            # substrate forensics (e.g. OOMKilled/evicted pod); empty for local
     @property
     def ok(self) -> bool: ...    # exit_code == 0
 ```
+
+Dependencies are your program's concern — put `uv run`/`pip install` in your argv, or use a prebuilt image.
 
 ## Any binary / any language as a plain program
 
@@ -88,47 +89,7 @@ Sandbox().run(["bash", "-c", "echo hi && ls"], workspace="examples")            
 
 LangChain / LangGraph / OpenAI-Agents are libraries your program imports — there is
 NO special integration. Write a normal script that imports them and prints to stdout;
-run it like any other program. Use the prebuilt images (below) so the libs are present,
-or PEP 723 inline deps on the local backend.
-
-## Dependencies
-
-`deps: Deps` controls how the launch argv is rewritten (see `resoluto_sandbox.deps`):
-
-```python
-from resoluto_sandbox.deps import Deps
-Deps(kind="auto", requirements=None)
-# kind: "auto" | "inline" | "requirements" | "image" | "vendored"
-```
-
-- `auto` (default) detects, per workspace + `argv[0]`:
-  - script has a PEP 723 `# /// script` block → `inline`
-  - `requirements.txt` present → `requirements`
-  - `pyproject.toml` present → `inline`
-  - else → `image` (run argv as-is; deps must already be present)
-- `inline` → `["uv", "run", *argv]` (PEP 723 / pyproject resolved by uv)
-- `requirements` → `["uv", "run", "--with-requirements", <workspace>/<requirements or requirements.txt>, *argv]`
-- `image` / `vendored` → argv unchanged
-
-### PEP 723 inline deps (local backend)
-
-Declare deps in the script header; `uv run` resolves them on the fly. No image build:
-
-```python
-#!/usr/bin/env python3
-# /// script
-# requires-python = ">=3.10"
-# dependencies = ["claude-agent-sdk>=0.1.0"]
-# ///
-```
-
-```python
-Sandbox(backend="local").run(["uv", "run", "agent.py", "Say hi"], workspace="examples")
-```
-
-> **k8s limit:** `deps` is rejected on `backend="k8s"` (`NotImplementedError` — "bake
-> them into the image"). On k8s, deps must already be in the image. Use a prebuilt
-> SDK image or add a Dockerfile layer.
+run it like any other program. Use the prebuilt images (below) so the libs are present.
 
 ## Prebuilt SDK images
 
@@ -164,7 +125,7 @@ env. If you are already logged in to Claude Code on this machine, it just works:
 claude   # one-time interactive login on your Max/Pro account, if needed
 
 python -c "from resoluto_sandbox import Sandbox; \
-  print(Sandbox().run(['uv','run','examples/claude_agent.py','Say hello in five words']).stdout)"
+  print(Sandbox().run(['uv','run','examples/claude_agent.py','Say hello in five words']).output)"
 ```
 
 ### Container image — supply auth at `docker run`
@@ -224,13 +185,12 @@ Requires `RESOLUTO_STORE_KIND` in the environment (the conduit is how the pod's
 workspace/artifacts travel). Workspace is staged into the store and extracted back into
 your `workspace` dir in place.
 
-### k8s hard limits (only these two)
+### k8s hard limit
 
 - **No `stdin`** → `NotImplementedError("stdin is not supported on backend='k8s'")`. Pass input via argv, env, or workspace files.
-- **No `deps`** → `NotImplementedError(... "bake them into the image")`. Use a prebuilt/extended image.
 
-Everything else works. `RunResult.stderr` is empty on k8s by design — the in-pod runner
-emits stdout+stderr as merged `log` events, so `RunResult.stdout` carries both. `RunResult.reason`
+Everything else works. `RunResult.errors` is empty on k8s by design — the in-pod runner
+emits stdout+stderr as merged `log` events, so `RunResult.output` carries both. `RunResult.reason`
 carries pod forensics (e.g. `OOMKilled`, evicted) when present.
 
 ### `EgressConfig` (default-deny pod egress)

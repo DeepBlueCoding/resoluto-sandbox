@@ -20,7 +20,6 @@ from typing import IO, Sequence
 from resoluto_sandbox.backends.base import Backend, RunResult
 from resoluto_sandbox.backends.local import LocalBackend
 from resoluto_sandbox.backends.k8s import K8sBackend
-from resoluto_sandbox.deps import Deps
 
 
 class Sandbox:
@@ -45,11 +44,10 @@ class Sandbox:
         env: dict[str, str] | None = None,
         output_paths: Sequence[str] | None = None,
         stream: IO[str] | None = None,
-        deps: Deps | None = None,
     ) -> RunResult:
         """Run ``argv`` in the sandbox. ``workspace`` (a directory) is the program's
         cwd; ``stdin`` is fed on standard input; ``env`` overlays the host env;
         ``output_paths`` are globs collected into ``RunResult.artifacts``; ``stream``
-        receives stdout live (default ``sys.stdout``). Returns a ``RunResult``."""
+        receives output live (default ``sys.stdout``). Returns a ``RunResult``."""
         return self._backend.run(argv, workspace=workspace, stdin=stdin, env=env,
-                                 output_paths=output_paths, stream=stream, deps=deps)
+                                 output_paths=output_paths, stream=stream)
