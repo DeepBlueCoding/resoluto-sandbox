@@ -13,8 +13,6 @@ from resoluto_sandbox.contracts import (
     SandboxHandle,
     SandboxLaunchSpec,
     SandboxRuntime,
-    check_runtime_class_guard,
-    parse_k8s_memory,
 )
 from resoluto_sandbox.resource_semaphore import ResourceSemaphore
 
@@ -129,9 +127,10 @@ class SandboxPool:
         holds NO RAM (the pod is not launched until granted) and no spin/thread; it is
         woken event-driven when a release frees enough budget (FIFO, no starvation).
         Cancellation (a stop) cleanly drops it from the queue."""
-        check_runtime_class_guard(spec.runtime_class)
+        # The pool is platform-independent: it admits on the NEUTRAL byte budget only. The
+        # k8s-only isolation guard (runtimeClass/Kata) is the K8s runtime's own concern.
         await self._resolve_budget()  # lazily derive the default budget on first acquire
-        spec_mem = parse_k8s_memory(spec.memory) if self._mem_sem is not None else 0
+        spec_mem = spec.resources.memory_bytes if self._mem_sem is not None else 0
         # 1. RAM budget — the heavy, event-driven gate. Parks holding nothing.
         if self._mem_sem is not None:
             await self._mem_sem.acquire(spec_mem, on_wait=on_wait)

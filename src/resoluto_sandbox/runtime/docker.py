@@ -70,11 +70,23 @@ class DockerSandboxRuntime(SandboxRuntime):
         argv += ["-v", f"{self._conduit_host_dir}:{self._conduit_mount}"]
         if self._network:
             argv += ["--network", self._network]
+        # Render the NEUTRAL Resources into docker flags. docker takes a raw byte integer for
+        # --memory and a core count for --cpus, so the neutral ints pass straight through — this
+        # runtime never sees or translates k8s notation. --memory-swap == --memory disables swap
+        # (matches the k8s no-swap cgroup) so the container OOMs at its cap instead of spilling.
+        res = spec.resources
+        argv += ["--memory", str(res.memory_bytes), "--memory-swap", str(res.memory_bytes)]
+        argv += ["--cpus", str(res.cpu_cores)]
         if spec.privileged:
             # Mirror K8s runAsUser:0 for dind: the lane entrypoint starts the inner dockerd
             # only as root, then drops to the lane user for the workload. Plain (non-dind)
             # steps keep the image's default uid (1000), so dockerd is never started for them.
             argv += ["--privileged", "--user", "0"]
+            # dind graph on tmpfs, sized like the k8s medium:Memory emptyDir. tmpfs counts against
+            # the container --memory cgroup above, so the whole step stays bounded. (Block/virtio-blk
+            # graph is Kata-only.)
+            if res.dind_graph_bytes is not None:
+                argv += ["--tmpfs", f"/var/lib/docker:size={res.dind_graph_bytes}"]
         argv += [spec.image]
         argv += list(spec.args or spec.command or [])
 

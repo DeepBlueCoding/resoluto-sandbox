@@ -81,7 +81,7 @@ def test_pod_env_carries_workload_and_store_env(monkeypatch):
     assert spec.env["RESOLUTO_WORKLOAD_ARGV"] == '["python", "agent.py"]'
     assert spec.env["RESOLUTO_WORKSPACE_DIR"] == "/workspace"
     assert spec.env["RESOLUTO_STORE_KIND"] == "s3"
-    assert spec.runtime_class == "kata"
+    # runtime_class is the K8s runtime's private config now, not a neutral-spec field.
     assert not any(k.startswith("AWS_") for k in spec.env)
 
 

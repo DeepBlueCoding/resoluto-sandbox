@@ -11,7 +11,13 @@ import asyncio
 
 import pytest
 
-from resoluto_sandbox.contracts import SandboxHandle, SandboxLaunchSpec, SandboxRuntime, SandboxStatus
+from resoluto_sandbox.contracts import (
+    Resources,
+    SandboxHandle,
+    SandboxLaunchSpec,
+    SandboxRuntime,
+    SandboxStatus,
+)
 from resoluto_sandbox.pool import SandboxPool
 
 GiB = 1024 ** 3
@@ -42,7 +48,8 @@ class _FakeRuntime(SandboxRuntime):
 
 def _spec(kind: str, mem: str, graph: str = "16Gi") -> SandboxLaunchSpec:
     return SandboxLaunchSpec(
-        image="x", flavor="plain", memory=mem, docker_graph_size=graph,
+        image="x", flavor="plain",
+        resources=Resources.from_quantities(memory=mem),
         store_prefix=f"verify/{kind}", labels={"resoluto.kind": kind},
     )
 

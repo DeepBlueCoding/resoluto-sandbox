@@ -4,7 +4,7 @@ import logging
 
 import pytest
 
-from resoluto_sandbox.contracts import SandboxLaunchSpec
+from resoluto_sandbox.contracts import Resources, SandboxLaunchSpec, parse_quantity
 from resoluto_sandbox.runtime.k8s import EgressConfig, K8sSandboxRuntime
 
 
@@ -24,37 +24,35 @@ def _never_touch_a_real_cluster(monkeypatch):
 
 
 def test_dind_tmpfs_emits_memory_medium():
-    rt = K8sSandboxRuntime()
+    # graph_backend is now the runtime's private config (default tmpfs); the graph SIZE is a
+    # neutral resource. k8s renders the size as raw bytes (a valid quantity).
+    rt = K8sSandboxRuntime(graph_backend="tmpfs")
     spec = SandboxLaunchSpec(
-        image="img:dev", store_prefix="run/r/nodes/n",
-        flavor="dind", graph_backend="tmpfs", docker_graph_size="16Gi",
+        image="img:dev", store_prefix="run/r/nodes/n", flavor="dind",
+        resources=Resources.from_quantities(memory="20Gi", cpu="2", dind_graph="16Gi"),
     )
     manifest = rt._manifest(spec, "sbx-test")
-    volumes = manifest["spec"]["volumes"]
-    graph_vol = next(v for v in volumes if v["name"] == "docker-graph")
+    graph_vol = next(v for v in manifest["spec"]["volumes"] if v["name"] == "docker-graph")
     assert graph_vol["emptyDir"]["medium"] == "Memory"
-    assert graph_vol["emptyDir"]["sizeLimit"] == "16Gi"
+    assert graph_vol["emptyDir"]["sizeLimit"] == str(parse_quantity("16Gi"))
 
 
 def test_dind_block_emits_no_medium():
-    rt = K8sSandboxRuntime()
+    # block backend + its sizeLimit are k8s-runtime config now, not spec fields.
+    rt = K8sSandboxRuntime(graph_backend="block", graph_block_size="50Gi")
     spec = SandboxLaunchSpec(
-        image="img:dev", store_prefix="run/r/nodes/n",
-        flavor="dind", graph_backend="block", docker_graph_block_size="50Gi",
+        image="img:dev", store_prefix="run/r/nodes/n", flavor="dind",
+        resources=Resources.from_quantities(memory="20Gi", cpu="2", dind_graph="16Gi"),
     )
     manifest = rt._manifest(spec, "sbx-test")
-    volumes = manifest["spec"]["volumes"]
-    graph_vol = next(v for v in volumes if v["name"] == "docker-graph")
+    graph_vol = next(v for v in manifest["spec"]["volumes"] if v["name"] == "docker-graph")
     assert "medium" not in graph_vol["emptyDir"]
     assert graph_vol["emptyDir"]["sizeLimit"] == "50Gi"
 
 
 def test_plain_flavor_has_no_docker_graph_volume():
-    rt = K8sSandboxRuntime()
-    spec = SandboxLaunchSpec(
-        image="img:dev", store_prefix="run/r/nodes/n",
-        flavor="plain", graph_backend="block",
-    )
+    rt = K8sSandboxRuntime(graph_backend="block")
+    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n", flavor="plain")
     manifest = rt._manifest(spec, "sbx-test")
     graph_vols = [v for v in manifest["spec"]["volumes"] if v["name"] == "docker-graph"]
     assert graph_vols == []
@@ -274,8 +272,8 @@ def test_limit_range_manifest_env_override(monkeypatch):
 @pytest.mark.asyncio
 async def test_launch_refuses_non_kata_without_flag(rc, monkeypatch):
     monkeypatch.delenv("RESOLUTO_TRUSTED_LOCAL", raising=False)
-    rt = K8sSandboxRuntime()
-    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n", runtime_class=rc)
+    rt = K8sSandboxRuntime(runtime_class=rc)  # runtime_class is the runtime's own config now
+    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
     with pytest.raises(RuntimeError, match="RESOLUTO_TRUSTED_LOCAL"):
         await rt.launch(spec)
 
@@ -284,8 +282,8 @@ async def test_launch_refuses_non_kata_without_flag(rc, monkeypatch):
 @pytest.mark.asyncio
 async def test_launch_permits_non_kata_with_trusted_local_flag(rc, monkeypatch, caplog):
     monkeypatch.setenv("RESOLUTO_TRUSTED_LOCAL", "1")
-    rt = K8sSandboxRuntime()
-    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n", runtime_class=rc)
+    rt = K8sSandboxRuntime(runtime_class=rc)
+    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
     with caplog.at_level(logging.WARNING):
         try:
             await rt.launch(spec)
@@ -336,16 +334,13 @@ def test_parse_k8s_memory_invalid():
         _parse_k8s_memory("24xyz")
 
 
-def _dind_spec(**kwargs):
-    defaults = dict(
-        image="img:dev",
-        store_prefix="run/r/nodes/n",
-        flavor="dind",
-        graph_backend="tmpfs",
-        memory="24Gi",
-        docker_graph_size="18Gi",
+def _dind_spec(*, memory="24Gi", docker_graph_size="18Gi", **kwargs):
+    # graph_backend (tmpfs default) is the K8s runtime's config; memory/graph are neutral resources.
+    return SandboxLaunchSpec(
+        image="img:dev", store_prefix="run/r/nodes/n", flavor="dind",
+        resources=Resources.from_quantities(memory=memory, cpu="2", dind_graph=docker_graph_size),
+        **kwargs,
     )
-    return SandboxLaunchSpec(**{**defaults, **kwargs})
 
 
 @pytest.mark.asyncio
@@ -395,7 +390,7 @@ async def test_preflight_graph_error_message_names_env_var_knobs():
     msg = str(exc_info.value)
     assert "RESOLUTO_LANE_DIND_GRAPH" in msg
     assert "RESOLUTO_LANE_DIND_MEMORY" in msg
-    assert "RESOLUTO_LANE_GRAPH_BACKEND" in msg
+    assert "block" in msg  # operator can switch to the block-backed graph
 
 
 @pytest.mark.asyncio

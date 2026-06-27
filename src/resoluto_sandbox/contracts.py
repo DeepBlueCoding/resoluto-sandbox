@@ -20,26 +20,51 @@ from typing import Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
-# Canonical k8s memory-quantity parser, shared by the admission pool (byte budget) and
-# the k8s runtime (pod-memory accounting) — they MUST agree byte-for-byte, so there is
-# exactly ONE parser. Lives here (dep-light contracts) so neither the pool nor the heavy
-# platform runtime owns it.
-_MEMORY_FACTORS: dict[str, int] = {
+# ONE quantity parser (IEC/SI binary+decimal suffixes → bytes), used ONLY at the
+# orchestrator boundary to turn human-written knobs ('4Gi') into the neutral byte counts
+# carried by `Resources`. A runtime NEVER parses — it renders the neutral ints to its own
+# platform. Lives here (dep-light contracts) so pool + worker share exactly one parser.
+_QUANTITY_FACTORS: dict[str, int] = {
     "Ki": 1024, "Mi": 1024**2, "Gi": 1024**3, "Ti": 1024**4, "Pi": 1024**5,
     "K": 1000, "M": 1000**2, "G": 1000**3, "T": 1000**4, "P": 1000**5,
 }
-_MEMORY_RE = re.compile(r"^(\d+)(Ki|Mi|Gi|Ti|Pi|K|M|G|T|P)?$")
+_QUANTITY_RE = re.compile(r"^(\d+)(Ki|Mi|Gi|Ti|Pi|K|M|G|T|P)?$")
 
 
-def parse_k8s_memory(s: str) -> int:
-    """Parse a k8s memory quantity ('4Gi', '512Mi', '536870912') to bytes.
+def parse_quantity(s: str) -> int:
+    """Parse a binary/decimal byte quantity ('4Gi', '512Mi', '536870912') to bytes.
 
-    Fail-loud on garbage (anchored regex), so a malformed budget/limit is caught at
-    the source rather than silently mis-parsed."""
-    m = _MEMORY_RE.match(s.strip())
+    Fail-loud on garbage (anchored regex), so a malformed budget/limit is caught at the
+    source rather than silently mis-parsed."""
+    m = _QUANTITY_RE.match(s.strip())
     if not m:
-        raise ValueError(f"Cannot parse k8s memory quantity: {s!r}")
-    return int(m.group(1)) * _MEMORY_FACTORS.get(m.group(2) or "", 1)
+        raise ValueError(f"Cannot parse byte quantity: {s!r}")
+    return int(m.group(1)) * _QUANTITY_FACTORS.get(m.group(2) or "", 1)
+
+
+class Resources(BaseModel):
+    """Platform-NEUTRAL resource request for one sandbox — raw units only, zero platform
+    notation. Each `SandboxRuntime` renders these to its own platform (k8s quantity strings,
+    docker `--memory/--cpus` flags); no runtime ever sees, or translates, another's vocabulary.
+    Build from human knobs ONCE via `from_quantities` at the orchestrator boundary."""
+
+    memory_bytes: int
+    cpu_cores: float
+    disk_bytes: int | None = None        # ephemeral storage; None → runtime default
+    dind_graph_bytes: int | None = None  # inner-docker graph budget; None → not a dind step
+
+    @classmethod
+    def from_quantities(
+        cls, *, memory: str, cpu: str = "2", disk: str | None = None, dind_graph: str | None = None,
+    ) -> "Resources":
+        """Build from human quantity strings (operator knobs, e.g. '4Gi', '2'). Parsing happens
+        HERE, at the boundary; only neutral ints flow onward to the runtimes."""
+        return cls(
+            memory_bytes=parse_quantity(memory),
+            cpu_cores=float(cpu),
+            disk_bytes=parse_quantity(disk) if disk else None,
+            dind_graph_bytes=parse_quantity(dind_graph) if dind_graph else None,
+        )
 
 _logger = logging.getLogger(__name__)
 
@@ -47,7 +72,8 @@ _logger = logging.getLogger(__name__)
 def check_runtime_class_guard(runtime_class: str) -> None:
     """Refuse non-Kata runtime classes unless RESOLUTO_TRUSTED_LOCAL is set.
 
-    Args: runtime_class — value from SandboxLaunchSpec.runtime_class.
+    Args: runtime_class — the K8s runtime's own configured runtime class (k8s-private; not
+    part of the neutral SandboxLaunchSpec).
     Raises RuntimeError when runtime_class is not 'kata' and trusted-local flag absent.
     """
     if runtime_class.strip().lower() == "kata":
@@ -63,26 +89,25 @@ def check_runtime_class_guard(runtime_class: str) -> None:
 
 
 class SandboxLaunchSpec(BaseModel):
-    """What the orchestrator hands a runtime to launch ONE sandbox.
+    """What the orchestrator hands a runtime to launch ONE sandbox — PLATFORM-NEUTRAL.
 
-    `flavor` maps to the isolation tier × dev_environment.kind:
-      tier-0/tier-1 → plain;  tier-2 + docker_compose → dind;  tier-2 + none → plain.
-    `privileged` is GUEST-SCOPED under Kata (privileged_without_host_devices) — the
-    host pod stays unprivileged. Required only by `dind` lanes (inner dockerd).
+    Resources are neutral (`Resources`, raw bytes/cores); each runtime renders them to its
+    own platform. The neutral spec carries NO platform vocabulary — k8s-only concerns
+    (runtimeClass/Kata, the tmpfs-vs-virtio-blk graph backend) are the K8s runtime's private
+    config, not fields here.
+
+    `flavor` is the neutral isolation tier (tier-0/1 → plain; tier-2 + a live dev env → dind).
+    `privileged` is required only by `dind` (inner dockerd); GUEST-SCOPED under Kata.
     """
 
     image: str
     flavor: Literal["dind", "plain"] = "plain"
-    runtime_class: str = "kata"  # k8s runtimeClass; "" / "runc" only for trusted-local
     env: dict[str, str] = Field(default_factory=dict)
     command: list[str] | None = None
     args: list[str] | None = None
-    cpu: str = "2"
-    memory: str = "4Gi"
-    ephemeral_storage: str = "8Gi"
-    docker_graph_size: str = "16Gi"  # dind only: tmpfs RAM budget for /var/lib/docker
-    graph_backend: Literal["tmpfs", "block"] = "tmpfs"  # dind only: storage backend for /var/lib/docker
-    docker_graph_block_size: str = "50Gi"  # dind + block only: emptyDir sizeLimit for the virtio-blk volume
+    # Neutral resource request. Default mirrors the historical plain-lane baseline (4Gi / 2 cores);
+    # the sole producer (build_launch_spec) always sets it explicitly from the step profile.
+    resources: Resources = Field(default_factory=lambda: Resources(memory_bytes=4 * 1024**3, cpu_cores=2.0))
     privileged: bool = False
     labels: dict[str, str] = Field(default_factory=dict)
     # Opaque pod metadata the substrate stamps VERBATIM and never interprets — the seam an

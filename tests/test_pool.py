@@ -149,38 +149,9 @@ async def test_semaphore_still_used_without_gate():
     await b.release()
 
 
-# ── Runtime class admission guard ────────────────────────────────────────────
-
-
-@pytest.mark.parametrize("rc", ["", "runc"])
-@pytest.mark.asyncio
-async def test_acquire_refuses_non_kata_without_flag(rc, monkeypatch):
-    monkeypatch.delenv("RESOLUTO_TRUSTED_LOCAL", raising=False)
-    rt = _FakeRuntime()
-    pool = SandboxPool(rt, max_concurrent=2)
-    with pytest.raises(RuntimeError, match="RESOLUTO_TRUSTED_LOCAL"):
-        await pool.acquire(_spec(runtime_class=rc))
-
-
-@pytest.mark.parametrize("rc", ["", "runc"])
-@pytest.mark.asyncio
-async def test_acquire_permits_non_kata_with_trusted_local_flag(rc, monkeypatch, caplog):
-    monkeypatch.setenv("RESOLUTO_TRUSTED_LOCAL", "1")
-    rt = _FakeRuntime()
-    pool = SandboxPool(rt, max_concurrent=2)
-    with caplog.at_level(logging.WARNING):
-        async with await pool.acquire(_spec(runtime_class=rc)):
-            pass
-    assert any("trusted-local" in r.message for r in caplog.records)
-
-
-@pytest.mark.asyncio
-async def test_acquire_default_kata_always_passes(monkeypatch):
-    monkeypatch.delenv("RESOLUTO_TRUSTED_LOCAL", raising=False)
-    rt = _FakeRuntime()
-    pool = SandboxPool(rt, max_concurrent=2)
-    async with await pool.acquire(_spec()) as lease:  # runtime_class defaults to "kata"
-        assert lease.handle is not None
+# The runtime-class isolation guard (kata vs runc + RESOLUTO_TRUSTED_LOCAL) is the K8s
+# runtime's private concern now (it owns its runtime_class), NOT the platform-independent
+# pool. Coverage lives in test_k8s_manifest.py::test_launch_refuses/permits_non_kata.
 
 
 # ── Deadlock regression: kind-scoped admission gates ─────────────────────────

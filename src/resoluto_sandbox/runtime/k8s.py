@@ -16,6 +16,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass, field
+from typing import Literal
 
 from resoluto_sandbox.contracts import (
     SandboxHandle,
@@ -23,14 +24,14 @@ from resoluto_sandbox.contracts import (
     SandboxRuntime,
     SandboxStatus,
     check_runtime_class_guard,
-    parse_k8s_memory,
+    parse_quantity,
 )
 
 logger = logging.getLogger(__name__)
 
 # Shared, canonical parser (lives in contracts so the pool budget and this runtime's
 # pod-memory accounting use ONE implementation). Aliased to keep existing call sites.
-_parse_k8s_memory = parse_k8s_memory
+_parse_k8s_memory = parse_quantity
 
 
 _PHASE_MAP = {
@@ -92,9 +93,19 @@ class K8sSandboxRuntime(SandboxRuntime):
         image_pull_policy: str = "IfNotPresent",
         egress: EgressConfig | None = None,
         node_allocatable_memory: str | None = None,
+        runtime_class: str = "kata",
+        graph_backend: Literal["tmpfs", "block"] = "tmpfs",
+        graph_block_size: str = "50Gi",
     ) -> None:
         self._ns = namespace
         self._kubeconfig = kubeconfig
+        # k8s-PRIVATE isolation/storage policy — NOT part of the neutral SandboxLaunchSpec.
+        # runtime_class: Kata by default (check_runtime_class_guard refuses a downgrade unless
+        # trusted-local). graph_backend: how the dind /var/lib/docker is backed (tmpfs RAM vs
+        # virtio-blk block device); graph_block_size: the emptyDir sizeLimit for the block path.
+        self._runtime_class = runtime_class
+        self._graph_backend = graph_backend
+        self._graph_block_size = graph_block_size
         # The kube CONTEXT this runtime targets. PIN it — never follow the ambient
         # current-context, which can wander to an unrelated (even production) cluster
         # and launch adversarial lane pods there. None = current-context (logged loud).
@@ -235,11 +246,17 @@ class K8sSandboxRuntime(SandboxRuntime):
         if spec.store_write_token:
             env.append({"name": "RESOLUTO_STORE_WRITE_TOKEN", "value": spec.store_write_token})
 
+        # Render the NEUTRAL Resources (bytes/cores) into k8s quantities. k8s accepts a plain
+        # byte integer as a memory/storage quantity, so no suffix games — this is the ONLY place
+        # k8s quantity strings are produced (the docker runtime renders the same ints its own way).
+        res = spec.resources
+        cpu_cores = res.cpu_cores
         resource_qty = {
-            "cpu": spec.cpu,
-            "memory": spec.memory,
-            "ephemeral-storage": spec.ephemeral_storage,
+            "cpu": str(int(cpu_cores)) if cpu_cores == int(cpu_cores) else str(cpu_cores),
+            "memory": str(res.memory_bytes),
         }
+        if res.disk_bytes is not None:
+            resource_qty["ephemeral-storage"] = str(res.disk_bytes)
         container: dict = {
             "name": "lane",
             "image": spec.image,
@@ -263,14 +280,14 @@ class K8sSandboxRuntime(SandboxRuntime):
             container.setdefault("volumeMounts", []).append(
                 {"name": "docker-graph", "mountPath": "/var/lib/docker"}
             )
-            if spec.graph_backend == "block":
+            if self._graph_backend == "block":
                 # Kata maps emptyDir without medium to a virtio-blk block device inside the
                 # guest. The lane-entrypoint formats it ext4 and remounts before dockerd starts.
                 # overlay2 on ext4/virtio-blk is proven (spike #1); no RAM tax (not counted
-                # against pod memory unlike the tmpfs path).
+                # against pod memory unlike the tmpfs path). Block size is k8s-private config.
                 volumes.append(
                     {"name": "docker-graph",
-                     "emptyDir": {"sizeLimit": spec.docker_graph_block_size}}
+                     "emptyDir": {"sizeLimit": self._graph_block_size}}
                 )
             else:
                 # Default tmpfs path: RAM-backed (medium: Memory) — overlay2 proven on tmpfs.
@@ -279,11 +296,11 @@ class K8sSandboxRuntime(SandboxRuntime):
                 # and overlay2/fuse-overlayfs fail — tmpfs is the only non-virtiofs fallback.
                 volumes.append(
                     {"name": "docker-graph",
-                     "emptyDir": {"medium": "Memory", "sizeLimit": spec.docker_graph_size}}
+                     "emptyDir": {"medium": "Memory", "sizeLimit": str(res.dind_graph_bytes)}}
                 )
 
         pod_spec: dict = {
-            "runtimeClassName": spec.runtime_class or None,
+            "runtimeClassName": self._runtime_class or None,
             "restartPolicy": "Never",
             "automountServiceAccountToken": False,
             "containers": [container],
@@ -449,8 +466,8 @@ class K8sSandboxRuntime(SandboxRuntime):
                 "[k8s-runtime] node allocatable RAM unknown — skipping dind tmpfs preflight"
             )
             return
-        pod_mem = _parse_k8s_memory(spec.memory)
-        graph_mem = _parse_k8s_memory(spec.docker_graph_size)
+        pod_mem = spec.resources.memory_bytes
+        graph_mem = spec.resources.dind_graph_bytes or 0
 
         def _gib(b: int) -> str:
             return f"{b / (1024 ** 3):.1f}Gi"
@@ -458,27 +475,25 @@ class K8sSandboxRuntime(SandboxRuntime):
         if graph_mem >= pod_mem:
             raise RuntimeError(
                 f"dind tmpfs preflight: graph does not fit inside pod — "
-                f"graph {spec.docker_graph_size} ({_gib(graph_mem)}) >= pod memory {spec.memory} ({_gib(pod_mem)}); "
+                f"graph {_gib(graph_mem)} >= pod memory {_gib(pod_mem)}; "
                 f"a medium:Memory emptyDir is counted within the pod cgroup so the graph must be "
                 f"smaller than pod memory to leave room for dockerd and build processes. "
-                f"Fix: lower RESOLUTO_LANE_DIND_GRAPH (currently {spec.docker_graph_size}) "
-                f"to less than RESOLUTO_LANE_DIND_MEMORY (currently {spec.memory}), "
-                f"or switch to block-backed docker graph with RESOLUTO_LANE_GRAPH_BACKEND=block."
+                f"Fix: lower RESOLUTO_LANE_DIND_GRAPH to less than RESOLUTO_LANE_DIND_MEMORY, "
+                f"or switch to a block-backed docker graph."
             )
 
         if pod_mem > node_ram:
             over = pod_mem - node_ram
             raise RuntimeError(
                 f"dind tmpfs preflight: pod does not fit on node — "
-                f"pod memory {spec.memory} ({_gib(pod_mem)}) > node allocatable {_gib(node_ram)}, "
+                f"pod memory {_gib(pod_mem)} > node allocatable {_gib(node_ram)}, "
                 f"over by {_gib(over)}. "
-                f"Fix: lower RESOLUTO_LANE_DIND_MEMORY (currently {spec.memory}) "
-                f"to at most {_gib(node_ram)}, or provision a larger node."
+                f"Fix: lower RESOLUTO_LANE_DIND_MEMORY to at most {_gib(node_ram)}, or provision a larger node."
             )
 
     async def launch(self, spec: SandboxLaunchSpec) -> SandboxHandle:
-        check_runtime_class_guard(spec.runtime_class)
-        if spec.flavor == "dind" and spec.graph_backend == "tmpfs":
+        check_runtime_class_guard(self._runtime_class)
+        if spec.flavor == "dind" and self._graph_backend == "tmpfs":
             await self._preflight_memory(spec)
         api = await self._client()
         rid = spec.labels.get("resoluto.run_id", "")
