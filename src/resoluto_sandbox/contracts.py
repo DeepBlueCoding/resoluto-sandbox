@@ -105,8 +105,10 @@ class SandboxLaunchSpec(BaseModel):
     env: dict[str, str] = Field(default_factory=dict)
     command: list[str] | None = None
     args: list[str] | None = None
-    # Neutral resource request. Default mirrors the historical plain-lane baseline (4Gi / 2 cores);
-    # the sole producer (build_launch_spec) always sets it explicitly from the step profile.
+    # Neutral resource request. EVERY production producer sets this explicitly — the lane path via
+    # build_launch_spec(profile) and the one-shot SubstrateBackend via its own explicit Resources — so
+    # nothing relies on this default at runtime; it exists only as a value-object construction
+    # convenience (tests building bare specs for non-resource assertions). Not a lane fallback.
     resources: Resources = Field(default_factory=lambda: Resources(memory_bytes=4 * 1024**3, cpu_cores=2.0))
     privileged: bool = False
     labels: dict[str, str] = Field(default_factory=dict)

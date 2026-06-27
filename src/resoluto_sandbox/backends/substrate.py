@@ -20,7 +20,7 @@ from uuid import uuid4
 
 from resoluto_sandbox.backends.artifacts import _collect, read_result_json
 from resoluto_sandbox.backends.base import Backend, RunResult
-from resoluto_sandbox.contracts import Conduit, SandboxRuntime
+from resoluto_sandbox.contracts import Conduit, Resources, SandboxRuntime
 
 
 def _append_log_event(ev, out_lines: list[str], sink) -> None:
@@ -114,6 +114,9 @@ class SubstrateBackend(Backend):
             flavor="plain",
             env=pod_env,
             args=["python", "-m", "resoluto_sandbox.runner_main"],
+            # The one-shot Sandbox API exposes no resource knob; set an explicit default here so no
+            # production producer relies on the spec's value-object default (fail-loud everywhere else).
+            resources=Resources.from_quantities(memory="4Gi", cpu="2"),
             store_prefix=prefix,
             labels={"resoluto.run_id": run_id, "resoluto.node_id": node_id},
         )
