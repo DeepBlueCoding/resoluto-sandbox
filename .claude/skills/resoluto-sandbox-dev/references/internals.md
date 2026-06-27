@@ -310,12 +310,14 @@ SandboxStatus`, `destroy(handle)`, `sweep(labels) -> int`, `logs(handle, tail=20
 
 ```python
 K8sSandboxRuntime(*, namespace="resoluto-sandboxes", kubeconfig=None, context=None,
-                  image_pull_policy="IfNotPresent", egress=None, node_allocatable_memory=None)
+                  image_pull_policy="IfNotPresent", egress=None, node_allocatable_memory=None,
+                  runtime_class="kata", graph_backend="tmpfs", graph_block_size="50Gi")
 ```
 
-**Kata `runtimeClass`.** Pods set `runtimeClassName: kata` (each is a QEMU microVM). The
-`check_runtime_class_guard` invariant refuses any non-`kata` runtime_class unless `RESOLUTO_TRUSTED_LOCAL`
-is set — an isolation downgrade is fail-loud, not silent.
+**Kata `runtimeClass` (k8s-PRIVATE config).** `runtime_class` is the K8s runtime's OWN config (NOT a
+field on the neutral `SandboxLaunchSpec`). Pods set `runtimeClassName: <runtime_class>` (kata = a QEMU
+microVM). The `check_runtime_class_guard` invariant refuses any non-`kata` value unless
+`RESOLUTO_TRUSTED_LOCAL` is set — an isolation downgrade is fail-loud, not silent.
 
 **Pinned kube-context, fail-closed.** `_client()` calls `load_kube_config(context=self._context)`. If
 no context is pinned (`context=None`) and not in-cluster, it **raises** unless
@@ -328,8 +330,10 @@ Rationale: an unpinned current-context can wander to an unrelated (even producti
 adversarial lane pods there. Missing/empty local kube-config → in-cluster fallback (that path is allowed).
 
 **dind storage driver note.** `flavor="dind"` runs privileged (GUEST-scoped under Kata — host stays
-unprivileged) with an emptyDir docker graph at `/var/lib/docker`. `graph_backend`:
-- `tmpfs` (default) — `emptyDir{medium: Memory, sizeLimit=docker_graph_size}` (default `16Gi`). RAM-backed;
+unprivileged) with an emptyDir docker graph at `/var/lib/docker`. `graph_backend` is the K8s runtime's
+OWN config (tmpfs vs block); the graph SIZE is the neutral `spec.resources.dind_graph_bytes` carried on
+the launch spec:
+- `tmpfs` (default) — `emptyDir{medium: Memory, sizeLimit=resources.dind_graph_bytes}`. RAM-backed;
   **counted WITHIN the pod's memory cgroup** (not additive). overlay2 on tmpfs is proven. On Kata the
   virtiofs rootfs does NOT work for the graph — vfs exhausts host-side fd handles and overlay2/
   fuse-overlayfs fail; **tmpfs is the only non-virtiofs fallback**. `_preflight_memory` refuses a launch
