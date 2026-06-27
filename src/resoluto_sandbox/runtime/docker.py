@@ -71,7 +71,10 @@ class DockerSandboxRuntime(SandboxRuntime):
         if self._network:
             argv += ["--network", self._network]
         if spec.privileged:
-            argv += ["--privileged"]
+            # Mirror K8s runAsUser:0 for dind: the lane entrypoint starts the inner dockerd
+            # only as root, then drops to the lane user for the workload. Plain (non-dind)
+            # steps keep the image's default uid (1000), so dockerd is never started for them.
+            argv += ["--privileged", "--user", "0"]
         argv += [spec.image]
         argv += list(spec.args or spec.command or [])
 

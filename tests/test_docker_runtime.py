@@ -47,6 +47,7 @@ async def test_launch_builds_docker_run_argv(monkeypatch):
     img_idx = argv.index("img:dev")
     assert argv[img_idx + 1:] == ["python", "-m", "resoluto_sandbox.runner_main"]
     assert "--privileged" not in argv
+    assert "--user" not in argv  # plain step keeps the image's default uid (1000), no dockerd
 
 
 @pytest.mark.asyncio
@@ -57,6 +58,8 @@ async def test_launch_passes_network_and_privileged(monkeypatch):
     argv = calls[0]
     assert "--network" in argv and argv[argv.index("--network") + 1] == "resoluto-net"
     assert "--privileged" in argv
+    # dind needs root so the entrypoint can start the inner dockerd (mirrors k8s runAsUser:0)
+    assert argv[argv.index("--user") + 1] == "0"
 
 
 @pytest.mark.asyncio
