@@ -48,6 +48,11 @@ async def test_launch_builds_docker_run_argv(monkeypatch):
     assert argv[img_idx + 1:] == ["python", "-m", "resoluto_sandbox.runner_main"]
     assert "--privileged" not in argv
     assert "--user" not in argv  # plain step keeps the image's default uid (1000), no dockerd
+    # neutral Resources rendered to docker flags — raw bytes/cores, no k8s notation translation
+    assert argv[argv.index("--memory") + 1] == str(4 * 1024**3)  # default 4Gi
+    assert argv[argv.index("--memory-swap") + 1] == str(4 * 1024**3)  # swap off (== memory)
+    assert argv[argv.index("--cpus") + 1] == "2.0"
+    assert "--tmpfs" not in argv  # plain step has no dind graph
 
 
 @pytest.mark.asyncio
@@ -60,6 +65,20 @@ async def test_launch_passes_network_and_privileged(monkeypatch):
     assert "--privileged" in argv
     # dind needs root so the entrypoint can start the inner dockerd (mirrors k8s runAsUser:0)
     assert argv[argv.index("--user") + 1] == "0"
+
+
+@pytest.mark.asyncio
+async def test_dind_step_gets_tmpfs_graph_sized_from_resources(monkeypatch):
+    from resoluto_sandbox.contracts import Resources
+
+    calls = _stub_docker(monkeypatch, returns={"run": (0, "id\n", "")})
+    rt = DockerSandboxRuntime(conduit_host_dir="/d")
+    spec = _spec(privileged=True, resources=Resources.from_quantities(memory="12Gi", dind_graph="10Gi"))
+    await rt.launch(spec)
+    argv = calls[0]
+    # dind graph on tmpfs, sized from the neutral dind_graph_bytes (raw bytes, no k8s notation)
+    assert argv[argv.index("--tmpfs") + 1] == f"/var/lib/docker:size={10 * 1024**3}"
+    assert argv[argv.index("--memory") + 1] == str(12 * 1024**3)
 
 
 @pytest.mark.asyncio
