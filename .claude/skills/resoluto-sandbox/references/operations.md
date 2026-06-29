@@ -22,8 +22,9 @@ your program  (plain: reads argv -> writes stdout/files/exit; never imports reso
 │ SubstrateBackend (the ONE impl)  ← drive_node + Conduit + runner_main
 ├──────────────────────────────┬──────────────────────────────┤
 │ SandboxRuntime (ABC)         │  Conduit (ABC)  host<->sandbox exchange
-│   DockerSandboxRuntime       │    LocalConduit (bind-mount, local preset)
-│   (Docker container, local)  │    StdoutConduit | S3Conduit | GcsConduit(exp.)
+│   KataNerdctlSandboxRuntime  │    LocalConduit (bind-mount, local preset)
+│   (Kata microVM via nerdctl, │    StdoutConduit | S3Conduit | GcsConduit(exp.)
+│    local)                    │
 │   K8sSandboxRuntime          │
 │   (Kata microVM pod on k8s)  │
 └──────────────────────────────┴──────────────────────────────┘
@@ -31,7 +32,7 @@ your program  (plain: reads argv -> writes stdout/files/exit; never imports reso
 
 | backend | isolation | where it runs | needs | use for |
 |---------|-----------|---------------|-------|---------|
-| `docker` | OS-level (Docker namespaces/cgroups) | your machine | Docker + an image | dev and most workloads, no cluster |
+| `local` | hardware (Kata microVM via nerdctl + dedicated containerd) + host-side CNI egress | your machine | `/dev/kvm` + nerdctl + the dedicated containerd + an image | dev and most workloads, no cluster; untrusted code at VM-grade isolation |
 | `k8s` | hardware (Kata microVM) + egress policy | a Kubernetes cluster | k8s + Kata + S3 store + image | untrusted code at scale, locked-down egress, production |
 
 `RunResult.output` carries merged stdout+stderr (both backends). `RunResult.errors` is always
@@ -47,7 +48,7 @@ Kubernetes distribution): [`../../../../docs/backends.md`](../../../../docs/back
 ```python
 from resoluto_sandbox.client import Sandbox  # the ONLY entrypoint
 
-sb = Sandbox(backend="docker")            # or "k8s", or a Backend instance (see §5)
+sb = Sandbox(backend="local")             # or "k8s", or a Backend instance (see §5)
 result = sb.run(
     argv,                                 # Sequence[str], the program + args
     workspace=None,                       # str dir = program cwd; outputs land here in place
@@ -72,7 +73,7 @@ ok -> bool             # property: exit_code == 0
 
 The program you run is plain — reads argv, writes stdout/files, NEVER imports
 `resoluto_sandbox`. A program that works as `uv run agent.py` locally works
-unchanged under `run()` — in a Docker container (local) or Kata pod (k8s).
+unchanged under `run()` — in a Kata microVM via nerdctl (local) or a Kata pod (k8s).
 
 Dependencies are your program's concern — put `uv run`/`pip install` in your argv, or use a prebuilt image.
 
@@ -92,12 +93,12 @@ Exit code = the program's exit code. Streams output live to `sys.stdout`.
 Flags:
 | flag | default | values |
 |---|---|---|
-| `--backend` | `docker` | `docker`, `k8s` |
+| `--backend` | `local` | `local`, `k8s` |
 | `--workspace` | `None` | dir (program cwd) |
 | `--image` | `None` | image tag (REQUIRED for `--backend k8s`) |
 
 ```bash
-# local run (Docker container)
+# local run (Kata microVM via nerdctl)
 resoluto-sandbox run --workspace . -- python agent.py --task build
 
 # k8s (image REQUIRED)
@@ -105,8 +106,9 @@ resoluto-sandbox run --backend k8s --image resoluto-sandbox:0.2.3-claude -- pyth
 ```
 
 ### `doctor`
-Readiness report, always exit 0. Checks: `docker` (local/images), `uv` (useful for Python programs),
-`RESOLUTO_SANDBOX_KUBECONTEXT` (k8s). Prints `[OK]`/`[MISSING]` per check.
+Readiness report, always exit 0. Checks: `/dev/kvm`, the `nerdctl` client, and the dedicated
+containerd socket (all REQUIRED for the local Kata-microVM backend); `docker` (only needed to
+build images); `RESOLUTO_SANDBOX_KUBECONTEXT` (k8s). Prints `[OK]`/`[MISSING]` per check.
 
 ### `image build` (`images.py`)
 ```
@@ -201,7 +203,7 @@ GcsConduit(bucket, *, service_file=None)            # extra [gcs]; service_file 
 ```
 
 Backend ↔ conduit pairing:
-- **local** → `localfs` (`LocalConduit`, bind-mounted at `/conduit` inside the container). The
+- **local** → `localfs` (`LocalConduit`, bind-mounted at `/conduit` inside the Kata microVM guest). The
   local preset wires this automatically.
 - **k8s** → `s3` against minio (local) or real S3 (cloud). The pod self-reports chunks to the
   store; the orchestrator tails it. `SubstrateBackend` requires a conduit (inject or `store_from_env()`).
@@ -267,7 +269,7 @@ in-cluster config it REFUSES to launch (could target the wrong/production cluste
 ## 6. Env knobs the k8s path reads
 
 Store wiring (consumed by `store_from_env`, forwarded to the pod via `store_env_for_pod`,
-which forwards `RESOLUTO_STORE_*` and `RESOLUTO_TRUSTED_LOCAL`):
+which forwards `RESOLUTO_STORE_*`):
 
 | var | used by | meaning |
 |---|---|---|
@@ -280,7 +282,6 @@ which forwards `RESOLUTO_STORE_*` and `RESOLUTO_TRUSTED_LOCAL`):
 | `RESOLUTO_STORE_PREFIX` | pod | per-run/per-node store prefix (set by the backend) |
 | `RESOLUTO_GCS_SERVICE_FILE` | gcs | service-account file; None → Workload Identity/ADC |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | s3 ambient | only used when no write token |
-| `RESOLUTO_TRUSTED_LOCAL` | k8s pod env | dev-only: forward host AWS creds to the pod; also skips egress canary |
 
 Runtime/placement:
 
@@ -296,7 +297,6 @@ Runtime/placement:
 | `RESOLUTO_SANDBOX_POD_MAX_CPU` | `4` | per-pod LimitRange max cpu |
 | `RESOLUTO_NODE_ALLOCATABLE_MEMORY` | k8s API | dind tmpfs preflight node-RAM override |
 
-> FOOTGUN: the k8s backend forwards host `AWS_*` creds to the (untrusted) pod ONLY if
-> `RESOLUTO_TRUSTED_LOCAL` is set; otherwise it raises and demands a scoped
-> `RESOLUTO_STORE_WRITE_TOKEN`. Prefer the scoped write token; reserve `RESOLUTO_TRUSTED_LOCAL=1`
-> for dev.
+> FOOTGUN: the k8s backend does NOT forward host `AWS_*` creds to the (untrusted) pod — it
+> raises and demands a scoped `RESOLUTO_STORE_WRITE_TOKEN`. The pod authenticates to the store
+> via the prefix-scoped, write-only, expiring token.

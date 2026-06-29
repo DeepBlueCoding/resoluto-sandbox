@@ -9,7 +9,7 @@ Power-user reference for an LLM coding agent working in this repo.
 ```python
 from resoluto_sandbox import Sandbox, RunResult
 
-result: RunResult = Sandbox(backend="docker").run(
+result: RunResult = Sandbox(backend="local").run(
     argv,                   # list[str]: the program + its arguments
     *,
     workspace=None,         # str | None: cwd for the program; default is os.getcwd()
@@ -29,9 +29,9 @@ result: RunResult = Sandbox(backend="docker").run(
 
 The program you run is **plain** — it reads `argv`, writes to `stdout` / files, and
 exits. It NEVER imports `resoluto_sandbox`. A script that works as `uv run agent.py` on your
-machine works inside the sandbox too; `backend="docker"` runs it in a Docker container with
-OS-level isolation, `backend="k8s"` runs it in a Kata microVM. The backend changes only where
-it runs, not what runs.
+machine works inside the sandbox too; `backend="local"` (the default) runs it in a Kata microVM
+(hardware-virtualized) via `nerdctl` + a dedicated containerd, `backend="k8s"` runs it in a Kata
+microVM pod. The backend changes only where it runs, not what runs.
 
 Dependencies are your program's concern — put `uv run`/`pip install` in your argv, or use a prebuilt image.
 
@@ -40,7 +40,7 @@ Dependencies are your program's concern — put `uv run`/`pip install` in your a
 ## CLI commands
 
 ```bash
-resoluto-sandbox run [--backend docker] [--workspace DIR] -- <program> [args...]
+resoluto-sandbox run [--backend local|k8s] [--workspace DIR] -- <program> [args...]
 resoluto-sandbox doctor
 ```
 
@@ -51,12 +51,14 @@ command exits with code 2.
 
 ## Footguns
 
-**Docker backend needs an image.** `backend="docker"` runs the program in a Docker container
-(OS-level isolation: separate PID/mount/network namespaces, cgroups). It requires Docker to be
-running and an image that contains python + the resoluto-sandbox wheel + your program's deps
-(default `resoluto-sandbox-runner:dev`; override with `image=`). The egress canary is skipped
-(`RESOLUTO_TRUSTED_LOCAL=1` is set by the docker preset), so the docker backend is NOT egress-locked — use
-`backend="k8s"` for locked-down egress or hardware isolation.
+**Local backend needs an image.** `backend="local"` (the default) runs the program in a Kata
+microVM (hardware-virtualized) via `nerdctl` against a dedicated, standalone containerd (own
+socket/root at `/run/resoluto-local/containerd/`). It requires `/dev/kvm`, the `nerdctl` client, and
+that dedicated containerd up (run `scripts/local-backend-up.sh`), plus an image that contains python
++ the resoluto-sandbox wheel + your program's deps (default `resoluto-sandbox-base:dev`; override
+with `image=`). The egress canary RUNS fail-closed; local egress is enforced host-side on the lane
+CNI bridge (default-deny; allow DNS + HTTPS-443-public; REJECT IMDS + RFC1918 private) — immune to
+in-guest root. `backend="k8s"` enforces the same egress as a default-deny `NetworkPolicy` at the CNI.
 
 **`-e CLAUDE_CODE_OAUTH_TOKEN` with nothing exported = empty auth.** `docker run -e
 CLAUDE_CODE_OAUTH_TOKEN` (no `=value`) forwards the host shell's value, which is empty if you

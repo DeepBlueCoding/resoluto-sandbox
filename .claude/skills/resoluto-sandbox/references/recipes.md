@@ -11,11 +11,11 @@ prose see [docs/auth.md](../../../../docs/auth.md),
 ```python
 from resoluto_sandbox import Sandbox
 
-Sandbox(backend="docker" | "k8s" | <Backend instance>)   # default "docker"
+Sandbox(backend="local" | "k8s" | <Backend instance>)    # default "local"
 sb.run(
     argv,                       # Sequence[str] — the program, e.g. ["uv","run","agent.py","prompt"]
     *,
-    workspace=None,             # str dir → program cwd; staged in (k8s) / bind-mounted (local Docker)
+    workspace=None,             # str dir → program cwd; staged in (k8s) / bind-mounted (local Kata microVM)
     stdin=None,                 # NOT SUPPORTED — NotImplementedError on both backends
     env=None,                   # dict[str,str] — overlays sandbox env
     output_paths=None,          # Sequence[str] globs → collected into RunResult.artifacts
@@ -36,7 +36,7 @@ class RunResult(BaseModel):
 ```
 
 The program is PLAIN: reads argv, writes stdout/files. It never imports
-`resoluto_sandbox`. Same program runs in a Docker container (local) or Kata pod (k8s).
+`resoluto_sandbox`. Same program runs in a Kata microVM via nerdctl (local) or a Kata pod (k8s).
 
 Dependencies are your program's concern — put `uv run`/`pip install` in your argv, or use a prebuilt image.
 
@@ -46,21 +46,22 @@ Dependencies are your program's concern — put `uv run`/`pip install` in your a
 
 ### 1. Claude agent on a Max subscription — local
 
-Runs in a Docker container (OS-level isolation, no egress NetworkPolicy). The container
-inherits env you pass via `env=`. You need Docker + an image with `claude` CLI baked in.
+Runs in a Kata microVM via nerdctl (hardware-virtualized; egress enforced host-side on the CNI
+bridge, canary runs). The guest inherits env you pass via `env=`. You need `/dev/kvm` + nerdctl +
+the dedicated containerd + an image with `claude` CLI baked in.
 
 ```python
 from resoluto_sandbox import Sandbox
 
-r = Sandbox(backend="docker").run(
+r = Sandbox(backend="local").run(
     ["uv", "run", "examples/claude_agent.py", "Say hello in five words"],
     workspace="examples",
-    env={"CLAUDE_CODE_OAUTH_TOKEN": "..."},  # or mount credentials via the image
+    env={"CLAUDE_CODE_OAUTH_TOKEN": "..."},  # or bake credentials into the image
 )
 print(r.output)
 ```
 
-Prereq: Docker running, an image with `uv` + your deps. Do NOT set `ANTHROPIC_API_KEY`
+Prereq: the dedicated containerd up (`scripts/local-backend-up.sh`), an image with `uv` + your deps. Do NOT set `ANTHROPIC_API_KEY`
 (see footguns). Auth detail: [docs/auth.md](../../../../docs/auth.md).
 
 ### 2. Claude agent on a Max subscription — k8s / image
@@ -172,8 +173,8 @@ sb = Sandbox(backend=SubstrateBackend(
 ))
 ```
 
-For docker, `Sandbox(backend="docker", image="myregistry/my-base:tag")` runs your image
-in a Docker container on this host.
+For local, `Sandbox(backend="local", image="myregistry/my-base:tag")` runs your image
+in a Kata microVM via nerdctl on this host.
 
 ### 6. Stream vs capture output
 
@@ -194,11 +195,14 @@ Both backends merge stdout→`output` (errors stays `""`).
 
 ## FOOTGUNS
 
-- **`docker` = Docker (OS-level isolation, NOT egress-locked).** `backend="docker"` runs a Docker
-  container with OS-level isolation (separate namespaces/cgroups), but NO egress NetworkPolicy.
-  Needs Docker running + an image (default `resoluto-sandbox-runner:dev`; override with `image=`).
-  The image must contain python + the resoluto-sandbox wheel + your program's deps. Trusted code
-  only. For untrusted/adversarial workloads use `backend="k8s"` (Kata microVM + egress policy).
+- **`local` = Kata microVM via nerdctl (hardware-virtualized, NOT a plain namespace/cgroup container).**
+  `backend="local"` runs a Kata microVM via `nerdctl` against a dedicated, standalone containerd
+  (own socket/root at `/run/resoluto-local/containerd/`) — VM-grade isolation at parity with k8s,
+  on a single host. The egress canary RUNS (fail-closed); local egress is enforced HOST-SIDE on the
+  lane CNI bridge (default-deny; allow DNS + HTTPS-443-public; REJECT IMDS + RFC1918 private),
+  immune to in-guest root. Suitable for untrusted code, same as k8s. Needs `/dev/kvm` + nerdctl +
+  the dedicated containerd + an image (default `resoluto-sandbox-base:dev`; override with `image=`).
+  The image must contain python + the resoluto-sandbox wheel + your program's deps.
 
 - **k8s default egress is UNRESTRICTED.** `egress=None` (default) gives the pod
   Kata kernel isolation but NO NetworkPolicy — it can reach anything. Pass an

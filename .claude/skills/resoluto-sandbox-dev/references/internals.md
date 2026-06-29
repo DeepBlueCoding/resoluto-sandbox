@@ -16,7 +16,7 @@ host tails + reaps. Liveness = monotonic chunk-arrival + heartbeats. **No wall-c
 ```python
 from resoluto_sandbox import Sandbox, RunResult
 
-sb = Sandbox(backend="docker")            # default: Docker container on this host
+sb = Sandbox(backend="local")             # default: Kata microVM (via nerdctl + a dedicated containerd) on this host
 res = sb.run(["python", "agent.py", "--x"],
             workspace="/abs/dir",         # program cwd, staged into the sandbox
             env={"FOO": "1"},             # overlays the sandbox environment
@@ -43,10 +43,10 @@ There is a single `SubstrateBackend` (`backends/substrate.py`). It is runtime-ag
 workspace in, builds a `SandboxLaunchSpec`, calls `drive_node(runtime, conduit, spec, ...)`, and maps
 the resulting `NodeResult` to a `RunResult`. Isolation/placement is the injected `SandboxRuntime`:
 
-| backend | runtime | conduit | isolation | stdin | errors |
-|---|---|---|---|---|---|
-| `docker` | `DockerSandboxRuntime` (`docker run`) | `LocalConduit` (bind mount) | OS-level (namespaces/cgroups) | ❌ | `""` |
-| `k8s` | `K8sSandboxRuntime` (Kata pod) | `S3Conduit` | hardware (Kata microVM) + optional egress | ❌ | `""` |
+| backend | runtime | conduit | isolation | egress canary | stdin | errors |
+|---|---|---|---|---|---|---|
+| `local` | `KataNerdctlSandboxRuntime` (nerdctl) | `LocalConduit` | Kata microVM (VM-grade) | ✅ | ❌ | `""` |
+| `k8s` | `K8sSandboxRuntime` (Kata pod) | `S3Conduit` | Kata microVM (VM-grade) + optional egress | ✅ | ❌ | `""` |
 
 Both runtimes run the SAME image entrypoint `args=["python","-m","resoluto_sandbox.runner_main"]`; the
 container/pod stages inputs, runs the workload, ships span events, writes result.json. The backend
@@ -86,13 +86,12 @@ sb = Sandbox(backend=SubstrateBackend(
 The `"local"` / `"k8s"` string presets (`client.py`) build the same `SubstrateBackend` with the right
 runtime, conduit, and store_env. The k8s preset reads `RESOLUTO_SANDBOX_NAMESPACE`,
 `RESOLUTO_SANDBOX_KUBECONTEXT`, `RESOLUTO_LANE_IMAGE_PULL_POLICY` from env; the substrate hard-codes
-`dead_after_s=600.0` on its `drive_node` call. (`DockerSandboxRuntime` is stdlib-only — it shells the
-`docker` CLI; `K8sSandboxRuntime` is imported lazily so the core import stays pydantic-only.)
+`dead_after_s=600.0` on its `drive_node` call. (`KataNerdctlSandboxRuntime` is stdlib-only — it shells the
+`nerdctl` CLI; `K8sSandboxRuntime` is imported lazily so the core import stays pydantic-only.)
 
-**Store env propagated to the sandbox** (`store_env_for_pod`): only `RESOLUTO_STORE_*` and
-`RESOLUTO_TRUSTED_LOCAL` are forwarded. Host `AWS_*` creds are **NOT** forwarded unless a scoped
-`RESOLUTO_STORE_WRITE_TOKEN` is absent AND `RESOLUTO_TRUSTED_LOCAL=1` (dev only) — otherwise it raises.
-Footgun: prefer minting a prefix-scoped `RESOLUTO_STORE_WRITE_TOKEN` over forwarding ambient AWS creds.
+**Store env propagated to the sandbox** (`store_env_for_pod`): only `RESOLUTO_STORE_*` is forwarded.
+Host `AWS_*` creds are **NOT** forwarded — mint a prefix-scoped `RESOLUTO_STORE_WRITE_TOKEN` instead.
+Footgun: prefer the scoped write token over any attempt to forward ambient AWS creds.
 
 ---
 
@@ -174,7 +173,6 @@ orchestrator connection). It reads:
 | `RESOLUTO_WORKSPACE_DIR` | if set, stage `inbox/` here and run the workload here |
 | `RESOLUTO_OUTPUT_PATHS` | JSON list — tarred to `outbox/` on success |
 | `RESOLUTO_SETUP_ARGV` / `RESOLUTO_CLEANUP_ARGV` | JSON list — lifecycle hooks |
-| `RESOLUTO_TRUSTED_LOCAL` | presence → skip egress canary |
 | `RESOLUTO_CANARY_PROBE_HOST` / `_PORT` | canary target (default `1.1.1.1:80`) |
 | `RESOLUTO_IMAGE_VERSION` | if set, asserts image↔wheel version match (fail loud on drift) |
 
@@ -316,8 +314,9 @@ K8sSandboxRuntime(*, namespace="resoluto-sandboxes", kubeconfig=None, context=No
 
 **Kata `runtimeClass` (k8s-PRIVATE config).** `runtime_class` is the K8s runtime's OWN config (NOT a
 field on the neutral `SandboxLaunchSpec`). Pods set `runtimeClassName: <runtime_class>` (kata = a QEMU
-microVM). The `check_runtime_class_guard` invariant refuses any non-`kata` value unless
-`RESOLUTO_TRUSTED_LOCAL` is set — an isolation downgrade is fail-loud, not silent.
+microVM). The `check_runtime_class_guard` invariant refuses ANY non-`kata` value
+UNCONDITIONALLY — VM-grade isolation is required, there is no trusted-local bypass; an isolation
+downgrade is fail-loud, not silent.
 
 **Pinned kube-context, fail-closed.** `_client()` calls `load_kube_config(context=self._context)`. If
 no context is pinned (`context=None`) and not in-cluster, it **raises** unless
@@ -385,7 +384,7 @@ async with await pool.acquire(spec, on_wait=None) as lease:
 
 ## 9. Extending — add a backend / runtime / conduit
 
-- New substrate (Ecs/Docker/Temporal pod placement): subclass `SandboxRuntime` (`launch`/`status`/
+- New substrate (Ecs/Fly/Temporal pod placement): subclass `SandboxRuntime` (`launch`/`status`/
   `destroy`/`sweep` + optional `logs`). Reuse `drive_node` + `ChunkReader`/`ChunkShipper` unchanged.
 - New `run()`-level backend: subclass `Backend` (`backends/base.py`) — same signature across backends;
   return a `RunResult`. Inject via `Sandbox(backend=YourBackend(...))`.

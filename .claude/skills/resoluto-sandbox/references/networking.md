@@ -7,11 +7,11 @@ For the run protocol and backend contracts see `../../../../spec/PROTOCOL.md`; f
 
 | Backend | Isolation | Egress | When |
 |---|---|---|---|
-| `docker` | Docker (OS-level: namespaces/cgroups) | unrestricted — egress canary SKIPPED (`RESOLUTO_TRUSTED_LOCAL=1`) | trusted code, dev |
+| `local` | Kata microVM (hardware-virtualized) via nerdctl | default-deny on the host CNI bridge (egress canary RUNS, fail-closed): allow DNS + HTTPS-443-public; REJECT IMDS + RFC1918 private | dev and untrusted code at VM-grade isolation |
 | `k8s` + `egress=None` | Kata microVM kernel isolation | UNRESTRICTED (no NetworkPolicy) | semi-trusted, kernel isolation enough |
 | `k8s` + `egress=EgressConfig(...)` | Kata microVM + default-deny egress NetworkPolicy | only declared CIDRs :443 + DNS :53; IMDS always blocked | untrusted code |
 
-Footgun: `k8s` does NOT lock down egress unless you pass `EgressConfig`. Kata isolates the kernel, not the network. Untrusted code with `egress=None` can phone home anywhere.
+Footgun: `k8s` does NOT lock down egress unless you pass `EgressConfig`. Kata isolates the kernel, not the network. Untrusted code with `egress=None` can phone home anywhere. (The `local` backend is different: egress is always enforced host-side on the CNI bridge — immune to in-guest root.)
 
 ## API surface (verbatim)
 
@@ -22,7 +22,7 @@ from resoluto_sandbox.conduit.factory import store_from_env                     
 from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig         # k8s runtime + CIDR allowlist
 ```
 
-`Sandbox(backend="docker" | "k8s" | <Backend instance>)` then:
+`Sandbox(backend="local" | "k8s" | <Backend instance>)` then:
 
 ```python
 RunResult = Sandbox.run(
@@ -127,11 +127,11 @@ Runs IN-GUEST before the workload, three probes:
 
 Any unexpected result → lane aborts with a reason naming every failed probe (surfaced via `SpanEmitter`). This fires when the CNI mis-enforces the policy or the policy was not applied before the pod started.
 
-The local preset sets `RESOLUTO_TRUSTED_LOCAL=1` which skips the canary. On k8s, set
-`RESOLUTO_TRUSTED_LOCAL=1` to skip the canary (dev only). Side effects:
-- Also permits host `AWS_*` creds to be forwarded into the pod in place of a scoped store token (`store_env_for_pod`). Without it, a k8s run with host AWS creds but no `RESOLUTO_STORE_WRITE_TOKEN` raises `RuntimeError` — the pod is meant to auth via the prefix-scoped `RESOLUTO_STORE_WRITE_TOKEN`.
-- Also gates the non-Kata `runtime_class` guard.
-Never set it for untrusted code.
+The egress canary RUNS on the `local` backend too (fail-closed) — local egress is enforced
+HOST-SIDE on the lane CNI bridge (default-deny; allow DNS + HTTPS-443-public; REJECT IMDS +
+RFC1918 private), immune to in-guest root. There is no bypass: isolation is never downgraded and
+host `AWS_*` creds are never forwarded — the pod auths via the prefix-scoped, write-only
+`RESOLUTO_STORE_WRITE_TOKEN`. The `runtime_class` guard is unconditional (Kata always).
 
 ## Related k8s knobs (env)
 
@@ -178,11 +178,14 @@ print(result.output)            # merged stdout+stderr
 print(result.artifacts)         # collected output_paths
 ```
 
-## Copy-paste: local (Docker, OS-level isolation, NOT egress-locked)
+## Copy-paste: local (Kata microVM via nerdctl, egress enforced host-side)
 
 ```python
 from resoluto_sandbox import Sandbox
-result = Sandbox(backend="docker").run(["python", "agent.py"], workspace=".")
+result = Sandbox(backend="local").run(["python", "agent.py"], workspace=".")
 ```
-Docker container on the host. OS-level isolation (namespaces/cgroups). No egress NetworkPolicy.
-`EgressConfig` does not apply. Trusted code only. Needs Docker + an image (default `resoluto-sandbox-runner:dev`).
+Kata microVM (hardware-virtualized) via nerdctl + a dedicated containerd on the host. `EgressConfig`
+(a k8s NetworkPolicy knob) does not apply here — local egress is enforced HOST-SIDE on the lane CNI
+bridge (default-deny; allow DNS + HTTPS-443-public; REJECT IMDS + RFC1918 private), immune to in-guest
+root. The egress canary RUNS (fail-closed). Suitable for untrusted code at VM-grade isolation. Needs
+`/dev/kvm` + nerdctl + the dedicated containerd + an image (default `resoluto-sandbox-base:dev`).

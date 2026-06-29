@@ -26,7 +26,12 @@ packages = ["src/resoluto_sandbox"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["src"]
-markers = ["integration: hits the live k3s+kata cluster"]
+markers = [
+    "integration: hits the live k3s+kata cluster",
+    "k8s: needs k3s+kata",
+    "local: needs nerdctl+dedicated containerd",
+    "s3: needs minio",
+]
 addopts = "-m 'not integration'"
 
 [dependency-groups]
@@ -36,4 +41,5 @@ dev = [
     "kubernetes-asyncio>=31.1.0",
     "aioboto3>=13.0.0",
     "jsonschema>=4.26.0",
+    "hypothesis>=6.155.7",
 ]

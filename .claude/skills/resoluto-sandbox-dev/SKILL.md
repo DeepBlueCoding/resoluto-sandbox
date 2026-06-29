@@ -5,11 +5,11 @@ description: Use when developing the resoluto-sandbox itself — adding a new Sa
 
 # resoluto-sandbox — developer guide
 
-Run a plain program (reads argv, writes stdout/files, never imports this package) in a sandbox. What works as `uv run agent.py` on the host works unchanged inside the sandbox — in a Docker container (`local`) or Kata pod (`k8s`).
+Run a plain program (reads argv, writes stdout/files, never imports this package) in a sandbox. What works as `uv run agent.py` on the host works unchanged inside the sandbox — in a Kata microVM via nerdctl (`local`) or a Kata pod on k8s (`k8s`).
 
 ## Mental model
 
-Two seams. **SandboxRuntime** = the isolation/placement mechanism (Docker locally, Kata pod on k8s). **Conduit** = the durable store both sides rendezvous through (host never holds a connection to the guest). ONE `SubstrateBackend` drives both presets — what varies is the injected runtime + conduit.
+Two seams. **SandboxRuntime** = the isolation/placement mechanism (a Kata microVM via nerdctl + a dedicated containerd locally, a Kata pod on k8s). **Conduit** = the durable store both sides rendezvous through (host never holds a connection to the guest). ONE `SubstrateBackend` drives both presets — what varies is the injected runtime + conduit.
 
 For `k8s`: the guest self-reports append-only JSONL chunks to its Conduit prefix; `drive_node` tails + reaps. Store-mediated, so no long-lived stream to wedge.
 
@@ -20,8 +20,8 @@ from resoluto_sandbox.conduit.factory import store_from_env
 from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
 import os
 
-# local: Docker container on this host
-r = Sandbox(backend="docker").run(["agent.py"], workspace="/work")
+# local: Kata microVM (via nerdctl + a dedicated containerd) on this host
+r = Sandbox(backend="local").run(["agent.py"], workspace="/work")
 print(r.output, r.ok)   # RunResult(exit_code, output, errors, artifacts, result, reason, ok)
 
 # k8s: Kata pod — inject SubstrateBackend
@@ -39,13 +39,13 @@ Sandbox(backend=SubstrateBackend(
 )).run(["python", "agent.py"], workspace="/work", output_paths=["out/*.json"])
 ```
 
-`Sandbox(backend="docker"|"k8s"|<Backend instance>)`. `.run(argv, *, workspace, stdin, env, output_paths, stream) -> RunResult`. On both backends: `stdin` raises `NotImplementedError`; `RunResult.errors` is empty (output carries merged stdout+stderr). `k8s` also needs `RESOLUTO_STORE_KIND` in env.
+`Sandbox(backend="local"|"k8s"|<Backend instance>)` (default `"local"`). `.run(argv, *, workspace, stdin, env, output_paths, stream) -> RunResult`. On both backends: `stdin` raises `NotImplementedError`; `RunResult.errors` is empty (output carries merged stdout+stderr). `k8s` also needs `RESOLUTO_STORE_KIND` in env.
 
 ## Quick reference
 
 | Operation | How |
 |-----------|-----|
-| Run locally | `Sandbox(backend="docker").run(argv, workspace=...)` — needs Docker + an image |
+| Run locally | `Sandbox(backend="local").run(argv, workspace=...)` — needs `/dev/kvm`, `nerdctl`, the dedicated containerd + an image |
 | Run in Kata pod | `Sandbox(backend=SubstrateBackend(runtime=K8sSandboxRuntime(...), conduit=..., image=..., store_env=store_env_for_pod(os.environ))).run(...)` |
 | Restrict pod egress | `K8sSandboxRuntime(egress=EgressConfig(store_cidr=, llm_cidr=, git_cidrs=[]))` (CIDRs only, no FQDNs) |
 | Collect outputs | `output_paths=["out/*.json"]` → globbed into `RunResult.artifacts` (extracted into `workspace`) |
@@ -61,7 +61,7 @@ Proven conduits: `local`/`stdout` (local backend) and `s3` against minio (k8s). 
 ## Footguns
 
 - **k8s egress defaults to UNRESTRICTED** — Kata kernel isolation only. Pass `egress=EgressConfig(...)` for a default-deny NetworkPolicy (allow declared CIDRs on 443 + kube-dns 53).
-- **`local` = Docker (OS-level isolation, NOT egress-locked)** — runs in a Docker container. Needs Docker + an image (default `resoluto-sandbox-runner:dev`). NOT a bare host subprocess.
+- **`local` = Kata microVM (hardware-virtualized) via nerdctl + a dedicated containerd** — each sandbox is a Kata microVM (VM-grade isolation, parity with k8s, single host, no cluster), NOT a Docker container, NOT a bare host subprocess. Needs `/dev/kvm`, `nerdctl`, the dedicated containerd up (`scripts/local-backend-up.sh`) + an image (default `resoluto-sandbox-base:dev`). The egress canary RUNS (fail-closed); local egress is enforced HOST-SIDE on the lane CNI bridge (default-deny; allow DNS + 443-public; REJECT IMDS + RFC1918) — immune to in-guest root.
 - **`stdin` NOT supported on either backend** — both raise `NotImplementedError`. Pass inputs via argv, env, or workspace files.
 - **Image tag == wheel** — the `k8s` image bakes a specific build; sandbox-side code changes need a rebuild+republish. The host gets source changes instantly → they drift. Bump the tag.
 - **No wall-clock timeouts** — liveness is substrate-silence (`dead_after_s` since last chunk) + heartbeat, never a duration cap on the work.

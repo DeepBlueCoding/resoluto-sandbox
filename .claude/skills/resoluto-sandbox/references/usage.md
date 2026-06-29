@@ -15,7 +15,7 @@ Cross-links (don't duplicate these):
 ```python
 from resoluto_sandbox import Sandbox   # re-exported; canonical: resoluto_sandbox.client
 
-result = Sandbox(backend="docker").run(["agent.py", "--task", "fix the bug"], workspace="/abs/repo")
+result = Sandbox(backend="local").run(["agent.py", "--task", "fix the bug"], workspace="/abs/repo")
 print(result.output)      # the program's answer
 assert result.ok          # exit_code == 0
 ```
@@ -23,13 +23,13 @@ assert result.ok          # exit_code == 0
 There is exactly ONE public call shape. `Sandbox(...)` holds a `Backend`; `.run(...)`
 delegates to it. Everything else is a backend implementation detail.
 
-### `Sandbox(*, backend="docker"|"k8s"|<Backend>, image=None)`
+### `Sandbox(*, backend="local"|"k8s"|<Backend>, image=None)`
 
 ```python
-def __init__(self, *, backend: Backend | str = "docker", image: str | None = None) -> None
+def __init__(self, *, backend: Backend | str = "local", image: str | None = None) -> None
 ```
 
-- `backend="docker"` → builds `SubstrateBackend(runtime=DockerSandboxRuntime, conduit=LocalConduit, ...)` (default).
+- `backend="local"` → builds `SubstrateBackend(runtime=KataNerdctlSandboxRuntime, conduit=LocalConduit, image="resoluto-sandbox-base:dev", ...)` (default).
 - `backend="k8s"`   → builds `SubstrateBackend(runtime=K8sSandboxRuntime, conduit=store_from_env(), ...)` (needs `RESOLUTO_LANE_IMAGE` and `RESOLUTO_STORE_KIND`).
 - `backend=<Backend instance>` → injected as-is (the supported way to configure k8s with egress, custom conduit, etc.).
 - anything else → `ValueError("unknown backend ...")`.
@@ -106,8 +106,8 @@ Two ways to pick a backend. Strings are for the trivial cases; **inject a config
 
 ```python
 # By string (no config knobs)
-Sandbox(backend="docker")                    # Docker container, default image
-Sandbox(backend="docker", image="my:img")    # Docker container, custom image
+Sandbox(backend="local")                     # Kata microVM via nerdctl, default image
+Sandbox(backend="local", image="my:img")     # Kata microVM via nerdctl, custom image
 Sandbox(backend="k8s", image="<tag>")        # k8s preset — reads RESOLUTO_STORE_KIND from env
 
 # By injection (DI) — the supported path for k8s config with egress/custom conduit
@@ -120,7 +120,7 @@ Sandbox(backend=SubstrateBackend(
     runtime=K8sSandboxRuntime(
         namespace="resoluto-sandboxes",
         context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
-        egress=EgressConfig(                # None → unrestricted egress (Kata isolation only)
+        egress=EgressConfig(                # None → unrestricted k8s egress (Kata isolation only)
             store_cidr="10.0.0.5/32",
             llm_cidr="1.2.3.4/32",
             git_cidrs=["140.82.112.0/24"],  # optional; default [] = no git egress
@@ -137,23 +137,21 @@ facade does `isinstance(backend, Backend)` and uses it directly.
 
 ---
 
-## SubstrateBackend (Docker) vs SubstrateBackend (Kata) — behavior differences
+## SubstrateBackend (local Kata) vs SubstrateBackend (k8s Kata) — behavior differences
 
-| concern | `docker` (Docker) | `k8s` (Kata) |
+| concern | `local` (Kata microVM via nerdctl) | `k8s` (Kata pod) |
 |---|---|---|
-| isolation | OS-level — Docker namespaces/cgroups, NOT egress-locked. Trusted code ONLY. | Kata microVM (kernel isolation), curated env, optional egress NetworkPolicy. Use for untrusted/adversarial code. |
+| isolation | Kata microVM (hardware-virtualized) via nerdctl + a dedicated containerd; VM-grade, parity with k8s. Egress canary RUNS; egress enforced HOST-SIDE on the CNI bridge (default-deny; DNS+443-public; REJECT IMDS+RFC1918). Suitable for untrusted code. | Kata microVM (kernel isolation), curated env, optional egress NetworkPolicy. Use for untrusted/adversarial code. |
 | output | captured (from `log` span events) + live-teed to `stream` | captured (from `log` span events) + live-teed to `stream` |
 | errors | **always `""` by design** (runner merges both streams as `log` events) | **always `""` by design** (runner merges both streams as `log` events) |
 | `result` | `result.json` read from `workspace` only if `output_paths` AND `workspace` set | `result.json` fetched back only if `output_paths` AND `workspace` set |
 | `reason` | always `""` | pod forensics (OOMKilled/evicted/phase) |
 | `stdin` | **NotImplementedError** | **NotImplementedError** |
-| env requirement | needs Docker + an image | `RESOLUTO_STORE_KIND` must be set (conduit from env) unless you inject `conduit=` |
+| env requirement | needs `/dev/kvm` + nerdctl + the dedicated containerd + an image | `RESOLUTO_STORE_KIND` must be set (conduit from env) unless you inject `conduit=` |
 
-k8s pod env is curated by `store_env_for_pod`: forwards `RESOLUTO_STORE_*` and
-`RESOLUTO_TRUSTED_LOCAL`. Host `AWS_*` creds are NOT forwarded — the pod authenticates
-to the store via the prefix-scoped `RESOLUTO_STORE_WRITE_TOKEN`. If you have no scoped
-token and want to forward host AWS creds for dev, set `RESOLUTO_TRUSTED_LOCAL=1`,
-otherwise `.run()` raises `RuntimeError`.
+k8s pod env is curated by `store_env_for_pod`: forwards `RESOLUTO_STORE_*`. Host `AWS_*`
+creds are NOT forwarded — the pod authenticates to the store via the prefix-scoped
+`RESOLUTO_STORE_WRITE_TOKEN`.
 
 k8s liveness: substrate-silence watchdog (`dead_after_s=600.0` — no chunk for 600s kills);
 NO wall-clock timeout on the work itself.
@@ -166,7 +164,7 @@ The program you run is PLAIN. It reads `argv`, writes `stdout`/files, optionally
 drops a `result.json`. It imports NOTHING from `resoluto_sandbox`. The contract:
 
 > A program that works as `uv run agent.py` on your machine works unchanged inside the sandbox.
-> On `local` it runs in a Docker container; on `k8s` it runs in a Kata microVM. Same program,
+> On `local` it runs in a Kata microVM via nerdctl; on `k8s` it runs in a Kata microVM pod. Same program,
 > same inputs, same outputs.
 
 Don't reach into `resoluto_sandbox` from the workload — if you find
@@ -179,8 +177,8 @@ yourself importing the package inside the program you run, you've broken the sea
 Built from env by `store_from_env()` (`RESOLUTO_STORE_KIND`), or injected via
 `SubstrateBackend(conduit=...)`:
 
-- `stdout` (`StdoutConduit`) — local-backend wiring. **proven.**
-- `localfs` (`LocalConduit`, `RESOLUTO_STORE_ROOT`) — local filesystem store. **proven.**
+- `stdout` (`StdoutConduit`) — stdout-streaming wiring. **proven.**
+- `localfs` (`LocalConduit`, `RESOLUTO_STORE_ROOT`) — local filesystem store (the local-backend default). **proven.**
 - `s3` (`S3Conduit`) — S3/minio; uses `RESOLUTO_STORE_WRITE_TOKEN` (scoped) or
   `RESOLUTO_STORE_BUCKET`/`ENDPOINT`/`REGION` + `AWS_*`. **proven against minio (the k8s path).**
 - `gcs` (`GcsConduit`, `RESOLUTO_STORE_BUCKET`, `RESOLUTO_GCS_SERVICE_FILE`) —
@@ -190,9 +188,9 @@ Built from env by `store_from_env()` (`RESOLUTO_STORE_KIND`), or injected via
 
 ## Copy-paste recipes
 
-Docker local run, capture answer + an artifact:
+Local run (Kata microVM via nerdctl), capture answer + an artifact:
 ```python
-r = Sandbox(backend="docker").run(
+r = Sandbox(backend="local").run(
     ["analyze.py", "--input", "data.csv"],
     workspace="/abs/job",
     output_paths=["report.md", "out/*.json"],

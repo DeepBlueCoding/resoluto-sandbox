@@ -17,7 +17,7 @@ Cross-links: store-mediated wire protocol → `../../../../spec/PROTOCOL.md`. La
 ```python
 from resoluto_sandbox.client import Sandbox
 
-Sandbox(backend="docker" | "k8s" | <Backend instance>).run(
+Sandbox(backend="local" | "k8s" | <Backend instance>).run(   # default "local"
     argv,                       # Sequence[str] — the program + args
     *,
     workspace=None,             # str | None — program cwd (a directory)
@@ -42,12 +42,16 @@ class RunResult(BaseModel):
     def ok(self) -> bool: return self.exit_code == 0
 ```
 
-`Sandbox.__init__` accepts a `Backend` instance OR the strings `"docker"` / `"k8s"`. A
+`Sandbox.__init__` accepts a `Backend` instance OR the strings `"local"` / `"k8s"` (default `"local"`). A
 configured k8s backend (image, conduit, egress) MUST be injected as an instance.
 
 ### Backend status (honest)
-- **`docker`** — `SubstrateBackend(DockerSandboxRuntime + LocalConduit)`: Docker container on this
-  host, OS-level isolation (namespaces/cgroups). NOT egress-locked. Needs Docker + an image.
+- **`local`** — `SubstrateBackend(KataNerdctlSandboxRuntime + LocalConduit)`: each sandbox is a Kata
+  microVM (hardware-virtualized) via `nerdctl` against a dedicated, standalone containerd
+  (own socket/root `/run/resoluto-local/containerd/`) on this host — VM-grade isolation at parity with
+  k8s, single host, no cluster. The egress canary RUNS (fail-closed); local egress is enforced HOST-SIDE
+  on the lane CNI bridge (default-deny). Needs `/dev/kvm`, `nerdctl`, the dedicated containerd up
+  (`scripts/local-backend-up.sh`) + an image (default `resoluto-sandbox-base:dev`).
   `stdin` raises `NotImplementedError`. `RunResult.errors` is always `""`.
 - **`k8s`** — `SubstrateBackend(K8sSandboxRuntime + store_from_env())`: **fully implemented**:
   launches a real Kata pod via `drive_node`, stages the workspace in, fetches `output_paths`
@@ -103,7 +107,7 @@ string (`"pending"` / `"running"` / `"succeeded"` / `"failed"` / `"unknown"`), o
 
 ### The DockerBackend example (illustrative — not a new Backend)
 
-The REAL local backend is `SubstrateBackend(DockerSandboxRuntime + LocalConduit)` which uses the
+The REAL local backend is `SubstrateBackend(KataNerdctlSandboxRuntime + LocalConduit)` which uses the
 full store-mediated wire (runner_main, telemetry, staging). The simple Docker wrapper below is
 illustrative for understanding the seam, but lacks the telemetry wire — it won't produce
 `result.json` or span events:
@@ -123,7 +127,7 @@ from resoluto_sandbox.backends.base import Backend, RunResult
 
 class SimpleDockerBackend(Backend):
     """Runs argv in a container via direct docker run (no telemetry wire).
-    For production use, prefer SubstrateBackend(DockerSandboxRuntime + LocalConduit)."""
+    For production use, prefer SubstrateBackend(KataNerdctlSandboxRuntime + LocalConduit)."""
 
     def __init__(self, *, image: str) -> None:
         self._image = image
@@ -188,7 +192,7 @@ Subclass `resoluto_sandbox.backends.base.Backend` and implement the single
 3. Return `RunResult(exit_code=, output=, errors=, artifacts=, result=, reason=)`.
    Put substrate forensics (eviction/OOM/terminated reason) in `reason`.
 4. Inject it: `Sandbox(backend=YourBackend(...))`. No registry, no string name —
-   instances are passed directly. (Only `"docker"`/`"k8s"` are name-resolvable in
+   instances are passed directly. (Only `"local"`/`"k8s"` are name-resolvable in
    `client.py`; do not add new string names — inject the instance.)
 
 ### Footguns
@@ -342,7 +346,8 @@ backend = SubstrateBackend(
 Pod placement reads env: `RESOLUTO_SANDBOX_NAMESPACE` (default
 `resoluto-sandboxes`), `RESOLUTO_SANDBOX_KUBECONTEXT`,
 `RESOLUTO_LANE_IMAGE_PULL_POLICY` (default `IfNotPresent`). Pods run
-`runtime_class="kata"`; downgrading requires `RESOLUTO_TRUSTED_LOCAL`. Host
-`AWS_*` creds are NOT forwarded to the untrusted pod unless `RESOLUTO_TRUSTED_LOCAL`
-is set — production uses the prefix-scoped `RESOLUTO_STORE_WRITE_TOKEN`.
+`runtime_class="kata"`; `check_runtime_class_guard` refuses ANY non-Kata `runtime_class`
+UNCONDITIONALLY — VM-grade isolation is required, there is no trusted-local bypass. Host
+`AWS_*` creds are NOT forwarded to the untrusted pod — production uses the prefix-scoped
+`RESOLUTO_STORE_WRITE_TOKEN`.
 Wire/staging details → `spec/PROTOCOL.md`.

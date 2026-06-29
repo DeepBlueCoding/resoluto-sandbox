@@ -5,11 +5,11 @@ description: Use when running a program or AI agent inside the resoluto-sandbox 
 
 # resoluto-sandbox (power user)
 
-Run any program — script, CLI, or AI agent in any language — in an isolated sandbox. **Mental model:** your program is *plain* — reads argv, writes stdout/files, NEVER imports `resoluto_sandbox`. What runs as `uv run agent.py` on your host runs unchanged under `run()`; the backend changes only *where* (Docker container locally, Kata pod on k8s).
+Run any program — script, CLI, or AI agent in any language — in an isolated sandbox. **Mental model:** your program is *plain* — reads argv, writes stdout/files, NEVER imports `resoluto_sandbox`. What runs as `uv run agent.py` on your host runs unchanged under `run()`; the backend changes only *where* (Kata microVM via nerdctl locally, Kata pod on k8s).
 
 ```python
 from resoluto_sandbox import Sandbox
-r = Sandbox(backend="docker").run(["python", "agent.py"], workspace="./work",
+r = Sandbox(backend="local").run(["python", "agent.py"], workspace="./work",
                                  output_paths=["out/*.json"])
 # RunResult(pydantic): exit_code:int output/errors:str artifacts:list[str] result:dict|None reason:str ok(prop ==exit0)
 ```
@@ -20,14 +20,14 @@ Both backends merge stdout+stderr into `output` (`errors` empty by design). `std
 
 | Goal | How |
 |---|---|
-| Run in Docker (OS-level isolation) | `Sandbox(backend="docker").run(argv, ...)` — needs Docker + an image |
+| Run locally (Kata microVM via nerdctl) | `Sandbox(backend="local").run(argv, ...)` — needs `/dev/kvm` + nerdctl + the dedicated containerd + an image |
 | Run in Kata pod | `Sandbox(backend=SubstrateBackend(runtime=K8sSandboxRuntime(...), conduit=store_from_env(), image="<tag>", store_env=store_env_for_pod(os.environ))).run(argv, ...)` |
 | Collect outputs | `output_paths=["dist/*","*.json"]` → globbed into `r.artifacts`; mutated into `workspace` |
 | Structured result | program writes `result.json` in workspace → `r.result` |
 | Dependencies | put `uv run`/`pip install` in your argv, or use a prebuilt image |
 | Restrict k8s egress | `K8sSandboxRuntime(egress=EgressConfig(store_cidr=..., llm_cidr=..., git_cidrs=[...]))` |
 | Pick store conduit | inject `conduit=` to `SubstrateBackend`; else `store_from_env()` via `RESOLUTO_STORE_KIND` |
-| CLI | `resoluto-sandbox run [--backend docker\|k8s] [--image T] -- <prog> [args]` ; also `doctor`, `image build --provider claude\|langchain\|openai\|all` |
+| CLI | `resoluto-sandbox run [--backend local\|k8s] [--image T] -- <prog> [args]` ; also `doctor`, `image build --provider claude\|langchain\|openai\|all` |
 | Build SDK image | `resoluto-sandbox image build --provider claude` (tag locked to wheel version) |
 | Claude Max auth | local: log in once (`claude` / `claude setup-token`), do NOT set `ANTHROPIC_API_KEY` |
 
@@ -38,8 +38,8 @@ Imports: `from resoluto_sandbox import Sandbox, RunResult`; `from resoluto_sandb
 ## Footguns
 
 - **k8s egress is UNRESTRICTED by default** (`egress=None`) — Kata kernel isolation only. Pass `EgressConfig` for default-deny.
-- **`local` = Docker (OS-level isolation, NOT egress-locked)** — runs in a Docker container. Needs Docker + an image. Trusted code only for egress. NOT a bare host subprocess.
-- **Docker backend needs an image.** Default `resoluto-sandbox-runner:dev`; override with `Sandbox(backend="docker", image="...")`. The image must contain python + the resoluto-sandbox wheel + your program's deps.
+- **`local` = Kata microVM via nerdctl (hardware-virtualized, NOT a plain namespace/cgroup container).** Each sandbox runs as a Kata microVM via `nerdctl` against a dedicated, standalone containerd (own socket/root at `/run/resoluto-local/containerd/`) — VM-grade isolation at parity with k8s, on a single host, no cluster. The egress canary RUNS (fail-closed); local egress is enforced HOST-SIDE on the lane CNI bridge (default-deny; allow DNS + HTTPS-443-public; REJECT IMDS + RFC1918 private) — immune to in-guest root. Suitable for untrusted code at VM-grade isolation, same as k8s. NOT a bare host subprocess.
+- **Local backend needs an image.** Default `resoluto-sandbox-base:dev`; override with `Sandbox(backend="local", image="...")`. The image must contain python + the resoluto-sandbox wheel + your program's deps. Needs `/dev/kvm`, the `nerdctl` client, and the dedicated containerd up (`scripts/local-backend-up.sh`).
 - **Image tag == wheel version.** An image built for a different `resoluto-sandbox` version won't match — rebuild after upgrading.
 - **No wall-clock timeouts.** Liveness = substrate-silence (`dead_after_s=600` between chunks) + heartbeat; a live program runs as long as it stays alive.
 

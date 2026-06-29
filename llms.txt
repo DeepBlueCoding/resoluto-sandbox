@@ -1,12 +1,12 @@
 # resoluto-sandbox
 
-Run any program or agent script in a sandbox. The program is plain (argv → stdout/files/exit) and never imports resoluto_sandbox. ONE SubstrateBackend drives both presets via an injected SandboxRuntime (Docker locally, Kata pod on k8s) and a Conduit (bind-mount locally, S3 on k8s).
+Run any program or agent script in a sandbox. The program is plain (argv → stdout/files/exit) and never imports resoluto_sandbox. ONE SubstrateBackend drives both presets via an injected SandboxRuntime (Kata microVM via nerdctl + a dedicated containerd locally, Kata pod on k8s) and a Conduit (bind-mount locally, S3 on k8s).
 
 ## Key files
 
 - README.md: Overview, 60-second quickstart, architecture diagrams, backends overview, Sandbox.run() reference, status table
-- docs/backends.md: Backends detail (docker + k8s), run flow diagrams, vendor-neutral k8s stack install guide
-- docs/auth.md: Claude Max/Pro subscription auth for docker and container runs
+- docs/backends.md: Backends detail (local + k8s), run flow diagrams, vendor-neutral k8s stack install guide
+- docs/auth.md: Claude Max/Pro subscription auth for local and container runs
 - spec/PROTOCOL.md: Language-neutral host ↔ sandbox wire protocol with JSON Schemas
 - src/resoluto_sandbox/client.py: Sandbox and RunResult — the main public API
 - src/resoluto_sandbox/cli.py: resoluto-sandbox run and doctor CLI subcommands

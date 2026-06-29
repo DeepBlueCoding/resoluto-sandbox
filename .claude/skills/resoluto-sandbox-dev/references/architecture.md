@@ -12,7 +12,7 @@ ONE `SubstrateBackend` drives both presets. The only thing that varies is the in
 from resoluto_sandbox.client import Sandbox
 
 # select by name (presets)
-sb = Sandbox(backend="docker")          # SubstrateBackend(DockerSandboxRuntime + LocalConduit)
+sb = Sandbox(backend="local")          # SubstrateBackend(KataNerdctlSandboxRuntime + LocalConduit)
 sb = Sandbox(backend="k8s")            # SubstrateBackend(K8sSandboxRuntime + store_from_env()) — needs RESOLUTO_LANE_IMAGE
 
 # or inject a configured SubstrateBackend (the real k8s path with egress/conduit config)
@@ -34,11 +34,11 @@ sb = Sandbox(backend=SubstrateBackend(
 ))
 ```
 
-`Sandbox.__init__(*, backend: Backend | str = "docker", image: str | None = None)`:
+`Sandbox.__init__(*, backend: Backend | str = "local", image: str | None = None)`:
 - a `Backend` instance → held as-is
-- `"docker"` → builds `SubstrateBackend(DockerSandboxRuntime + LocalConduit)` with `RESOLUTO_TRUSTED_LOCAL=1`
+- `"local"` (default) → builds `SubstrateBackend(KataNerdctlSandboxRuntime + LocalConduit)`, image `resoluto-sandbox-base:dev`
 - `"k8s"` → builds `SubstrateBackend(K8sSandboxRuntime + store_from_env())` (needs `RESOLUTO_LANE_IMAGE`)
-- anything else → `ValueError`
+- anything else (including `"docker"`) → `ValueError`
 
 ## The run API (identical across backends)
 
@@ -85,7 +85,7 @@ class Backend(ABC):
 
 One implementation drives both presets:
 - **`SubstrateBackend(*, runtime, conduit, image, store_env)`** — fully implemented: launches a sandbox via the injected `SandboxRuntime`, stages workspace, tails Conduit for output, fetches artifacts. `stdin is not None` → `NotImplementedError`. `image` is required. `run()` calls `asyncio.run(...)` internally (sync surface, async core).
-  - With `DockerSandboxRuntime` → local preset (Docker container, OS-level isolation)
+  - With `KataNerdctlSandboxRuntime` → local preset (Kata microVM via nerdctl + a dedicated containerd, VM-grade isolation)
   - With `K8sSandboxRuntime` → k8s preset (Kata microVM, hardware isolation + optional egress)
 
 **Footguns:**
@@ -124,7 +124,7 @@ Build one from env with `store_from_env(env=None) -> Conduit` (`resoluto_sandbox
 
 ### 3. `SandboxRuntime` — `resoluto_sandbox.contracts`
 
-The isolation/placement seam. The runtime owns launch, status, destroy, sweep for a specific substrate (Docker, k8s Kata, ECS, Fly, …).
+The isolation/placement seam. The runtime owns launch, status, destroy, sweep for a specific substrate (local Kata via nerdctl, k8s Kata, ECS, Fly, …).
 
 ```python
 class SandboxRuntime(ABC):
@@ -140,7 +140,7 @@ class SandboxRuntime(ABC):
 ```
 
 Implementations:
-- **`DockerSandboxRuntime(*, conduit_host_dir, conduit_mount)`** — local preset; `docker run` with bind-mount.
+- **`KataNerdctlSandboxRuntime`** (`runtime/kata_nerdctl.py`) — local preset; each sandbox is a Kata microVM launched via `nerdctl` against a dedicated, standalone containerd (own socket/root `/run/resoluto-local/containerd/`). Build it with `KataNerdctlSandboxRuntime.from_env(...)`; default image `DEFAULT_LOCAL_IMAGE = "resoluto-sandbox-base:dev"`.
 - **`K8sSandboxRuntime(*, namespace="resoluto-sandboxes", kubeconfig=None, context=None, image_pull_policy="IfNotPresent", egress=None, node_allocatable_memory=None)`** — k8s preset; Kata pod. **Footgun:** `context` PINS the kube context — leave it `None` only knowingly (None follows the ambient current-context, which can wander to another cluster).
 
 `SubstrateBackend` drives the runtime for you. Reach for `SandboxRuntime` directly only when building a new placement substrate.
@@ -157,11 +157,11 @@ Key pydantic contracts: `RunResult`, `SandboxLaunchSpec`, `SandboxHandle`, `Sand
 |---------|------|
 | public entrypoint / facade | `client.py` (`Sandbox`) |
 | substrate seam + `RunResult` | `backends/base.py` |
-| ONE backend impl (Docker + k8s) | `backends/substrate.py` (`SubstrateBackend`) |
+| ONE backend impl (local Kata + k8s) | `backends/substrate.py` (`SubstrateBackend`) |
 | host↔sandbox exchange seam | `contracts.py` (`Conduit`) + `conduit/*` |
 | conduit-from-env | `conduit/factory.py` |
 | placement/isolation seam | `contracts.py` (`SandboxRuntime`) |
-| Docker runtime (local preset) | `runtime/docker.py` (`DockerSandboxRuntime`) |
+| local Kata runtime (local preset) | `runtime/kata_nerdctl.py` (`KataNerdctlSandboxRuntime`) |
 | k8s Kata runtime | `runtime/k8s.py` (`K8sSandboxRuntime`) |
 | admission (WHEN) — separate from substrate (HOW) | `contracts.py` (`Admission`/`Lease`), `pool.py` |
 | egress policy | `runtime/k8s.py` (`EgressConfig`) |
@@ -244,18 +244,18 @@ your program  (plain: reads argv -> writes stdout/files/exit; never imports reso
 ├─────────────────────────────────────────────────────────────┤
 │ SubstrateBackend (the ONE impl) ← drive_node + Conduit + runner_main
 ├──────────────────────────────┬──────────────────────────────┤
-│ SandboxRuntime (ABC)         │  Conduit (ABC)  host<->sandbox exchange
-│   DockerSandboxRuntime       │    LocalConduit (bind-mount, local)
-│   (Docker container, local)  │    StdoutConduit | S3Conduit | GcsConduit(exp.)
-│   K8sSandboxRuntime          │
-│   (Kata microVM pod on k8s)  │
+│ SandboxRuntime (ABC)          │  Conduit (ABC)  host<->sandbox exchange
+│   KataNerdctlSandboxRuntime   │    LocalConduit (local)
+│   (Kata microVM, nerdctl)     │    StdoutConduit | S3Conduit | GcsConduit(exp.)
+│   K8sSandboxRuntime           │
+│   (Kata microVM pod on k8s)   │
 └──────────────────────────────┴──────────────────────────────┘
 ```
 
 ### Run flow (both backends; runtime + conduit differ)
 
 ```
-   host (your process)            Conduit  (LocalConduit / S3 / …)  Sandbox (Docker / Kata pod)
+   host (your process)            Conduit  (LocalConduit / S3 / …)  Sandbox (Kata microVM / Kata pod)
    ───────────────────           ───────────────────────         ──────────────────────────
    put_dir(workspace) ─────────────▶  inbox/ *.tar.gz ───────────▶  stage inputs -> /workspace
    SandboxRuntime.launch ──────────────────────────────────────────▶  runner_main starts
