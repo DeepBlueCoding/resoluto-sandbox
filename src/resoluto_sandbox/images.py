@@ -29,8 +29,7 @@ def build_base(*, ver: str | None = None, context: str = ".", runner=subprocess.
 
 def build(provider: str, *, ver: str | None = None, context: str = ".", base_tag: str | None = None,
           runner=subprocess.run) -> str:
-    """Build one provider overlay (building base first if needed). Returns the tag built.
-    `runner` is injected for testability (defaults to subprocess.run)."""
+    """Build one provider overlay (building base first if needed) and return the tag built."""
     if provider not in PROVIDERS:
         raise ValueError(f"unknown provider {provider!r} (expected one of {PROVIDERS})")
     ver = ver or wheel_version()

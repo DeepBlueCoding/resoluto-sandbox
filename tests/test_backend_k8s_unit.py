@@ -105,29 +105,24 @@ def test_run_result_reason_populated_from_node_result(monkeypatch):
 # ── store-env selection (the k8s preset's pod-env policy) ────────────────────
 
 
-def test_store_env_no_aws_without_trusted_local(monkeypatch):
-    for key in list(__import__("os").environ):
-        if key.startswith("AWS_"):
-            monkeypatch.delenv(key, raising=False)
-    monkeypatch.delenv("RESOLUTO_TRUSTED_LOCAL", raising=False)
+def test_store_env_forwards_store_vars_only_no_aws():
+    # Only RESOLUTO_STORE_* is forwarded; host AWS creds are NEVER forwarded (no trusted-local bypass).
     env = {"RESOLUTO_STORE_KIND": "s3", "RESOLUTO_STORE_BUCKET": "b"}
     selected = store_env_for_pod(env)
     assert selected == env
     assert not any(k.startswith("AWS_") for k in selected)
 
 
-def test_store_env_aws_forwarded_only_when_trusted_local():
-    env = {
-        "RESOLUTO_STORE_KIND": "s3",
-        "AWS_ACCESS_KEY_ID": "minioadmin",
-        "AWS_SECRET_ACCESS_KEY": "minioadmin",
-        "RESOLUTO_TRUSTED_LOCAL": "1",
-    }
-    selected = store_env_for_pod(env)
-    assert selected["AWS_ACCESS_KEY_ID"] == "minioadmin"
-
-
-def test_store_env_aws_without_trusted_local_raises():
+def test_store_env_s3_aws_without_token_raises():
+    # s3 store + host AWS creds but no scoped token → hard error (creds are never forwarded).
     env = {"RESOLUTO_STORE_KIND": "s3", "AWS_ACCESS_KEY_ID": "minioadmin"}
     with pytest.raises(RuntimeError, match="RESOLUTO_STORE_WRITE_TOKEN"):
         store_env_for_pod(env)
+
+
+def test_store_env_with_scoped_token_ignores_aws():
+    # A scoped write token is the auth path; AWS creds present are simply not forwarded.
+    env = {"RESOLUTO_STORE_KIND": "s3", "RESOLUTO_STORE_WRITE_TOKEN": "t", "AWS_ACCESS_KEY_ID": "x"}
+    selected = store_env_for_pod(env)
+    assert selected["RESOLUTO_STORE_WRITE_TOKEN"] == "t"
+    assert not any(k.startswith("AWS_") for k in selected)

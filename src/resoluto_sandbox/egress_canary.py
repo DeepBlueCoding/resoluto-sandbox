@@ -1,16 +1,4 @@
-"""Acquire-time egress canary — empirically verifies that egress isolation is
-enforced before any untrusted workload runs.
-
-Three probes run IN-GUEST:
-  1. Non-allowlisted external TCP — must be BLOCKED (CNI policy enforced).
-  2. IMDS TCP (169.254.169.254:80) — must be BLOCKED (no cloud-metadata leakage).
-  3. Store PUT sentinel — must SUCCEED (the only permitted egress channel).
-
-If any probe returns an unexpected result the lane aborts with a reason string
-naming every failed probe — observable via the existing SpanEmitter channel.
-
-`evaluate_verdict` is a pure function: no network, injectable probe results.
-"""
+"""Egress canary that verifies egress isolation before an untrusted workload runs."""
 from __future__ import annotations
 
 import asyncio
@@ -34,7 +22,7 @@ class CanaryVerdict(BaseModel):
 
 
 def evaluate_verdict(results: list[ProbeResult]) -> CanaryVerdict:
-    """Pure function: three ProbeResults → pass/fail + reason string."""
+    """Reduces a list of ProbeResults to a CanaryVerdict (pass/fail + reason)."""
     failed = [r for r in results if not r.passed]
     if not failed:
         return CanaryVerdict(passed=True, results=results, reason="")
@@ -78,11 +66,7 @@ async def run_egress_canary(
     probe_host: str = "1.1.1.1",
     probe_port: int = 80,
 ) -> CanaryVerdict:
-    """Run three probes and return the composite verdict.
-
-    Inputs: Conduit + run prefix (for store probe), configurable external
-    probe target (default 1.1.1.1:80). Returns a CanaryVerdict.
-    """
+    """Runs three probes (external TCP, IMDS TCP, store PUT) and returns the composite CanaryVerdict."""
     external_reachable = await probe_tcp(probe_host, probe_port)
     p_external = ProbeResult(
         target=f"{probe_host}:{probe_port}",

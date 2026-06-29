@@ -1,10 +1,4 @@
-"""In-sandbox runner — the passive self-reporting entrypoint.
-
-Runs the node's workload, streams redacted log+span telemetry into the run's
-object-store prefix via the ChunkShipper, writes `result.json`, exits. Opens NO
-inbound port, holds NO long-lived connection — the orchestrator only ever reads
-the store. This is the in-sandbox half; the host half is driver.py.
-"""
+"""In-sandbox runner that runs the node's workload, streams telemetry to the store prefix, and writes result.json."""
 from __future__ import annotations
 
 import asyncio
@@ -19,19 +13,14 @@ from resoluto_sandbox.telemetry import ChunkShipper, result_key
 
 
 async def _heartbeat(shipper: ChunkShipper, interval_s: float) -> None:
-    """Periodically tick the shipper so a chunk lands even when the workload is
-    quiet — keeps the reader's liveness signal monotonic, and (since the per-line
-    flush was removed) drives timely flushing of buffered output."""
+    """Periodically tick the shipper so a chunk lands even when the workload is quiet."""
     while True:
         await asyncio.sleep(interval_s)
         await shipper.tick()
 
 
 async def _exec_logged(em, parent_sid, kind, name, argv, cwd) -> int:
-    """Run one command, streaming its merged stdout/stderr as redacted log events
-    under its own span, and return the exit code. The unit of in-sandbox work AND
-    the lifecycle-hook injection point (setup/workload/cleanup all go through here),
-    so every injected step is observable in the span tree."""
+    """Run one command under its own span, streaming its merged stdout/stderr as log events, and return the exit code."""
     async with em.span(parent_sid, kind, name, inputs={"argv": argv}) as sid:
         proc = await asyncio.create_subprocess_exec(
             *argv, cwd=cwd,
@@ -60,34 +49,13 @@ async def run_node_in_sandbox(
     canary_probe_host: str = "1.1.1.1",
     canary_probe_port: int = 80,
 ) -> NodeResult:
-    """Run one node's workload, self-report telemetry+result to the store.
-
-    Inputs: a Conduit + the run prefix (write-only-scoped in production), the
-    node identity, and the workload argv. When `workspace_dir` is set, input
-    archives under `<prefix>/inbox/` are staged into it (the repo arrives as
-    a store object, never a runtime git-clone) and the workload runs there; on
-    success the declared `output_paths` are tarred back to `<prefix>/outbox/`.
-
-    Lifecycle hooks (orchestrator/project-descriptor injectable, observable spans):
-      - `setup_argv`  runs BEFORE the workload (inside the node span). Non-zero exit
-        aborts the node — a failed setup is a failed node, not a silent skip.
-      - `cleanup_argv` runs AFTER the workload, ALWAYS (success, failure, or staging
-        error), as a sibling span. This is the "free temp/resources after a gate"
-        hook — e.g. `docker builder prune -f`, `docker compose down -v`, `rm -rf
-        scratch` — so the tmpfs graph / disk doesn't accrue across steps in a reused
-        sandbox. Its own exit code never changes the node verdict (best-effort).
-
-    Returns the `NodeResult` (also written to `<prefix>/result.json`). NOTE the
-    verdict here is the OBSERVED exit code — the authoritative gate verdict is still
-    derived orchestrator-side; this is work product, not a trust decision.
-    """
+    """Run one node's workload (with optional setup/cleanup hooks and input/output staging), self-report telemetry to the store, and return the NodeResult (also written to `<prefix>/result.json`)."""
     shipper = ChunkShipper(store, prefix, clock=clock)
     em = SpanEmitter(shipper, run_id, clock=clock)
     hb = asyncio.ensure_future(_heartbeat(shipper, heartbeat_interval_s))
     result = NodeResult(node_id=node_id)
     try:
         async with em.span("", "node", node_id, inputs={"argv": workload_argv}) as node_sid:
-            # Egress canary — platform invariant, runs before setup and workload.
             canary_ok = True
             if skip_egress_canary:
                 await em.log(node_sid, "egress canary skipped (trusted-local)")
@@ -119,7 +87,6 @@ async def run_node_in_sandbox(
                 if setup_argv:
                     src = await _exec_logged(em, node_sid, "setup", "setup", setup_argv, workspace_dir)
                     if src != 0:
-                        # a failed setup is a failed node — record it and skip the workload
                         result.exit_code, result.status, setup_ok = src, "failure", False
                         await em.log(node_sid, f"setup hook failed (exit {src}) — skipping workload")
                 if setup_ok:
@@ -133,7 +100,7 @@ async def run_node_in_sandbox(
         if cleanup_argv:
             try:
                 await _exec_logged(em, "", "cleanup", "cleanup", cleanup_argv, workspace_dir)
-            except Exception:  # noqa: BLE001 — cleanup is best-effort, never masks the verdict
+            except Exception:  # noqa: BLE001
                 pass
         hb.cancel()
         await store.put(result_key(prefix), result.model_dump_json().encode("utf-8"))

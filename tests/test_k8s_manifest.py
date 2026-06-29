@@ -78,7 +78,7 @@ def test_manifest_omits_active_deadline_when_none():
 
 
 def test_network_policy_default_deny_egress():
-    rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32", llm_cidr="10.0.0.2/32"))
+    rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32"))
     spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n", labels={"app": "lane"})
     policy = rt._network_policy(spec, "sbx-test", "fake-uid-123")
     assert policy["spec"]["policyTypes"] == ["Egress"]
@@ -86,42 +86,39 @@ def test_network_policy_default_deny_egress():
     assert policy["apiVersion"] == "networking.k8s.io/v1"
 
 
-def test_network_policy_exact_peers_store_llm_git_dns():
-    rt = K8sSandboxRuntime(egress=EgressConfig(
-        store_cidr="10.0.0.1/32",
-        llm_cidr="10.0.0.2/32",
-        git_cidrs=["10.0.0.3/32"],
-    ))
+def test_network_policy_exact_peers_store_https_dns():
+    rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32", store_port=9100))
     spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
     policy = rt._network_policy(spec, "sbx-test", "fake-uid")
     rules = policy["spec"]["egress"]
-    assert len(rules) == 4
+    assert len(rules) == 3
+    # rule 0: the object store on store_port
     assert rules[0]["to"][0]["ipBlock"]["cidr"] == "10.0.0.1/32"
-    assert rules[0]["ports"][0]["port"] == 443
-    assert rules[0]["ports"][0]["protocol"] == "TCP"
-    assert rules[1]["to"][0]["ipBlock"]["cidr"] == "10.0.0.2/32"
-    assert rules[1]["ports"][0]["port"] == 443
-    assert rules[2]["to"][0]["ipBlock"]["cidr"] == "10.0.0.3/32"
-    assert rules[2]["ports"][0]["port"] == 443
-    assert rules[3]["ports"][0]["port"] == 53
-    assert rules[3]["ports"][0]["protocol"] == "UDP"
+    assert rules[0]["ports"] == [{"port": 9100, "protocol": "TCP"}]
+    # rule 1: public HTTPS to anywhere
+    assert rules[1]["to"][0]["ipBlock"]["cidr"] == "0.0.0.0/0"
+    assert rules[1]["ports"] == [{"port": 443, "protocol": "TCP"}]
+    # rule 2: DNS (UDP + TCP) to anywhere
+    assert rules[2]["to"][0]["ipBlock"]["cidr"] == "0.0.0.0/0"
+    assert rules[2]["ports"] == [
+        {"port": 53, "protocol": "UDP"},
+        {"port": 53, "protocol": "TCP"},
+    ]
 
 
-def test_network_policy_imds_blocked_in_all_rules():
-    rt = K8sSandboxRuntime(egress=EgressConfig(
-        store_cidr="10.0.0.1/32",
-        llm_cidr="10.0.0.2/32",
-        git_cidrs=["10.0.0.3/32"],
-    ))
+def test_network_policy_imds_blocked_in_broad_rules():
+    # IMDS excepted on the broad 0.0.0.0/0 rules; the store rule (specific /32) carries no except
+    # (k8s rejects an except that isn't a strict subset of the cidr).
+    rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32"))
     spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
-    policy = rt._network_policy(spec, "sbx-test", "fake-uid")
-    for rule in policy["spec"]["egress"]:
-        for peer in rule["to"]:
-            assert peer["ipBlock"]["except"] == ["169.254.169.254/32"]
+    rules = rt._network_policy(spec, "sbx-test", "fake-uid")["spec"]["egress"]
+    assert "except" not in rules[0]["to"][0]["ipBlock"]
+    for rule in rules[1:]:
+        assert rule["to"][0]["ipBlock"]["except"] == ["169.254.169.254/32"]
 
 
-def test_network_policy_zero_git_hosts():
-    rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32", llm_cidr="10.0.0.2/32"))
+def test_network_policy_always_three_rules():
+    rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32"))
     spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
     policy = rt._network_policy(spec, "sbx-test", "fake-uid")
     rules = policy["spec"]["egress"]
@@ -132,24 +129,19 @@ def test_network_policy_zero_git_hosts():
 
 
 def test_network_policy_config_driven():
-    rt1 = K8sSandboxRuntime(egress=EgressConfig(
-        store_cidr="192.168.1.100/32", llm_cidr="10.0.0.2/32"
-    ))
+    rt1 = K8sSandboxRuntime(egress=EgressConfig(store_cidr="192.168.1.100/32"))
     spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
     p1 = rt1._network_policy(spec, "sbx", "uid-1")
     assert p1["spec"]["egress"][0]["to"][0]["ipBlock"]["cidr"] == "192.168.1.100/32"
 
-    rt2 = K8sSandboxRuntime(egress=EgressConfig(
-        store_cidr="10.0.0.1/32",
-        llm_cidr="10.0.0.2/32",
-        git_cidrs=["10.0.0.3/32", "10.0.0.4/32"],
-    ))
+    rt2 = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32", store_port=9100))
     p2 = rt2._network_policy(spec, "sbx", "uid-2")
-    assert len(p2["spec"]["egress"]) == 5
+    assert p2["spec"]["egress"][0]["ports"] == [{"port": 9100, "protocol": "TCP"}]
+    assert len(p2["spec"]["egress"]) == 3
 
 
 def test_network_policy_owner_reference():
-    rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32", llm_cidr="10.0.0.2/32"))
+    rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32"))
     spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
     policy = rt._network_policy(spec, "my-pod", "my-pod-uid-456")
     refs = policy["metadata"]["ownerReferences"]
@@ -160,12 +152,9 @@ def test_network_policy_owner_reference():
     assert refs[0]["blockOwnerDeletion"] is True
 
 
-def test_egress_config_requires_cidrs():
+def test_egress_config_requires_cidr():
     with pytest.raises(ValueError, match="CIDR"):
-        EgressConfig(store_cidr="api.anthropic.com", llm_cidr="10.0.0.2/32")
-
-    with pytest.raises(ValueError, match="CIDR"):
-        EgressConfig(store_cidr="10.0.0.1/32", llm_cidr="10.0.0.2/32", git_cidrs=["github.com"])
+        EgressConfig(store_cidr="api.anthropic.com")
 
 
 # ── ownerReferences on pod manifest ─────────────────────────────────────────
@@ -206,7 +195,7 @@ def test_manifest_always_carries_sandbox_label():
 
 
 def test_network_policy_with_configmap_owner():
-    rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32", llm_cidr="10.0.0.2/32"))
+    rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32"))
     spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
     policy = rt._network_policy(
         spec, "my-pod", "pod-uid",
@@ -270,28 +259,13 @@ def test_limit_range_manifest_env_override(monkeypatch):
 
 @pytest.mark.parametrize("rc", ["", "runc"])
 @pytest.mark.asyncio
-async def test_launch_refuses_non_kata_without_flag(rc, monkeypatch):
-    monkeypatch.delenv("RESOLUTO_TRUSTED_LOCAL", raising=False)
+async def test_launch_always_refuses_non_kata(rc, monkeypatch):
+    # No bypass: a non-Kata runtime class is ALWAYS refused (RESOLUTO_TRUSTED_LOCAL is gone).
+    monkeypatch.setenv("RESOLUTO_TRUSTED_LOCAL", "1")  # even a stale flag must not permit a downgrade
     rt = K8sSandboxRuntime(runtime_class=rc)  # runtime_class is the runtime's own config now
     spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
-    with pytest.raises(RuntimeError, match="RESOLUTO_TRUSTED_LOCAL"):
+    with pytest.raises(RuntimeError, match="Isolation downgrade refused"):
         await rt.launch(spec)
-
-
-@pytest.mark.parametrize("rc", ["", "runc"])
-@pytest.mark.asyncio
-async def test_launch_permits_non_kata_with_trusted_local_flag(rc, monkeypatch, caplog):
-    monkeypatch.setenv("RESOLUTO_TRUSTED_LOCAL", "1")
-    rt = K8sSandboxRuntime(runtime_class=rc)
-    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
-    with caplog.at_level(logging.WARNING):
-        try:
-            await rt.launch(spec)
-        except RuntimeError as exc:
-            assert "RESOLUTO_TRUSTED_LOCAL" not in str(exc), f"Guard should not have blocked: {exc}"
-        except Exception:
-            pass  # expected: no k8s cluster in test environment
-    assert any("trusted-local" in r.message for r in caplog.records)
 
 
 @pytest.mark.asyncio

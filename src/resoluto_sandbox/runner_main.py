@@ -1,9 +1,4 @@
-"""Image ENTRYPOINT — the in-sandbox runner, configured entirely from env.
-
-The pod carries NO orchestrator connection; it learns where to self-report from
-env the runtime injected (`RESOLUTO_STORE_*`, `RESOLUTO_STORE_PREFIX`) and runs
-the workload argv. Exit code mirrors the observed workload status — but the
-authoritative gate verdict is still derived orchestrator-side."""
+"""Image entrypoint that runs the in-sandbox runner, configured entirely from env, exiting 0 on workload success else 1."""
 from __future__ import annotations
 
 import asyncio
@@ -11,7 +6,7 @@ import json
 import os
 import sys
 
-from resoluto_sandbox.conduit.factory import store_from_env  # noqa: F401 — re-export for worker compat
+from resoluto_sandbox.conduit.factory import store_from_env  # noqa: F401
 from resoluto_sandbox.runner import run_node_in_sandbox
 
 
@@ -39,7 +34,6 @@ async def _main() -> int:
         output_paths=json.loads(output_paths_env) if output_paths_env else None,
         setup_argv=_argv_env("RESOLUTO_SETUP_ARGV"),
         cleanup_argv=_argv_env("RESOLUTO_CLEANUP_ARGV"),
-        skip_egress_canary="RESOLUTO_TRUSTED_LOCAL" in os.environ,
         canary_probe_host=os.environ.get("RESOLUTO_CANARY_PROBE_HOST", "1.1.1.1"),
         canary_probe_port=int(canary_port_env) if canary_port_env else 80,
     )

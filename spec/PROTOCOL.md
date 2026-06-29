@@ -62,7 +62,7 @@ Each line is a UTF-8 JSON object. Required fields:
 | `run_id`       | string  | Identifies the run                                          |
 | `span_id`      | string  | Unique identifier for this span                             |
 | `parent_span_id` | string | Parent span; empty string for root spans                  |
-| `kind`         | string  | advisory; any string permitted. Common: `run` / `phase` / `node` / `lane` / `attempt` / `gate` / `agent` / `tool` / `log` |
+| `kind`         | string  | advisory; any string permitted. Common: `run` / `phase` / `node` / `attempt` / `gate` / `agent` / `tool` / `log` |
 | `name`         | string  | Human-readable span name (empty for log events)             |
 | `event`        | string  | `open` / `close` / `log`                                   |
 | `ts`           | number  | Unix epoch seconds (float), stamped by the emitter          |

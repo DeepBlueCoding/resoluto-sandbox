@@ -9,22 +9,21 @@ that the Claude Agent SDK forks resolves auth on its own, from any of these
    or `$CLAUDE_CONFIG_DIR` if set)
 3. `ANTHROPIC_API_KEY` — pay-as-you-go API billing
 
-> **To bill your Max/Pro subscription, use option 1 or 2 and make sure
-> `ANTHROPIC_API_KEY` is NOT set.** If an API key is present the CLI uses it and
-> bills the API instead of your subscription.
+> To bill your Max/Pro subscription, use option 1 or 2 and make sure `ANTHROPIC_API_KEY` is not set.
+> If an API key is present the CLI uses it and bills the API instead of your subscription.
 
-## Docker backend
+## Local backend
 
-`Sandbox(backend="docker")` runs your program in a Docker container. Unlike a bare
-subprocess, the container does **NOT** automatically inherit your host environment —
-credentials must reach the container explicitly. Three options:
+`Sandbox(backend="local")` runs your program in a Kata microVM via `nerdctl`. The microVM does not
+inherit your host environment — credentials must reach it explicitly via `env=` or a mount. Three
+options:
 
 **Option 1 — mount your subscription login file (simplest for local dev):**
 
 ```bash
 claude            # one-time interactive login on your Max/Pro account (if needed)
 
-docker run --rm \
+nerdctl run --rm \
   -v "$HOME/.claude/.credentials.json:/root/.claude/.credentials.json:ro" \
   ...
 ```
@@ -32,7 +31,7 @@ docker run --rm \
 Or pass the credential via `env=` in `Sandbox.run()`:
 
 ```python
-Sandbox(backend="docker").run(
+Sandbox(backend="local").run(
     ["uv", "run", "examples/claude_agent.py", "Say hello in five words"],
     env={"CLAUDE_CODE_OAUTH_TOKEN": "<your-token>"},
 )
@@ -44,15 +43,12 @@ Sandbox(backend="docker").run(
 claude setup-token   # prints an OAuth token; copy it
 export CLAUDE_CODE_OAUTH_TOKEN=...
 
-Sandbox(backend="docker").run(argv, env={"CLAUDE_CODE_OAUTH_TOKEN": os.environ["CLAUDE_CODE_OAUTH_TOKEN"]})
+Sandbox(backend="local").run(argv, env={"CLAUDE_CODE_OAUTH_TOKEN": os.environ["CLAUDE_CODE_OAUTH_TOKEN"]})
 ```
 
 **Option 3 — bake the credential into your image** (for CI or shared environments):
 build a custom image that includes the credential at build time. Not recommended for
 personal subscriptions — only for service accounts.
-
-The old "inherits host env automatically" behaviour was true when local ran as a host
-subprocess; it is no longer true now that local is a Docker container.
 
 ## Container image
 

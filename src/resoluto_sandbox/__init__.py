@@ -1,10 +1,4 @@
-"""Resoluto sandbox — store-mediated, Kata-isolated, cloud-agnostic execution.
-
-Platform-independent surface (no optional deps). Concrete runtimes/conduits with
-platform deps import lazily:
-    from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
-    from resoluto_sandbox.conduit.s3 import S3Conduit
-"""
+"""Resoluto sandbox — store-mediated, Kata-isolated execution; concrete runtimes/conduits with platform deps import lazily."""
 from resoluto_sandbox.backends.base import Backend, RunResult
 from resoluto_sandbox.backends.substrate import SubstrateBackend
 from resoluto_sandbox.client import Sandbox

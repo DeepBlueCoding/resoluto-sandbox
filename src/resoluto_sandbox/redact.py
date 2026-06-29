@@ -1,8 +1,4 @@
-"""Secret redaction — applied IN-SANDBOX before any telemetry/log leaves.
-
-Observability is an egress channel; inputs/outputs/logs must never carry secret
-env, tokens, Authorization headers, or cred-bearing URLs. Belt-and-suspenders to
-the design's primary control (no secret in env/image in the first place)."""
+"""Secret redaction for telemetry and logs."""
 from __future__ import annotations
 
 import re
@@ -11,10 +7,10 @@ _SECRET_KEY = re.compile(r"(key|secret|token|password|passwd|cred|auth)", re.I)
 _PATTERNS = [
     re.compile(r"(?i)authorization:\s*\S+"),
     re.compile(r"(?i)x-access-token:[^@\s]+"),
-    re.compile(r"https?://[^/\s:@]+:[^/\s@]+@"),  # creds in URL userinfo
+    re.compile(r"https?://[^/\s:@]+:[^/\s@]+@"),
     re.compile(r"(?i)(?:aws_secret_access_key|aws_session_token)\s*[=:]\s*\S+"),
-    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"),  # github tokens
-    re.compile(r"\beyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\b"),  # JWT
+    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"),
+    re.compile(r"\beyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\b"),
 ]
 _REDACTED = "[REDACTED]"
 
@@ -31,7 +27,7 @@ def _redact_value(v):
     if isinstance(v, dict):
         return redact_data(v)
     if isinstance(v, list):
-        return [_redact_value(x) for x in v]  # recurse fully — no shallow blind spot
+        return [_redact_value(x) for x in v]
     return v
 
 

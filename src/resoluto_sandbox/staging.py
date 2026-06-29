@@ -1,16 +1,4 @@
-"""Workspace staging over the object store ("tar in the store").
-
-Inputs reach the PASSIVE sandbox as a single archive under `<prefix>/inbox/` —
-the ONLY ingress. Default-deny egress forbids a runtime `git clone` (github isn't
-allowlisted) and credentials must never reach the guest, so the repo MUST arrive as a
-store object. `.git` rides inside the tar, so history is preserved with zero git
-egress. Outputs (e.g. the lane's diff) return under `<prefix>/outbox/`.
-
-tar.gz via stdlib — no external tool, works in the slim runner image. Extraction
-is ALWAYS filtered (`data`): the host extracts an OUTPUT tar produced by the
-ADVERSARIAL guest, so a path-traversal / absolute-path entry must never escape the
-destination. Same filter on the guest side as defense in depth.
-"""
+"""Workspace staging over the object store: inputs under `inbox/`, outputs under `outbox/`."""
 from __future__ import annotations
 
 import io
@@ -23,12 +11,6 @@ INBOX = "inbox"
 OUTBOX = "outbox"
 _ARCHIVE_SUFFIXES = (".tar.gz", ".tgz")
 
-# Dependency / build / cache trees that must NEVER ship in a worktree archive:
-# they bloat the tar by orders of magnitude (a Resoluto worktree is ~490MB WITH
-# them, a few MB without) AND they hold absolute symlinks (e.g. `.venv/bin/python`
-# → /usr/bin/python) that the safe-extract `data` filter rejects with
-# AbsoluteLinkError, failing the whole stage. `.git` is deliberately KEPT (history
-# travels in the tar; the lane commits with zero git egress).
 _DEFAULT_EXCLUDES = frozenset({
     ".venv", "venv", "node_modules", "__pycache__", ".mypy_cache", ".pytest_cache",
     ".ruff_cache", ".tox", ".hypothesis", "dist", "build", "htmlcov", ".coverage",
@@ -42,19 +24,13 @@ def _archive(
     exclude: frozenset[str] = frozenset(),
     protect: frozenset[str] = frozenset(),
 ) -> bytes:
-    """`protect` is a set of POSIX paths (relative to `root`, ancestor dirs included)
-    that must survive the `exclude` filter — e.g. git-tracked files under an otherwise
-    excluded dir. Dropping a tracked file would make a downstream commit record it as a
-    deletion, so a protected path is never excluded (absolute symlinks are still dropped
-    since they cannot be safely re-extracted)."""
+    """Tar `root` (or `paths`) to gzip bytes, applying `exclude`/`protect` filters."""
     def _norm(name: str) -> str:
         return name[2:] if name.startswith("./") else name
 
     def _filter(ti: tarfile.TarInfo) -> tarfile.TarInfo | None:
         if not (_norm(ti.name) in protect) and exclude and exclude.intersection(Path(ti.name).parts):
             return None
-        # An absolute symlink can never be safely re-extracted (AbsoluteLinkError),
-        # so dropping it at archive time is the only non-crashing option.
         if (ti.issym() or ti.islnk()) and ti.linkname.startswith("/"):
             return None
         return ti
@@ -62,17 +38,17 @@ def _archive(
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:
         if paths is None:
-            tar.add(root, arcname=".", filter=_filter)  # whole worktree incl. .git
+            tar.add(root, arcname=".", filter=_filter)
         else:
             for p in paths:
-                tar.add(root / p, arcname=p, filter=_filter)  # missing path → loud OSError
+                tar.add(root / p, arcname=p, filter=_filter)
     return buf.getvalue()
 
 
 def _extract(data: bytes, dest: Path) -> None:
     dest.mkdir(parents=True, exist_ok=True)
     with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
-        tar.extractall(dest, filter="data")  # rejects traversal / absolute / device entries
+        tar.extractall(dest, filter="data")
 
 
 async def put_dir(
@@ -80,20 +56,14 @@ async def put_dir(
     name: str = "workspace", exclude: frozenset[str] = _DEFAULT_EXCLUDES,
     protect: frozenset[str] = frozenset(),
 ) -> str:
-    """HOST side: tar a local worktree and PUT it as the sandbox's input. Returns
-    the object key. Inputs: store, the lane prefix, the worktree path. Dependency/
-    build/cache trees (`exclude`) are dropped — they bloat the archive and carry
-    absolute symlinks that break safe extraction. `protect` (POSIX paths relative to
-    `local_dir`, ancestor dirs included) overrides `exclude` so a tracked file under an
-    excluded dir is never dropped — the caller (which owns git) supplies the tracked set."""
+    """Tar `local_dir` and put it under `inbox/`; returns the object key."""
     key = f"{prefix.rstrip('/')}/{INBOX}/{name}.tar.gz"
     await store.put(key, _archive(Path(local_dir), None, exclude, protect))
     return key
 
 
 async def stage_inputs(store: Conduit, prefix: str, workspace_dir: str) -> list[str]:
-    """SANDBOX side: extract every input archive under `inbox/` into the workspace.
-    Returns the keys staged (fail-loud on a corrupt archive)."""
+    """Extract every input archive under `inbox/` into the workspace; returns the keys staged."""
     dest = Path(workspace_dir)
     staged: list[str] = []
     for info in await store.list_prefix(f"{prefix.rstrip('/')}/{INBOX}"):
@@ -106,17 +76,14 @@ async def stage_inputs(store: Conduit, prefix: str, workspace_dir: str) -> list[
 async def collect_outputs(
     store: Conduit, prefix: str, workspace_dir: str, paths: list[str], *, name: str = "output"
 ) -> str:
-    """SANDBOX side: tar the declared output paths (relative to the workspace) and
-    PUT them under `outbox/`. Returns the object key. A declared path that doesn't
-    exist is a contract violation → loud failure."""
+    """Tar the declared output `paths` and put them under `outbox/`; returns the object key."""
     key = f"{prefix.rstrip('/')}/{OUTBOX}/{name}.tar.gz"
     await store.put(key, _archive(Path(workspace_dir), paths))
     return key
 
 
 async def fetch_outputs(store: Conduit, prefix: str, dest_dir: str) -> list[str]:
-    """HOST side: extract every output archive under `outbox/` into dest_dir. The
-    tar is UNTRUSTED (adversarial guest) — `_extract` is traversal-safe."""
+    """Extract every output archive under `outbox/` into `dest_dir`; returns the keys fetched."""
     dest = Path(dest_dir)
     fetched: list[str] = []
     for info in await store.list_prefix(f"{prefix.rstrip('/')}/{OUTBOX}"):

@@ -8,12 +8,7 @@ from pydantic import BaseModel
 
 
 class RunResult(BaseModel):
-    """Outcome of one ``run()``. ``output`` is the program's output (its answer/content);
-    ``errors`` is its diagnostic output; both are reconstructed from the backend's
-    transport (subprocess streams locally, wire chunks on k8s). ``artifacts`` are
-    absolute paths of collected ``output_paths``; ``result`` is a parsed ``result.json``
-    if the program wrote one (otherwise ``None``); ``reason`` carries substrate
-    forensics (e.g. an evicted/OOMKilled pod) when available; empty for local."""
+    """Outcome of one ``run()``: exit code, output/errors, collected ``artifacts`` paths, parsed ``result``, and a substrate ``reason``."""
 
     exit_code: int
     output: str
@@ -28,8 +23,7 @@ class RunResult(BaseModel):
 
 
 class Backend(ABC):
-    """Runs a program and returns a RunResult. Implementations own the substrate
-    (local subprocess, k8s/Kata pod, …). Inputs/outputs identical across backends."""
+    """Runs a program and returns a RunResult."""
 
     @abstractmethod
     def run(

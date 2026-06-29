@@ -1,15 +1,4 @@
-"""K8sSandboxRuntime — the first concrete `SandboxRuntime` backend.
-
-Maps launch/status/destroy/sweep onto Pods with `runtimeClassName: kata`, a
-hardened securityContext, labels for sweep, and an optional
-`activeDeadlineSeconds` (only when the spec sets one — orphan protection is the
-label-based sweep, not a per-pod self-destruct). Platform deps (kubernetes_asyncio)
-import lazily so the core package stays dependency-light.
-
-dind lanes run privileged (GUEST-scoped under Kata via privileged_without_host_
-devices — host stays unprivileged) with an emptyDir docker graph; plain lanes get
-the full restricted profile (runAsNonRoot, drop ALL caps, no privilege escalation).
-"""
+"""Concrete `SandboxRuntime` backend that maps launch/status/destroy/sweep onto Kata Pods."""
 from __future__ import annotations
 
 import logging
@@ -29,8 +18,6 @@ from resoluto_sandbox.contracts import (
 
 logger = logging.getLogger(__name__)
 
-# Shared, canonical parser (lives in contracts so the pool budget and this runtime's
-# pod-memory accounting use ONE implementation). Aliased to keep existing call sites.
 _parse_k8s_memory = parse_quantity
 
 
@@ -47,32 +34,47 @@ _IMDS_CIDR = "169.254.169.254/32"
 
 @dataclass(frozen=True)
 class EgressConfig:
-    """Allowlist CIDRs for the lane pod's egress NetworkPolicy.
-
-    All fields MUST be CIDR notation (e.g. "1.2.3.4/32"). k8s NetworkPolicy
-    ipBlock does not support FQDNs — the caller must resolve hostnames to IPs
-    before constructing this object.
-
-    store_cidr: CIDR for the object store endpoint.
-    llm_cidr:   CIDR for the LLM provider API (e.g. api.anthropic.com).
-    git_cidrs:  CIDRs for git hosts (default empty — no git egress allowed).
-    """
+    """Allowlist for the lane pod's default-deny egress NetworkPolicy: the object store at store_cidr:store_port, plus public 443 and DNS. store_cidr must be CIDR notation."""
 
     store_cidr: str
-    llm_cidr: str
-    git_cidrs: list[str] = field(default_factory=list)
+    store_port: int = 443
 
     def __post_init__(self) -> None:
-        for cidr in [self.store_cidr, self.llm_cidr, *self.git_cidrs]:
-            if "/" not in cidr:
-                raise ValueError(
-                    f"EgressConfig: {cidr!r} is not a CIDR (missing '/'); "
-                    "k8s NetworkPolicy ipBlock requires CIDR notation"
-                )
+        if "/" not in self.store_cidr:
+            raise ValueError(
+                f"EgressConfig: store_cidr {self.store_cidr!r} is not a CIDR (missing '/'); "
+                "k8s NetworkPolicy ipBlock requires CIDR notation"
+            )
+
+    @classmethod
+    def from_store_env(cls, env: "dict[str, str] | None" = None) -> "EgressConfig | None":
+        """Build the egress allowlist from RESOLUTO_STORE_ENDPOINT, honoring RESOLUTO_STORE_EGRESS_CIDR/PORT overrides; None when no store endpoint is set."""
+        import socket
+        from urllib.parse import urlparse
+
+        e = env if env is not None else os.environ
+        raw = (e.get("RESOLUTO_STORE_ENDPOINT") or "").strip()
+        if not raw:
+            return None
+        u = urlparse(raw if "://" in raw else f"http://{raw}")
+        endpoint_port = u.port or (443 if u.scheme == "https" else 80)
+
+        override = (e.get("RESOLUTO_STORE_EGRESS_CIDR") or "").strip()
+        if override:
+            port = e.get("RESOLUTO_STORE_EGRESS_PORT")
+            return cls(store_cidr=override, store_port=int(port) if port else endpoint_port)
+
+        if not u.hostname:
+            return None
+        try:
+            ip = socket.gethostbyname(u.hostname)
+        except OSError:
+            return None
+        return cls(store_cidr=f"{ip}/32", store_port=endpoint_port)
 
 
 def _no_local_kubeconfig_errors() -> tuple[type[BaseException], ...]:
-    """Exceptions that mean 'no usable local kube-config' → fall back to in-cluster."""
+    """Return exceptions that mean no usable local kube-config."""
     from kubernetes_asyncio.config.config_exception import ConfigException
 
     return (ConfigException, FileNotFoundError)
@@ -99,25 +101,15 @@ class K8sSandboxRuntime(SandboxRuntime):
     ) -> None:
         self._ns = namespace
         self._kubeconfig = kubeconfig
-        # k8s-PRIVATE isolation/storage policy — NOT part of the neutral SandboxLaunchSpec.
-        # runtime_class: Kata by default (check_runtime_class_guard refuses a downgrade unless
-        # trusted-local). graph_backend: how the dind /var/lib/docker is backed (tmpfs RAM vs
-        # virtio-blk block device); graph_block_size: the emptyDir sizeLimit for the block path.
         self._runtime_class = runtime_class
         self._graph_backend = graph_backend
         self._graph_block_size = graph_block_size
-        # The kube CONTEXT this runtime targets. PIN it — never follow the ambient
-        # current-context, which can wander to an unrelated (even production) cluster
-        # and launch adversarial lane pods there. None = current-context (logged loud).
         self._context = context
         self._ipp = image_pull_policy
         self._egress = egress
-        # node_allocatable_memory: explicit bytes-string override for the dind tmpfs
-        # preflight (bypasses node API query — used in tests and offline envs).
-        # Falls back to RESOLUTO_NODE_ALLOCATABLE_MEMORY env var, then the k8s API.
         self._node_allocatable_memory = node_allocatable_memory
-        self._api = None  # lazy CoreV1Api
-        self._net_api = None  # lazy NetworkingV1Api
+        self._api = None
+        self._net_api = None
 
     async def _client(self):
         if self._api is None:
@@ -127,8 +119,6 @@ class K8sSandboxRuntime(SandboxRuntime):
             try:
                 await config.load_kube_config(config_file=self._kubeconfig, context=self._context)
             except _no_local_kubeconfig_errors():
-                # No usable local kube-config (missing file / empty context) → assume
-                # we're running inside the cluster. Any OTHER error propagates.
                 config.load_incluster_config()
                 in_cluster = True
 
@@ -171,7 +161,7 @@ class K8sSandboxRuntime(SandboxRuntime):
                 body={"metadata": {"name": self._ns, "labels": {"resoluto.sandbox": "true"}}}
             )
         except ApiException as exc:
-            if exc.status != 409:  # already exists
+            if exc.status != 409:
                 raise
 
         quota = self._quota_manifest()
@@ -220,9 +210,6 @@ class K8sSandboxRuntime(SandboxRuntime):
 
     def _security_context(self, spec: SandboxLaunchSpec) -> dict:
         if spec.flavor == "dind":
-            # privileged is GUEST-scoped under Kata; host pod is not host-privileged.
-            # runAsUser 0 lets the entrypoint start the inner dockerd, then it drops to
-            # the lane user (uid 1000) for the workload itself.
             return {"privileged": spec.privileged, "runAsUser": 0}
         return {
             "privileged": False,
@@ -241,14 +228,10 @@ class K8sSandboxRuntime(SandboxRuntime):
         owner_uid: str | None = None,
     ) -> dict:
         env = [{"name": k, "value": v} for k, v in spec.env.items()]
-        # store wiring the sandbox self-reports through (object store + write-only token)
         env.append({"name": "RESOLUTO_STORE_PREFIX", "value": spec.store_prefix})
         if spec.store_write_token:
             env.append({"name": "RESOLUTO_STORE_WRITE_TOKEN", "value": spec.store_write_token})
 
-        # Render the NEUTRAL Resources (bytes/cores) into k8s quantities. k8s accepts a plain
-        # byte integer as a memory/storage quantity, so no suffix games — this is the ONLY place
-        # k8s quantity strings are produced (the docker runtime renders the same ints its own way).
         res = spec.resources
         cpu_cores = res.cpu_cores
         resource_qty = {
@@ -263,11 +246,6 @@ class K8sSandboxRuntime(SandboxRuntime):
             "imagePullPolicy": self._ipp,
             "securityContext": self._security_context(spec),
             "env": env,
-            # Honest requests == limits: the pod reserves what it will use, so the
-            # kube-scheduler (and any external quota layer like Kueue) right-sizes it
-            # correctly rather than over- or under-reserving. The dind tmpfs graph is a
-            # medium:Memory emptyDir already counted WITHIN spec.memory (not added); the
-            # block/virtio-blk graph is off-RAM and correctly not requested here.
             "resources": {"requests": dict(resource_qty), "limits": dict(resource_qty)},
         }
         if spec.command is not None:
@@ -281,19 +259,11 @@ class K8sSandboxRuntime(SandboxRuntime):
                 {"name": "docker-graph", "mountPath": "/var/lib/docker"}
             )
             if self._graph_backend == "block":
-                # Kata maps emptyDir without medium to a virtio-blk block device inside the
-                # guest. The lane-entrypoint formats it ext4 and remounts before dockerd starts.
-                # overlay2 on ext4/virtio-blk is proven (spike #1); no RAM tax (not counted
-                # against pod memory unlike the tmpfs path). Block size is k8s-private config.
                 volumes.append(
                     {"name": "docker-graph",
                      "emptyDir": {"sizeLimit": self._graph_block_size}}
                 )
             else:
-                # Default tmpfs path: RAM-backed (medium: Memory) — overlay2 proven on tmpfs.
-                # The size counts against the pod's memory; the image bytes must fit.
-                # On Kata the virtiofs rootfs does NOT work: vfs exhausts host-side fd handles
-                # and overlay2/fuse-overlayfs fail — tmpfs is the only non-virtiofs fallback.
                 volumes.append(
                     {"name": "docker-graph",
                      "emptyDir": {"medium": "Memory", "sizeLimit": str(res.dind_graph_bytes)}}
@@ -308,14 +278,9 @@ class K8sSandboxRuntime(SandboxRuntime):
         }
         if spec.deadline_seconds is not None:
             pod_spec["activeDeadlineSeconds"] = spec.deadline_seconds
-        # Stamp opaque caller-supplied scheduling gates VERBATIM (the seam an external
-        # admitter like Kueue gates through). Empty → no gates → normal scheduling. The
-        # substrate never constructs, names, or removes a gate; it only relays what the
-        # caller put on the spec, so it stays Kueue-agnostic.
         if spec.scheduling_gates:
             pod_spec["schedulingGates"] = [{"name": g} for g in spec.scheduling_gates]
 
-        # All sandbox pods carry resoluto.sandbox=true for deployment-wide counting.
         pod_labels = {"resoluto.sandbox": "true", **dict(spec.labels)}
         metadata: dict = {"name": name, "namespace": self._ns, "labels": pod_labels}
         if spec.annotations:
@@ -345,35 +310,20 @@ class K8sSandboxRuntime(SandboxRuntime):
         owner_name: str | None = None,
         owner_uid: str | None = None,
     ) -> dict:
-        """Build the NetworkPolicy manifest for a lane pod.
-
-        Creates a default-deny egress policy that allows only:
-          - store endpoint on TCP/443
-          - LLM provider on TCP/443
-          - each git host on TCP/443
-          - kube-dns on UDP/53 (broad CIDR; IMDS always excepted)
-
-        Every ipBlock rule includes except=[_IMDS_CIDR] to block the cloud
-        metadata endpoint regardless of the allowed CIDR range.
-
-        When owner_name/owner_uid are provided the ownerReference points to the
-        per-run ConfigMap (so GC from ConfigMap deletion cascades here too);
-        otherwise falls back to the pod as the owner.
-        """
+        """Build the default-deny egress NetworkPolicy manifest for a lane pod: store on store_port, public 443, DNS; IMDS excepted on the broad rules."""
         assert self._egress is not None
 
-        def _tcp443_rule(cidr: str) -> dict:
-            return {
-                "ports": [{"port": 443, "protocol": "TCP"}],
-                "to": [{"ipBlock": {"cidr": cidr, "except": [_IMDS_CIDR]}}],
-            }
-
         egress_rules = [
-            _tcp443_rule(self._egress.store_cidr),
-            _tcp443_rule(self._egress.llm_cidr),
-            *[_tcp443_rule(cidr) for cidr in self._egress.git_cidrs],
             {
-                "ports": [{"port": 53, "protocol": "UDP"}],
+                "ports": [{"port": self._egress.store_port, "protocol": "TCP"}],
+                "to": [{"ipBlock": {"cidr": self._egress.store_cidr}}],
+            },
+            {
+                "ports": [{"port": 443, "protocol": "TCP"}],
+                "to": [{"ipBlock": {"cidr": "0.0.0.0/0", "except": [_IMDS_CIDR]}}],
+            },
+            {
+                "ports": [{"port": 53, "protocol": "UDP"}, {"port": 53, "protocol": "TCP"}],
                 "to": [{"ipBlock": {"cidr": "0.0.0.0/0", "except": [_IMDS_CIDR]}}],
             },
         ]
@@ -411,19 +361,11 @@ class K8sSandboxRuntime(SandboxRuntime):
         }
 
     async def node_allocatable_memory(self) -> int:
-        """Public: minimum allocatable RAM (bytes) across Ready nodes, 0 if unknown.
-
-        A neutral NODE-CAPACITY query — pure substrate. What a consumer does with it
-        (e.g. derive an admission budget) is the consumer's policy, not the runtime's."""
+        """Return minimum allocatable RAM in bytes across Ready nodes, 0 if unknown."""
         return await self._get_node_allocatable_ram()
 
     async def _get_node_allocatable_ram(self) -> int:
-        """Return minimum allocatable RAM in bytes across all Ready nodes.
-
-        Resolution order: constructor override → RESOLUTO_NODE_ALLOCATABLE_MEMORY
-        env var → k8s node list API. Returns 0 when no schedulable nodes are found
-        (caller skips preflight with a warning rather than rejecting).
-        """
+        """Return minimum allocatable RAM in bytes across all Ready nodes, or 0 when none found."""
         if self._node_allocatable_memory is not None:
             return _parse_k8s_memory(self._node_allocatable_memory)
         env_val = os.environ.get("RESOLUTO_NODE_ALLOCATABLE_MEMORY")
@@ -446,20 +388,7 @@ class K8sSandboxRuntime(SandboxRuntime):
         return min(ram_values) if ram_values else 0
 
     async def _preflight_memory(self, spec: SandboxLaunchSpec) -> None:
-        """Refuse a dind+tmpfs launch that violates Kubernetes memory accounting.
-
-        A `medium: Memory` emptyDir (tmpfs docker graph) is counted WITHIN the pod's
-        memory cgroup limit — not additively on top of it. Therefore two independent
-        constraints must hold:
-          (a) graph_size < pod_memory — the graph must fit inside the pod cgroup, leaving
-              headroom for dockerd, layer cache, and build processes.
-          (b) pod_memory <= node_allocatable — the pod must be schedulable on a node.
-
-        Raises RuntimeError with a distinct, actionable message for each failure mode so
-        the operator knows whether to shrink the graph or shrink the pod.
-
-        Args: spec — SandboxLaunchSpec with flavor='dind' and graph_backend='tmpfs'.
-        """
+        """Raise RuntimeError when a dind+tmpfs spec's graph or pod memory won't fit."""
         node_ram = await self._get_node_allocatable_ram()
         if node_ram == 0:
             logger.warning(
@@ -498,10 +427,6 @@ class K8sSandboxRuntime(SandboxRuntime):
         api = await self._client()
         rid = spec.labels.get("resoluto.run_id", "")
         nid = spec.labels.get("resoluto.node_id", "")
-        # Append the unique uuid8 AFTER truncation — `_dns_safe` caps at 40 chars and
-        # `sbx-`+a 36-char run_id already hits that, so embedding the suffix inside the
-        # truncated string drops it and two pods sharing a run_id (lane + per-gate dind
-        # pod) collide on `sbx-<run_id>` (409 AlreadyExists). Keep the suffix outside.
         name = f"{_dns_safe(f'sbx-{rid}-{nid}')}-{uuid.uuid4().hex[:8]}"
 
         owner_name: str | None = None
@@ -543,10 +468,6 @@ class K8sSandboxRuntime(SandboxRuntime):
             if term is not None:
                 exit_code = term.exit_code
                 reason = reason or (term.reason or "")
-            # Surface the WAITING reason too (ImagePullBackOff/ErrImagePull/
-            # CreateContainerError/CrashLoopBackOff) — a pod stuck waiting on one of
-            # these will never run, but its pod-phase is just "Pending", so the host
-            # can't tell it apart from a legitimate resource hold without this.
             wait = getattr(cs.state, "waiting", None)
             if wait is not None and getattr(wait, "reason", None):
                 reason = reason or wait.reason
@@ -586,12 +507,7 @@ class K8sSandboxRuntime(SandboxRuntime):
             return f"(logs unavailable: {exc.status})"
 
     async def ensure_run_owner(self, run_id: str) -> tuple[str, str]:
-        """Create-or-get the per-run owner ConfigMap; return (name, uid).
-
-        The ConfigMap is the k8s GC anchor: pods and NetworkPolicies that carry
-        an ownerReference to it are cascade-deleted when it is deleted, even if
-        the dispatcher process that spawned them is long dead.
-        """
+        """Create-or-get the per-run owner ConfigMap; return (name, uid)."""
         from kubernetes_asyncio.client.exceptions import ApiException
 
         api = await self._client()
@@ -615,10 +531,7 @@ class K8sSandboxRuntime(SandboxRuntime):
             raise
 
     async def delete_run_owner(self, run_id: str) -> None:
-        """Delete the per-run owner ConfigMap, triggering k8s cascade GC.
-
-        404-safe: a prior fast-path sweep may have already cleaned it up.
-        """
+        """Delete the per-run owner ConfigMap, triggering k8s cascade GC (404-safe)."""
         from kubernetes_asyncio.client.exceptions import ApiException
 
         api = await self._client()
@@ -630,11 +543,7 @@ class K8sSandboxRuntime(SandboxRuntime):
                 raise
 
     async def reap_stale_run_owners(self, keep_run_id: str, max_age_s: float = 7200.0) -> int:
-        """Delete run-owner ConfigMaps from runs that are surely done — older than max_age_s
-        (a single task run is ~30-60 min) and NOT the current run — which cascade-GCs their
-        leaked pods. This is the backstop for runs that died (kill -9) before teardown could
-        delete their owner: the dispatcher is gone, so nothing else reaps them. Safe — only
-        run-owner ConfigMaps are touched, never a concurrent active run's (recent) owner."""
+        """Delete run-owner ConfigMaps older than max_age_s and not keep_run_id; return count."""
         from datetime import UTC, datetime
 
         api = await self._client()
@@ -648,20 +557,13 @@ class K8sSandboxRuntime(SandboxRuntime):
                 continue
             created = cm.metadata.creation_timestamp
             if created is not None and (datetime.now(UTC) - created).total_seconds() < max_age_s:
-                continue  # a recent owner may belong to a concurrently-running task
+                continue
             await self.delete_run_owner(rid)
             n += 1
         return n
 
     async def count_active_pods(self, kind: str | None = None) -> int:
-        """Count non-terminal pods in the sandbox namespace (deployment-wide).
-
-        Used as the k8s-API-backed admission gate: all replicas see the same
-        count, giving cross-replica coordination without Redis or etcd.
-
-        kind: optional resoluto.kind label value to filter by (e.g. "lane" or
-        "gate"). When None, counts all sandbox pods regardless of kind.
-        """
+        """Count non-terminal sandbox pods in the namespace, optionally filtered by resoluto.kind."""
         api = await self._client()
         label_selector = "resoluto.sandbox=true"
         if kind is not None:

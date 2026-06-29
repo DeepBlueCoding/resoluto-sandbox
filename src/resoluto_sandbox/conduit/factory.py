@@ -1,4 +1,4 @@
-"""Factory for building a Conduit from env — host-side and in-pod entry point."""
+"""Factory for building a Conduit from environment variables."""
 from __future__ import annotations
 
 import json

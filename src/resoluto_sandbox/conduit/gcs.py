@@ -1,10 +1,4 @@
-"""GcsConduit — the cloud backend (GKE + GCS via Workload Identity).
-
-Same contract as LocalConduit/S3Conduit. Uses gcloud-aio-storage (async); lazy import behind
-the [gcs] extra. NOTE: not locally integration-tested (no GCP creds in the spike
-env) — validated by contract parity with S3 (which IS minio-tested); the
-conformance suite should run against a real bucket before relying on it in
-production (a conformance suite should run against a real bucket before relying on it)."""
+"""GCS-backed Conduit via gcloud-aio-storage (lazy import behind the [gcs] extra)."""
 from __future__ import annotations
 
 from resoluto_sandbox.contracts import Conduit, ObjectInfo
@@ -13,7 +7,7 @@ from resoluto_sandbox.contracts import Conduit, ObjectInfo
 class GcsConduit(Conduit):
     def __init__(self, bucket: str, *, service_file: str | None = None) -> None:
         self._bucket = bucket
-        self._service_file = service_file  # None → Workload Identity / ADC
+        self._service_file = service_file
         self._storage = None
 
     def _client(self):
@@ -45,9 +39,6 @@ class GcsConduit(Conduit):
         return out
 
     async def copy_prefix(self, src_prefix: str, dst_prefix: str) -> int:
-        # Server-side copy (no host round-trip). GCS is not integration-tested in
-        # this env (see module docstring); if the kwarg name drifts across
-        # gcloud-aio-storage versions the ABC's get/put default still copies.
         src, dst = src_prefix.rstrip("/"), dst_prefix.rstrip("/")
         client = self._client()
         objs = await self.list_prefix(src)

@@ -1,8 +1,4 @@
-"""Span emission — the observability tree, redacted, over the shipper.
-
-A `SpanEmitter` turns the execution hierarchy (run→phase→node→lane→attempt→gate)
-into open/close `SpanEvent`s with `span_id`/`parent_span_id`, plus redacted log
-events. Same records drive live UI, replay, and forensics."""
+"""Emit redacted open/close span events and log events over a ChunkShipper."""
 from __future__ import annotations
 
 import time

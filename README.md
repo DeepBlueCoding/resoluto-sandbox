@@ -1,8 +1,8 @@
 # resoluto-sandbox
 
-Run any program or agent script in a sandbox. Your program stays plain — it imports your own SDK,
-never `resoluto_sandbox`. The same script that runs with `uv run agent.py` on your machine runs
-unchanged inside the sandbox; the backend changes only where it runs.
+Run a program in isolation and exchange data through a durable store. Your program stays plain — it
+reads `argv`, writes `stdout`/files, exits, and never imports `resoluto_sandbox`. A script that runs
+with `uv run agent.py` on your machine runs unchanged inside the sandbox.
 
 <p align="left">
   <img alt="python" src="https://img.shields.io/badge/python-3.12%2B-blue">
@@ -19,177 +19,128 @@ pip install resoluto-sandbox   # published wheel coming; for now: pip install -e
 
 ---
 
-## 60-second local quickstart
-
-Requires Docker and a runner image (default `resoluto-sandbox-runner:dev`). Run a program in an
-isolated Docker container and capture its output:
+## Quickstart
 
 ```python
 from resoluto_sandbox import Sandbox
 
-result = Sandbox(backend="docker").run(
+result = Sandbox(backend="local").run(
     ["python", "-c", "print('hello from the sandbox')"]
 )
 print(result.output)   # hello from the sandbox
 print(result.ok)       # True
 ```
 
-`backend="docker"` runs the program in a Docker container on this host (OS-level isolation: separate
-PID/mount/network namespaces, cgroups). The result captures output, the exit code, and any files you
-asked to collect. `stdin` is not supported on either backend — pass inputs via argv, env, or workspace
-files.
+The result captures the output, the exit code, and any files you asked to collect (`output_paths`).
+`stdin` is not supported — pass inputs via argv, env, or workspace files.
 
 ---
 
-## Run your own agent, unchanged
+## The program contract
 
-The sandbox enforces one contract: **your program never imports `resoluto_sandbox`**. It reads
-`argv` and writes to `stdout`/files and exits. That is the whole interface.
+A sandbox program reads `argv`, writes to `stdout` / files, exits with a code, and never imports
+`resoluto_sandbox`. A script that works as `uv run agent.py` works unchanged inside the sandbox; test
+runners, LLM agents, and shell scripts all qualify. Dependencies are your program's concern — put
+`uv run` / `pip install` in your argv, or bake them into the image.
 
-A script that works directly also works inside the sandbox. On `backend="docker"` it runs in a Docker
-container with OS-level isolation; on `backend="k8s"` it runs in a Kata microVM. The program itself
-is unmodified in either case:
+---
 
-```python
-from resoluto_sandbox import Sandbox
+## How it works
 
-result = Sandbox(backend="docker").run(
-    ["uv", "run", "examples/claude_agent.py", "Summarise the Zen of Python"]
-)
-print(result.output)
+The host and the sandbox never hold a live connection. They rendezvous through a durable key/value
+store (the Conduit): the sandbox is passive — it writes append-only JSONL chunks and a final
+`result.json`; the host launches it, tails the chunks, and reaps it. The same flow works whether the
+sandbox is a microVM next to you or a pod in a cluster, and a network blip can't wedge a run.
+
+```
+stage → run (isolated) → collect
 ```
 
-See `examples/claude_agent.py` for a minimal Claude agent and `docs/auth.md` for the
-Claude Max/Pro subscription auth path (no API key needed).
+1. **Stage** — the host writes your workspace into the Conduit as an input archive.
+2. **Run** — the runtime launches an isolated sandbox over the lane image. Inside it, the generic
+   `runner_main` (your program never sees it) verifies egress isolation with a fail-closed canary,
+   stages your inputs into `/workspace`, runs your `argv`, and streams spans, heartbeats, the result,
+   and an output archive back to the Conduit. Output streams live to `stream` (default `sys.stdout`).
+3. **Collect** — when the program exits, the host fetches the outputs and assembles a `RunResult`
+   (output, exit code, `output_paths` artifacts, and a parsed `result.json` if your program wrote one),
+   then reaps the sandbox.
 
----
+Two seams carry everything; one `SubstrateBackend` drives both:
 
-## Architecture
-
-ONE `SubstrateBackend` drives everything. The only thing that varies is the injected
-`SandboxRuntime` (Docker locally, a Kata pod on k8s) and the `Conduit` (bind-mount locally, S3 on
-k8s). The program, the result shape, and the `Sandbox` facade are identical across both.
+- **`SandboxRuntime`** — where and how the program is isolated (launch / status / destroy).
+- **`Conduit`** — the durable host ↔ sandbox exchange (`put` / `get` / `list_prefix`).
 
 ```mermaid
 flowchart TD
     P["Your program — plain: argv/stdin in, stdout/files/exit out; never imports resoluto_sandbox"]
-    S["Sandbox(backend='docker' | 'k8s' | injected Backend)<br/>thin facade"]
-    SB["SubstrateBackend<br/>one impl: drive_node + Conduit + runner_main"]
-    RT{"SandboxRuntime (ABC)<br/>the isolation / placement seam"}
-    D["DockerSandboxRuntime<br/>docker run — OS-level isolation, your machine"]
-    K["K8sSandboxRuntime<br/>Kata microVM pod — hardware isolation + egress, a cluster"]
-    CD["Conduit (ABC) — host/sandbox exchange<br/>LocalConduit (bind mount) or S3Conduit (cluster)"]
+    S["Sandbox(backend=…) — thin facade"]
+    SB["SubstrateBackend — one impl: stage → drive_node → collect"]
+    RT["SandboxRuntime (ABC) — isolation / placement seam"]
+    CD["Conduit (ABC) — durable host ↔ sandbox rendezvous"]
     P --> S --> SB
     SB --> RT
-    RT --> D
-    RT --> K
     SB --> CD
 ```
-
-**Run flow** (one flow for both backends; runtime + conduit differ):
 
 ```mermaid
 sequenceDiagram
     participant H as Host (your process)
-    participant C as Conduit (LocalConduit bind-mount, or S3)
-    participant W as Sandbox (Docker container, or Kata pod)
-    H->>C: put_dir(workspace) - inbox
-    H->>W: SandboxRuntime.launch (docker run / k8s pod)
-    C->>W: runner_main stages inputs into /workspace
-    W->>W: run your argv
+    participant C as Conduit (durable store)
+    participant W as Sandbox (isolated)
+    H->>C: put_dir(workspace) — inbox
+    H->>W: SandboxRuntime.launch
+    W->>W: egress canary (fail-closed) → stage inputs → run your argv
     W->>C: ship spans + heartbeat + result.json + outbox
-    C-->>H: tail ChunkReader (silence watchdog, no wall-clock timeout) + fetch_outputs
-    H->>H: destroy sandbox, RunResult(output, exit_code, artifacts)
+    C-->>H: tail chunks (silence watchdog, no wall-clock timeout) + fetch outputs
+    H->>H: reap sandbox → RunResult(output, exit_code, artifacts)
 ```
 
 ---
 
 ## Backends
 
-| backend | isolation | where it runs | needs | use for |
-|---------|-----------|---------------|-------|---------|
-| `docker` | OS-level (Docker namespaces/cgroups) | your machine | Docker + an image | dev and most workloads, no cluster |
-| `k8s` | hardware (Kata microVM) + egress policy | a Kubernetes cluster | k8s + Kata + S3 store + image | untrusted code at scale, locked-down egress, production |
+Pick by where it runs; the program, the flow, and the `RunResult` are identical. Each program runs in
+a Kata microVM (separate guest kernel) in both. What differs is the Conduit and how egress is enforced:
 
-For the full guide including the vendor-neutral k8s stack install (works on k3s, kind, EKS, GKE,
-AKS, and any Kubernetes distribution), see [`docs/backends.md`](docs/backends.md).
+| backend | where it runs | Conduit | egress isolation | needs |
+|---------|---------------|---------|------------------|-------|
+| `local` | a single host (microVM via `nerdctl` on a dedicated containerd) | bind-mounted `LocalConduit` | host-side firewall on the lane bridge | `scripts/local-backend-up.sh` (Kata + nerdctl + a dedicated containerd) |
+| `k8s`   | a Kubernetes cluster (microVM pod) | object store (`S3Conduit`, minio/S3) | default-deny `NetworkPolicy` | a cluster with Kata + an S3 store + a pinned kube context |
 
----
-
-## Dependencies
-
-Dependencies are your program's concern — put `uv run`/`pip install` in your argv, or use a prebuilt
-image. For `backend="docker"`, the image must contain python + the resoluto-sandbox wheel + your
-program's deps.
-
----
-
-## k8s backend
-
-Requires a Kubernetes cluster (k3s, kind, EKS, or any distribution) with Kata Containers,
-`RESOLUTO_STORE_KIND` (plus the matching store env vars) set in the environment, and
-`RESOLUTO_SANDBOX_KUBECONTEXT` pinned (the backend fails closed if this is unset).
-Inject a configured `SubstrateBackend`:
-
-```python
-import os
-from resoluto_sandbox import Sandbox
-from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
-from resoluto_sandbox.conduit.factory import store_from_env
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
-
-runtime = K8sSandboxRuntime(
-    namespace="resoluto-sandboxes",
-    context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
-)
-sb = Sandbox(backend=SubstrateBackend(
-    runtime=runtime,
-    conduit=store_from_env(),
-    image="<registry>/resoluto-lane:dev",
-    store_env=store_env_for_pod(os.environ),
-))
-out = sb.run(["bash", "-lc", "echo hi"], workspace="./proj", output_paths=["*.txt"])
-```
-
-Or use the convenience preset:
-```python
-Sandbox(backend="k8s", image="<registry>/resoluto-lane:dev").run(...)
-```
-
-Limits: **no `stdin`** (raises `NotImplementedError` on both backends); dependencies must be baked
-into the image. `RunResult.errors` is always empty; the in-sandbox runner merges stdout and stderr
-into the output stream.
-
----
-
-## CLI
-
-```bash
-resoluto-sandbox run -- echo hi                       # docker backend (default)
-resoluto-sandbox run --backend k8s --image <img> -- python agent.py  # k8s backend
-resoluto-sandbox doctor                               # check what is available on this machine
-```
-
-`--` separates sandbox options from the program argv.
+For the `local` backend, run `scripts/local-backend-up.sh` until its canary is GREEN. For `k8s`,
+inject a configured `SubstrateBackend` (or use `Sandbox(backend="k8s", image=…)`). Full setup —
+including the vendor-neutral k8s stack — is in [`docs/backends.md`](docs/backends.md).
 
 ---
 
 ## `Sandbox.run()` reference
 
 ```python
-Sandbox(backend="docker").run(
-    argv,                        # program + arguments
+Sandbox(backend="local").run(
+    argv,                 # program + arguments
     *,
-    workspace=None,              # working directory for the program (default: cwd)
-    stdin=None,                  # NOT SUPPORTED — raises NotImplementedError on both backends
-    env=None,                    # dict overlaid on the sandbox environment
-    output_paths=None,           # list of glob patterns to collect as artifacts
-    stream=None,                 # live output sink; None (default) echoes to sys.stdout; pass a StringIO/file to capture
+    workspace=None,       # working directory staged into the sandbox (default: cwd)
+    stdin=None,           # unsupported — raises NotImplementedError
+    env=None,             # dict overlaid on the sandbox environment
+    output_paths=None,    # glob patterns collected back as artifacts
+    stream=None,          # live output sink; None echoes to sys.stdout
 ) -> RunResult
 ```
 
-`RunResult` fields: `exit_code`, `output`, `errors`, `artifacts`, `result` (parsed `result.json`
-if the program wrote one), `ok` (property: `exit_code == 0`).
+`RunResult`: `exit_code`, `output`, `errors` (always empty — stdout/stderr are merged), `artifacts`,
+`result` (parsed `result.json` if the program wrote one), `ok` (`exit_code == 0`).
+
+---
+
+## CLI
+
+```bash
+resoluto-sandbox run -- echo hi                          # local backend (default)
+resoluto-sandbox run --backend k8s --image <img> -- python agent.py
+resoluto-sandbox doctor                                  # check backend readiness
+```
+
+`--` separates sandbox options from the program argv.
 
 ---
 
@@ -197,24 +148,21 @@ if the program wrote one), `ok` (property: `exit_code == 0`).
 
 | Feature | Status |
 |---|---|
-| `backend="docker"` — Docker container on host, OS-level isolation (namespaces/cgroups), live output | **works today** |
-| CLI: `run` + `doctor` | **works today** |
-| `Conduit` abstraction + `LocalConduit`, `StdoutConduit`, `S3Conduit` (minio/S3-compatible, proven) | **works today** |
-| `GcsConduit` | **provided, unverified** — experimental; not tested end-to-end |
+| `backend="local"` — Kata microVM via nerdctl + a dedicated containerd, host-side egress | **works today** (run `scripts/local-backend-up.sh`) |
+| `backend="k8s"` — Kata microVM pod + object-store Conduit + NetworkPolicy egress | **works today** — needs a Kata cluster + store + kube context |
+| `Conduit` + `LocalConduit`, `StdoutConduit`, `S3Conduit` (minio/S3) | **works today** |
+| `GcsConduit` | **provided, unverified** — experimental |
 | Language-neutral wire spec | **published** — see `spec/PROTOCOL.md` |
-| `backend="k8s"` — Kata microVM isolation via `SubstrateBackend` + `K8sSandboxRuntime` | **implemented** — requires a Kubernetes cluster (k3s, kind, EKS, …) + Kata + store env + kubecontext |
-| Prebuilt image matrix (`-base`, `-runner`, langchain, openai variants) + `image build` CLI | design / roadmap |
-| Worker migration utilities | design / roadmap |
+| Prebuilt image matrix + `image build` CLI | design / roadmap |
 
 ---
 
 ## Further reading
 
-- `docs/backends.md` — backends overview, local and k8s detail, vendor-neutral k8s stack install guide
-- `docs/auth.md` — Claude Max/Pro subscription auth (local and container)
-- `docs/networking.md` — egress isolation on the k8s backend (EgressConfig, NetworkPolicy, canary)
-- `spec/PROTOCOL.md` — language-neutral host ↔ sandbox wire protocol (JSON Schemas included)
-- `examples/` — runnable examples ladder:
-  - `uv run examples/01_local_hello.py` — standalone program, no sandbox
-  - `uv run python examples/02_run_via_sandbox.py` — same program via `Sandbox.run()`
-  - `examples/claude_agent.py` — BYO Claude agent (plain script, no `resoluto_sandbox` import)
+- `docs/concepts.md` — the program contract, the run lifecycle, the Conduit
+- `docs/backends.md` — backend setup + the vendor-neutral k8s stack install
+- `docs/networking.md` — egress isolation (the canary + per-backend enforcement)
+- `docs/auth.md` — Claude Max/Pro subscription auth (no API key needed)
+- `spec/PROTOCOL.md` — the language-neutral host ↔ sandbox wire protocol
+- `examples/` — `01_local_hello.py` (no sandbox) → `02_run_via_sandbox.py` (same program, sandboxed)
+  → `claude_agent.py` (a plain Claude agent)

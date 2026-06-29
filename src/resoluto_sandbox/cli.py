@@ -13,7 +13,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="cmd")
 
     run_p = sub.add_parser("run", help="Run a program in a sandbox")
-    run_p.add_argument("--backend", default="docker", choices=["docker", "k8s"])
+    run_p.add_argument("--backend", default="local", choices=["local", "k8s"])
     run_p.add_argument("--workspace", default=None)
     run_p.add_argument("--image", default=None)
 
@@ -71,11 +71,20 @@ def _cmd_run(args: argparse.Namespace, rest: list[str]) -> int:
 
 
 def _cmd_doctor() -> int:
-    """Print a readiness report for the local backend. Returns 0."""
+    """Print a readiness report for the sandbox backends. Returns 0."""
+    nerdctl = os.environ.get("RESOLUTO_LOCAL_NERDCTL", "/opt/resoluto-local/bin/nerdctl")
+    sock = os.environ.get("RESOLUTO_LOCAL_CONTAINERD_ADDRESS",
+                          "/run/resoluto-local/containerd/containerd.sock")
     checks = [
-        ("docker", shutil.which("docker") is not None, "needed for k8s/images"),
+        ("local: /dev/kvm", os.path.exists("/dev/kvm"), "Kata microVMs need KVM"),
+        ("local: nerdctl", shutil.which(nerdctl) is not None or os.path.exists(nerdctl),
+         "container client for the local backend"),
+        ("local: dedicated containerd", os.path.exists(sock),
+         f"run scripts/local-backend-up.sh ({sock})"),
         ("uv", shutil.which("uv") is not None, "useful for running Python programs"),
-        ("RESOLUTO_SANDBOX_KUBECONTEXT", "RESOLUTO_SANDBOX_KUBECONTEXT" in os.environ, "needed for k8s"),
+        ("docker", shutil.which("docker") is not None, "only needed to build images"),
+        ("k8s: RESOLUTO_SANDBOX_KUBECONTEXT", "RESOLUTO_SANDBOX_KUBECONTEXT" in os.environ,
+         "pinned kube context for the k8s backend"),
     ]
     for label, ok, note in checks:
         status = "OK" if ok else "MISSING"

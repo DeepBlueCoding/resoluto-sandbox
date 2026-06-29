@@ -1,6 +1,4 @@
-"""LocalConduit — the dev/CLI backend. Zero infra; the SAME architecture as
-cloud (different adapter config). Atomic writes (tmp + rename + fsync) so a chunk
-is listable only once fully durable (the atomicity invariant)."""
+"""Filesystem-backed Conduit with atomic writes (tmp + rename + fsync)."""
 from __future__ import annotations
 
 import os
@@ -12,19 +10,33 @@ _TMP_SUFFIX = ".tmp-partial"
 
 
 class LocalConduit(Conduit):
-    def __init__(self, root: str | Path) -> None:
+    def __init__(self, root: str | Path, *, world_writable: bool = False) -> None:
         self._root = Path(root)
+        self._world_writable = world_writable
         self._root.mkdir(parents=True, exist_ok=True)
+        if world_writable:
+            self._chmod_world(self._root)
+
+    @staticmethod
+    def _chmod_world(path: Path) -> None:
+        try:
+            path.chmod(0o777)
+        except OSError:
+            pass
+
+    def _chmod_tree(self, leaf: Path) -> None:
+        d = leaf
+        while True:
+            self._chmod_world(d)
+            if d == self._root or d.parent == d:
+                break
+            d = d.parent
 
     @staticmethod
     def _wrap_os_error(exc: OSError) -> ConduitError:
-        # Mirror the S3 adapter: a real I/O failure (disk full, permission, etc.) is a
-        # SUBSTRATE failure, not an agent failure — surface it as ConduitError so the lane
-        # scaffold translates it to a fatal InfrastructureError (identical attribution to k8s).
         return ConduitError(f"local object store I/O failed (root={Path(exc.filename).parent if exc.filename else '?'}): {exc}")
 
     def _path(self, key: str) -> Path:
-        # Reject traversal — keys are run/<id>/... never absolute or "..".
         p = (self._root / key).resolve()
         if not str(p).startswith(str(self._root.resolve())):
             raise ValueError(f"key escapes store root: {key!r}")
@@ -34,12 +46,14 @@ class LocalConduit(Conduit):
         path = self._path(key)
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
+            if self._world_writable:
+                self._chmod_tree(path.parent)
             tmp = path.with_name(path.name + _TMP_SUFFIX)
             with open(tmp, "wb") as f:
                 f.write(data)
                 f.flush()
                 os.fsync(f.fileno())
-            os.replace(tmp, path)  # atomic; readers never see a partial chunk
+            os.replace(tmp, path)
         except OSError as exc:
             raise self._wrap_os_error(exc) from exc
 
@@ -70,7 +84,7 @@ class LocalConduit(Conduit):
                 rel = o.key[len(src):].lstrip("/")
                 dst = self._path(f"{dst_prefix.rstrip('/')}/{rel}")
                 dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(self._path(o.key), dst)  # path-level — no 184MB buffered into RAM
+                shutil.copy2(self._path(o.key), dst)
                 n += 1
         except OSError as exc:
             raise self._wrap_os_error(exc) from exc

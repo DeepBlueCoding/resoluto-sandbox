@@ -1,33 +1,34 @@
 # Networking
 
----
+## Local backend — Kata isolation + host-side egress policy
 
-## Local backend — OS-level isolation, no egress policy
+The local backend runs the program in a Kata microVM launched via `nerdctl` against a standalone
+containerd on this host — full Kata isolation, on a single host with no cluster. Egress is enforced
+host-side on its CNI bridge (default-deny; allow DNS + HTTPS-443 to public; reject IMDS
+`169.254.169.254` + RFC1918 private ranges), so it is immune to in-guest root. The egress canary
+always runs fail-closed before any workload, the Kata runtime-class guard is unconditional, and host
+AWS creds are never forwarded (a scoped store token only).
 
-The local backend runs the program in a Docker container on this host. Docker provides OS-level
-isolation (separate PID/mount/network namespaces, cgroups), but there is **no egress
-NetworkPolicy** restricting which hosts the workload can reach. The egress canary is skipped
-(`RESOLUTO_TRUSTED_LOCAL=1` is set by the local preset).
+Provision the local backend with `scripts/local-backend-up.sh` (ends with a green Kata-microVM
+canary).
 
-Use `backend="docker"` for trusted code or development. For locked-down egress or hardware
-isolation, use `backend="k8s"`.
+Use `backend="local"` for single-host development. For cluster-scale placement, use `backend="k8s"`.
 
----
-
-## k8s backend — Kata kernel isolation + optional egress NetworkPolicy
+## k8s backend — Kata isolation + optional egress NetworkPolicy
 
 ### Default: unrestricted egress
 
 By default (`egress=None`) a lane pod launched via `SubstrateBackend` + `K8sSandboxRuntime` has
-**unrestricted egress**. The pod runs inside a Kata microVM which provides strong kernel isolation
-(separate OS kernel, no host process namespace), but there is **no NetworkPolicy** restricting
-which hosts the workload can reach. If you run untrusted code, pass an `EgressConfig`.
+unrestricted egress. The pod runs inside a Kata microVM (separate OS kernel, no host process
+namespace), but no NetworkPolicy restricts which hosts the workload can reach. If you run untrusted
+code, pass an `EgressConfig`.
 
 ### Locking down egress with EgressConfig
 
-`EgressConfig` holds the CIDRs your workload legitimately needs to reach. Pass it to
-`K8sSandboxRuntime` and it applies a default-deny egress NetworkPolicy to the lane pod before
-any workload runs:
+`EgressConfig` declares the object store the workload needs; the policy then also permits public
+HTTPS (TCP/443 to anywhere — LLM + git, IMDS excepted) and DNS, and denies everything else. Pass it
+to `K8sSandboxRuntime` and it applies a default-deny egress NetworkPolicy to the lane pod (created
+before the pod) so egress is enforced from the first packet:
 
 ```python
 import os
@@ -36,11 +37,11 @@ from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_
 from resoluto_sandbox.conduit.factory import store_from_env
 from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
 
-egress = EgressConfig(
-    store_cidr="192.168.1.197/32",        # your object store (minio / S3-compatible)
-    llm_cidr="160.79.104.0/23",           # e.g. api.anthropic.com — resolve FQDN to CIDR yourself
-    git_cidrs=["140.82.112.0/20"],        # optional: git hosts (empty list = no git egress)
-)
+# The ONE shared builder — resolves RESOLUTO_STORE_ENDPOINT to the store CIDR:port (honoring the
+# RESOLUTO_STORE_EGRESS_CIDR/PORT override for a DNAT'd store; NetworkPolicy is evaluated POST-DNAT).
+egress = EgressConfig.from_store_env()
+# ...or construct it explicitly:
+egress = EgressConfig(store_cidr="192.168.1.197/32", store_port=9000)  # store; port default 443
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
@@ -59,31 +60,30 @@ sb = Sandbox(backend=SubstrateBackend(
 
 ### What the NetworkPolicy allows
 
-The generated policy is **default-deny egress** with these explicit allow rules:
+The generated policy is default-deny egress with these explicit allow rules:
 
 | Destination | Port | Protocol |
 |---|---|---|
-| `store_cidr` | 443 | TCP |
-| `llm_cidr` | 443 | TCP |
-| each `git_cidrs` entry | 443 | TCP |
-| `0.0.0.0/0` | 53 | UDP (kube-dns) |
+| `store_cidr` | `store_port` | TCP |
+| `0.0.0.0/0` (public HTTPS — LLM + git) | 443 | TCP |
+| `0.0.0.0/0` (DNS) | 53 | UDP + TCP |
 
-**IMDS is always blocked.** Every `ipBlock` rule includes `except: ["169.254.169.254/32"]` so
-the cloud metadata endpoint is unreachable even when the allowed CIDR would cover it. This
-prevents the workload from reading cloud credentials, instance identity, or user data from the
-hypervisor.
+The broad `0.0.0.0/0` rules include `except: ["169.254.169.254/32"]` so the cloud metadata endpoint
+(IMDS) is unreachable; the `store_cidr` rule is a specific host so it carries no `except` (k8s
+requires `except ⊂ cidr`). Allowing public 443 rather than pinning the LLM/git provider to a /32
+avoids CDN-IP fragility while still blocking IMDS and non-443.
 
-### CIDR-only: no FQDNs
+### CIDR-only: no FQDNs for the store
 
-Kubernetes `NetworkPolicy` `ipBlock` does not accept hostnames. You must resolve every hostname
-to a CIDR before constructing `EgressConfig`:
+Kubernetes `NetworkPolicy` `ipBlock` does not accept hostnames, so `store_cidr` must be a CIDR
+(`EgressConfig.__post_init__` rejects anything without `/`). LLM/git need no resolution — they're
+covered by the public-443 rule. Build the config from the env with `EgressConfig.from_store_env()`,
+which resolves `RESOLUTO_STORE_ENDPOINT` (or honors the `RESOLUTO_STORE_EGRESS_CIDR/PORT` override
+for a DNAT'd store — NetworkPolicy is evaluated post-DNAT).
 
 ```python
-EgressConfig(store_cidr="api.anthropic.com", ...)  # raises ValueError — no '/'
+EgressConfig(store_cidr="api.anthropic.com")  # raises ValueError — no '/'
 ```
-
-`EgressConfig.__post_init__` rejects any value that does not contain `/`. Cloud provider IP
-ranges can rotate — widen the CIDR conservatively or re-resolve before each deployment.
 
 ### CNI requirement
 
@@ -105,21 +105,17 @@ If any probe returns an unexpected result the lane aborts with a reason string n
 failed probe. This catch fires when the CNI enforces the policy incorrectly, or when the policy
 was not applied before the pod started.
 
-Set `RESOLUTO_TRUSTED_LOCAL=1` to skip the canary (dev only — also permits host AWS credentials
-to be forwarded to the pod in place of a scoped store token).
-
-No integration test for the canary is provided here — the in-guest execution is the live
-check. The `evaluate_verdict` pure function (unit-tested in `tests/test_egress_canary.py`)
-covers the pass/fail logic.
-
----
+The canary always runs and is fail-closed. Host AWS credentials are never forwarded to the pod; a
+scoped store token is the only credential it receives. The `evaluate_verdict` pure function (the
+pass/fail logic) is unit-tested in `tests/test_egress_canary.py`; the in-guest execution is the live
+check.
 
 ## What you can manage
 
 | Knob | Local backend | k8s backend |
 |---|---|---|
-| Egress allowlist (CIDRs) | not applicable — Docker (OS-level isolation, not egress-locked) | `EgressConfig(store_cidr, llm_cidr, git_cidrs)` passed to `K8sSandboxRuntime` |
-| IMDS block | not applicable | always on when `EgressConfig` is passed |
-| Egress canary | skipped (`RESOLUTO_TRUSTED_LOCAL=1` set by local preset) | on by default; skip with `RESOLUTO_TRUSTED_LOCAL=1` |
-| Runtime class | not applicable | `kata` (pinned; non-Kata requires `RESOLUTO_TRUSTED_LOCAL`) |
+| Egress allowlist | host-side iptables on the CNI bridge (default-deny; DNS + 443; REJECT IMDS + RFC1918) | `EgressConfig.from_store_env()` → default-deny NetworkPolicy (store + public-443 + DNS; IMDS denied), enforced by the cluster's NetworkPolicy controller (k3s kube-router) |
+| IMDS block | always on (host-side REJECT of `169.254.169.254`) | always on when `EgressConfig` is passed |
+| Egress canary | on by default, fail-closed | on by default, fail-closed |
+| Runtime class | Kata (pinned, unconditional) | Kata (pinned, unconditional) |
 | Kubecontext | not applicable | `RESOLUTO_SANDBOX_KUBECONTEXT` (fails closed if unset) |

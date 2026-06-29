@@ -1,13 +1,10 @@
 # Concepts
 
----
-
 ## The program contract
 
-A sandbox program is **plain**. It reads `argv`, writes to `stdout` / files, and
-exits with a code. It never imports `resoluto_sandbox`. This decoupling is the core guarantee:
-a script that works as `uv run agent.py` on your machine works unchanged inside the sandbox.
-Test runners, LLM agents, shell scripts — all qualify.
+A sandbox program reads `argv`, writes to `stdout` / files, and exits with a code. It never imports
+`resoluto_sandbox`. A script that works as `uv run agent.py` on your machine works unchanged inside
+the sandbox; test runners, LLM agents, and shell scripts all qualify.
 
 Dependencies are your program's concern — put `uv run`/`pip install` in your argv, or use a prebuilt image.
 
@@ -21,11 +18,11 @@ stage → run → collect
 
 1. **Stage** — the `Sandbox` resolves which backend to use, then stages the workspace into the
    `Conduit` (a bind-mounted directory for local, an S3 prefix for k8s).
-2. **Run** — the program executes. On `backend="docker"` this is a Docker container on the host
-   (OS-level isolation: separate PID/mount/network namespaces, cgroups) sharing a bind-mounted
-   `LocalConduit`. On `backend="k8s"` this is a Kata microVM pod. In both cases the in-sandbox
-   `runner_main` stages inputs, runs the program, and ships output via the `Conduit`. Live output
-   streams to `stream` (default `sys.stdout`). `stdin` is NOT supported on either backend.
+2. **Run** — the program executes. On `backend="local"` this is a Kata microVM launched via
+   `nerdctl` against a standalone containerd on this host (single host, no cluster) sharing a
+   bind-mounted `LocalConduit`. On `backend="k8s"` this is a Kata microVM pod. In both cases the
+   in-sandbox `runner_main` stages inputs, runs the program, and ships output via the `Conduit`. Live
+   output streams to `stream` (default `sys.stdout`). `stdin` is unsupported on either backend.
 3. **Collect** — when the program exits, `RunResult` is assembled from the captured output,
    exit code, any `output_paths` globs matched in the workspace, and a parsed
    `result.json` if the program wrote one.
@@ -34,25 +31,25 @@ stage → run → collect
 
 ## Backends
 
-`Sandbox` holds one `Backend` (selected by name or injected). ONE `SubstrateBackend` drives
-both presets; the only thing that varies is the injected `SandboxRuntime`.
+`Sandbox` holds one backend (selected by name or injected). One `SubstrateBackend` drives both
+presets; the only thing that varies is the injected `SandboxRuntime`.
 
-### `docker`
+### `local`
 
-`backend="docker"` builds a `SubstrateBackend` wired to a `DockerSandboxRuntime` and a
-`LocalConduit`. The program runs in a Docker container on this host; the host and container
-share a bind-mounted directory as the conduit. OS-level isolation (namespaces/cgroups) is
-provided, but NOT egress NetworkPolicy isolation — use `k8s` for locked-down egress.
+`backend="local"` builds a `SubstrateBackend` wired to a `KataNerdctlSandboxRuntime` and a
+`LocalConduit`. The program runs in a Kata microVM launched via `nerdctl` against a dedicated,
+standalone containerd on this host; the host and microVM share a bind-mounted directory as the
+conduit. Single host, no cluster; egress is enforced host-side on its CNI bridge (default-deny).
 
 The image must contain python + the resoluto-sandbox wheel + your program's deps. Default:
-`resoluto-sandbox-runner:dev`. Pass `image=` to override.
+`resoluto-sandbox-base:dev` (`DEFAULT_LOCAL_IMAGE`) — a plain local tag in this host's containerd,
+never pulled from a registry. Pass `image=` to override.
 
 ### `k8s`
 
 Each run executes in a short-lived Kata microVM pod via the `drive_node` primitive and a
 `Conduit` object store. The sandbox reports progress as append-only JSONL chunks to the
-store; the orchestrator tails and reaps the pod when done. There is no long-lived connection
-between the two halves.
+store; the orchestrator tails and reaps the pod when done. No long-lived connection between the halves.
 
 Inject a configured `SubstrateBackend` — the image is not a `Sandbox` constructor concern:
 
@@ -77,10 +74,9 @@ sb = Sandbox(backend=SubstrateBackend(
 
 Requirements: a Kubernetes cluster (k3s, kind, EKS, or any distribution) with Kata Containers,
 `RESOLUTO_STORE_KIND` (plus the matching store env vars) set in the environment, and
-`RESOLUTO_SANDBOX_KUBECONTEXT` pinned (fails closed otherwise). Limits: `stdin` raises
-`NotImplementedError` on this backend — dependencies must be baked into the image.
-`RunResult.errors` is always empty; the in-pod runner merges stdout and stderr into the output
-stream.
+`RESOLUTO_SANDBOX_KUBECONTEXT` pinned (fails closed otherwise). `stdin` raises
+`NotImplementedError`, so dependencies must be baked into the image. `RunResult.errors` is always
+empty; the in-pod runner merges stdout and stderr into the output stream.
 
 The language-neutral wire format is documented in `spec/PROTOCOL.md`.
 

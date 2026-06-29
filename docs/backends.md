@@ -1,31 +1,28 @@
 # Backends
 
 `Sandbox` delegates every run to a pluggable `Backend`. This page covers the two
-presets, how to install the k8s stack on any Kubernetes distribution, and how to
-wire in a custom backend.
+presets, how to install the k8s stack, and how to wire in a custom backend.
 
----
-
-## Backends overview
+## Overview
 
 | backend | isolation | where it runs | needs | use for |
 |---------|-----------|---------------|-------|---------|
-| `docker` | OS-level (Docker namespaces/cgroups) | your machine | Docker + an image | dev and most workloads, no cluster |
-| `k8s` | hardware (Kata microVM) + egress policy | a Kubernetes cluster | k8s + Kata + S3 store + image | untrusted code at scale, locked-down egress, production |
+| `local` | Kata microVM + host-side egress policy | your machine | containerd + nerdctl + an image | dev and most workloads, single host, no cluster |
+| `k8s` | Kata microVM + egress policy | a Kubernetes cluster | k8s + Kata + S3 store + image | untrusted code at scale, locked-down egress, production |
 
----
-
-## Architecture diagrams
+Both backends share one substrate: `SubstrateBackend` drives a run through a
+`SandboxRuntime` (the isolation/placement seam) and a `Conduit` (the host/sandbox
+exchange). The backends differ only in which runtime and conduit are wired in.
 
 ```mermaid
 flowchart TD
-    P["Your program — plain: argv/stdin in, stdout/files/exit out; never imports resoluto_sandbox"]
-    S["Sandbox(backend='docker' | 'k8s' | injected Backend)<br/>thin facade"]
-    SB["SubstrateBackend<br/>one impl: drive_node + Conduit + runner_main"]
-    RT{"SandboxRuntime (ABC)<br/>the isolation / placement seam"}
-    D["DockerSandboxRuntime<br/>docker run — OS-level isolation, your machine"]
-    K["K8sSandboxRuntime<br/>Kata microVM pod — hardware isolation + egress, a cluster"]
-    CD["Conduit (ABC) — host/sandbox exchange<br/>LocalConduit (bind mount) or S3Conduit (cluster)"]
+    P["Your program — argv in, stdout/files/exit out; never imports resoluto_sandbox"]
+    S["Sandbox(backend='local' | 'k8s' | injected Backend)"]
+    SB["SubstrateBackend (drive_node + Conduit + runner_main)"]
+    RT{"SandboxRuntime (ABC) — isolation / placement seam"}
+    D["KataNerdctlSandboxRuntime — Kata microVM via nerdctl, single host"]
+    K["K8sSandboxRuntime — Kata microVM pod, a cluster"]
+    CD["Conduit (ABC) — LocalConduit (bind mount) or S3Conduit (cluster)"]
     P --> S --> SB
     SB --> RT
     RT --> D
@@ -33,15 +30,17 @@ flowchart TD
     SB --> CD
 ```
 
-**Run flow** (one flow for both backends; runtime + conduit differ):
+## Run lifecycle
+
+One flow for both backends; only the runtime and conduit differ.
 
 ```mermaid
 sequenceDiagram
     participant H as Host (your process)
     participant C as Conduit (LocalConduit bind-mount, or S3)
-    participant W as Sandbox (Docker container, or Kata pod)
+    participant W as Sandbox (Kata microVM via nerdctl, or Kata pod)
     H->>C: put_dir(workspace) - inbox
-    H->>W: SandboxRuntime.launch (docker run / k8s pod)
+    H->>W: SandboxRuntime.launch (nerdctl Kata microVM / k8s pod)
     C->>W: runner_main stages inputs into /workspace
     W->>W: run your argv
     W->>C: ship spans + heartbeat + result.json + outbox
@@ -49,20 +48,31 @@ sequenceDiagram
     H->>H: destroy sandbox, RunResult(output, exit_code, artifacts)
 ```
 
----
+Liveness is a silence watchdog: if no chunk arrives for 600 seconds the sandbox is
+considered dead. There is no wall-clock timeout on the work itself — a live sandbox
+runs as long as it keeps emitting.
 
-## docker
+`stdin` is not supported on either backend — `NotImplementedError` if you pass
+`stdin=`. Pass inputs via argv, env, or workspace files.
 
-### How it runs
+The in-sandbox runner merges stdout and stderr as `log` span events, so
+`RunResult.output` carries the merged stream and `RunResult.errors` is always `""`.
+This is intentional, not a dropped field. On k8s, `RunResult.reason` carries
+substrate forensics when a pod is evicted or OOM-killed, and is `""` on a normal exit.
 
-`backend="docker"` runs the program in a Docker container on this host via `DockerSandboxRuntime`.
-The host and container share a `LocalConduit` over a bind-mounted directory (`/conduit`). No
-cluster, no S3 — everything stays on your machine:
+## local
+
+`backend="local"` runs the program in a Kata microVM launched via `nerdctl` against a
+dedicated, standalone containerd on this host (its own socket/root at
+`/run/resoluto-local/containerd/containerd.sock`), via `KataNerdctlSandboxRuntime`.
+It never assumes k3s and never touches Docker's or k3s's containerd. The host and
+microVM share a `LocalConduit` over a bind-mounted directory (`/conduit`). No cluster,
+no S3 — everything stays on your machine:
 
 ```
-Sandbox(backend="docker").run(argv, workspace, output_paths)
-   └─ SubstrateBackend (DockerSandboxRuntime + LocalConduit)
-        docker run --rm -v <conduit>:/conduit <image>
+Sandbox(backend="local").run(argv, workspace, output_paths)
+   └─ SubstrateBackend (KataNerdctlSandboxRuntime + LocalConduit)
+        nerdctl run --rm -v <conduit>:/conduit <image>   # Kata microVM, standalone containerd
           runner_main stages workspace → /workspace
           runs argv
           ships spans + heartbeat to /conduit
@@ -70,41 +80,21 @@ Sandbox(backend="docker").run(argv, workspace, output_paths)
    → RunResult(output, exit_code, artifacts)     # no k8s, no S3
 ```
 
-The egress canary is skipped (`RESOLUTO_TRUSTED_LOCAL=1` is set by the docker preset), so the
-docker backend is NOT egress-locked. Docker provides OS-level isolation (separate PID/mount/network
-namespaces, cgroups), but NOT egress NetworkPolicy isolation — use `backend="k8s"` for
-locked-down egress or hardware isolation.
+Egress is enforced host-side on the CNI bridge (default-deny; allow DNS + HTTPS-443 to
+public; reject IMDS `169.254.169.254` + RFC1918 private ranges), so it is immune to
+in-guest root. The egress canary runs fail-closed before your workload; there is no
+trusted-local bypass.
 
 ### What you need
 
-- Docker running on this machine.
-- An image that contains python + the resoluto-sandbox wheel + your program's deps. Default:
-  `resoluto-sandbox-runner:dev`. Override with `Sandbox(backend="docker", image="your-image:tag")`.
-
-### When to use
-
-- Development and iteration (no cluster needed).
-- Trusted code where namespace isolation is sufficient.
-- Testing your program logic before graduating to k8s.
-
-> **The docker backend gives OS-level isolation (Docker namespaces/cgroups), NOT egress-policy isolation.**
-> The egress canary is disabled. For locked-down egress or hardware isolation use `backend="k8s"`.
-
-### `RunResult` on docker
-
-The in-sandbox runner merges stdout and stderr as `log` span events, so `RunResult.output` carries
-the merged stream and `RunResult.errors` is always `""`. This is intentional, not a dropped field.
-
-### `stdin` on docker
-
-`stdin` is NOT supported — `NotImplementedError` if you pass `stdin=`. Pass inputs via argv, env,
-or workspace files.
-
----
+- A standalone containerd + nerdctl + Kata on this machine. Provision with
+  `scripts/local-backend-up.sh` (ends with a green Kata-microVM canary).
+- An image with python + the resoluto-sandbox wheel + your program's deps. Default:
+  `resoluto-sandbox-base:dev` (`DEFAULT_LOCAL_IMAGE`) — a plain local tag held in this
+  host's containerd; the local backend never pulls from a registry. Override with
+  `Sandbox(backend="local", image="your-image:tag")`.
 
 ## k8s
-
-### How it runs
 
 Each `run()` call launches one short-lived Kata microVM pod. The host and pod exchange
 data through a `Conduit` (an S3-compatible object store); there is no long-lived
@@ -115,17 +105,15 @@ connection between them.
    ───────────────────           ───────────────────────         ──────────────────────
    put_dir(workspace) ─────────────▶  inbox/ *.tar.gz ───────────▶  stage inputs -> /workspace
    drive_node: launch pod ───────────────────────────────────────▶  run argv (RESOLUTO_WORKLOAD_ARGV)
-   tail ChunkReader  ◀───────────── events-000001.jsonl ◀──────────  ship spans + heartbeat (no stream)
-        (silence-watchdog; NO wall-clock timeout)
+   tail ChunkReader  ◀───────────── events-000001.jsonl ◀──────────  ship spans + heartbeat
    read result.json  ◀───────────── result.json ◀─────────────────  write verdict
    fetch_outputs     ◀───────────── outbox/ *.tar.gz ◀────────────  collect output_paths
    reap pod
    → RunResult(output reconstructed from chunks, exit_code, artifacts)
 ```
 
-Liveness is a substrate-silence watchdog: if no chunk arrives for 600 seconds the pod
-is considered dead. There is no wall-clock timeout on the work itself — a live pod runs
-as long as it keeps emitting.
+Dependencies must be baked into the image — the pod has no package-manager access at
+runtime.
 
 ### Usage
 
@@ -159,28 +147,13 @@ Or use the convenience preset (reads `RESOLUTO_LANE_IMAGE` and `RESOLUTO_STORE_K
 Sandbox(backend="k8s", image="<registry>/resoluto-lane:dev").run(...)
 ```
 
-### `RunResult` on k8s
-
-The in-pod runner emits stdout and stderr together as `log` span events, so
-`RunResult.output` carries the merged stream and `RunResult.errors` is always `""`.
-This is intentional, not a dropped field.
-
-`RunResult.reason` carries substrate forensics when a pod is evicted or OOM-killed;
-it is `""` on a normal exit.
-
-Both `output` and `errors` are populated in the same fields as the local backend —
-the conduit is transport; the result shape is uniform.
-
-### Hard limits
-
-- **`stdin` is not supported** — `NotImplementedError` if you pass `stdin=`.
-- **Dependencies must be baked into the image** — the pod has no package manager access
-  at runtime. Put everything your program needs in the image.
-
 ### Optional: egress lockdown
 
-By default, Kata provides kernel isolation but places no restriction on network egress.
-For untrusted code, add `EgressConfig` to apply a default-deny `NetworkPolicy`:
+By default Kata provides kernel isolation but places no restriction on network egress.
+For untrusted code, add `EgressConfig` to apply a default-deny `NetworkPolicy` that
+permits only: the object store (`store_cidr:store_port`), public HTTPS (TCP/443 to
+anywhere — covers the LLM API + git, no fragile FQDN→/32 pinning), and DNS. IMDS
+(`169.254.169.254`) and everything else are denied.
 
 ```python
 import os
@@ -192,11 +165,8 @@ from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
-    egress=EgressConfig(
-        store_cidr="10.0.0.5/32",      # your S3/minio endpoint — CIDR notation only
-        llm_cidr="1.2.3.4/32",         # your LLM provider endpoint
-        git_cidrs=["140.82.112.0/20"], # optional; [] = no git egress
-    ),
+    # EgressConfig.from_store_env() builds this from RESOLUTO_STORE_ENDPOINT.
+    egress=EgressConfig(store_cidr="10.0.0.5/32", store_port=9000),  # store; port default 443
 )
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
@@ -206,26 +176,27 @@ sb = Sandbox(backend=SubstrateBackend(
 ))
 ```
 
-All CIDRs must be in `x.x.x.x/nn` notation — `NetworkPolicy` `ipBlock` does not accept
-hostnames. Resolve FQDNs to CIDRs yourself. IMDS (`169.254.169.254/32`) is always
-blocked regardless of the allowlist.
+> NetworkPolicy is evaluated post-DNAT. If the store is reached via DNAT (a dockerized
+> minio published on the node, a NodePort), allowlist the *real backend* IP:port, not the
+> published endpoint — set `RESOLUTO_STORE_EGRESS_CIDR` (+ `RESOLUTO_STORE_EGRESS_PORT`)
+> and `from_store_env()` honors it. The policy is created before the pod, and the
+> in-guest egress canary briefly retries to absorb the NetworkPolicy controller's
+> programming lag.
 
-See `docs/networking.md` for the full egress reference.
-
----
+`store_cidr` must be `x.x.x.x/nn` — `NetworkPolicy` `ipBlock` does not accept hostnames;
+resolve FQDNs yourself. IMDS (`169.254.169.254/32`) is always blocked regardless of the
+allowlist. See `docs/networking.md` for the full egress reference.
 
 ## Installing the k8s stack
 
-The k8s backend works on **any Kubernetes distribution** — self-hosted (k3s, kind,
-microk8s) or managed (EKS, GKE, AKS). Follow these steps in order.
+The k8s backend works on any Kubernetes distribution — self-hosted (k3s, kind, microk8s)
+or managed (EKS, GKE, AKS). Follow these steps in order.
 
 ### 1. A Kubernetes cluster
 
-Choose any distribution:
-
-- **Self-hosted (local/dev):** [k3s](https://k3s.io), [kind](https://kind.sigs.k8s.io),
+- Self-hosted (local/dev): [k3s](https://k3s.io), [kind](https://kind.sigs.k8s.io),
   [minikube](https://minikube.sigs.k8s.io), [microk8s](https://microk8s.io)
-- **Managed (production):** EKS (AWS), GKE (GCP), AKS (Azure)
+- Managed (production): EKS (AWS), GKE (GCP), AKS (Azure)
 
 The cluster must be reachable from your host via `kubectl`. Confirm:
 
@@ -257,27 +228,25 @@ Verify:
 kubectl get runtimeclass kata
 ```
 
-> Some managed clusters offer Kata as an optional add-on (e.g. GKE Sandbox). Check
-> your provider's documentation before installing from scratch.
+> Some managed clusters offer Kata as an optional add-on (e.g. GKE Sandbox). Check your
+> provider's documentation before installing from scratch.
 
 ### 3. A NetworkPolicy-enforcing CNI (optional)
 
-Only needed if you plan to use `EgressConfig`. Common choices: **Calico**, **Cilium**,
-or **Flannel** with the NetworkPolicy controller.
+Only needed if you plan to use `EgressConfig`. Common choices: Calico, Cilium, or Flannel
+with the NetworkPolicy controller. Many managed clusters (EKS with VPC CNI + Network
+Policy, GKE Dataplane V2, AKS with Azure CNI) support NetworkPolicy natively — check
+whether it needs to be enabled first.
 
-Many managed clusters (EKS with VPC CNI + Network Policy, GKE Dataplane V2, AKS with
-Azure CNI) support NetworkPolicy natively — check whether it needs to be enabled first.
-
-> Without a NetworkPolicy-capable CNI the policy manifest is applied but **silently not
-> enforced**. The egress canary (run in-guest before your workload) is the empirical
-> backstop that detects this.
+> Without a NetworkPolicy-capable CNI the policy manifest is applied but silently not
+> enforced. The egress canary (run in-guest before your workload) detects this.
 
 ### 4. An S3-compatible object store
 
-The host and pods exchange data through a shared object store reachable from **both**
-your host machine and the pods inside the cluster.
+The host and pods exchange data through a shared object store reachable from both your
+host machine and the pods inside the cluster.
 
-**Option A — minio (local/dev):**
+Option A — minio (local/dev):
 
 ```bash
 docker run -d --name minio \
@@ -295,17 +264,13 @@ mc alias set local http://localhost:9000 minioadmin minioadmin
 mc mb local/resoluto
 ```
 
-> The endpoint must be a routable address the pods can reach. `localhost` from the host
-> is NOT reachable inside pods — use the host's LAN IP or a cluster-internal service address.
+> The endpoint must be routable from the pods. `localhost` from the host is not reachable
+> inside pods — use the host's LAN IP or a cluster-internal service address.
 
-**Option B — cloud S3:**
-
-Create a bucket on AWS S3 (or any S3-compatible provider). Set the bucket policy to
-allow the credentials you will export below.
+Option B — cloud S3: create a bucket on AWS S3 (or any S3-compatible provider) and set
+the bucket policy to allow the credentials you export below.
 
 ### 5. Build and push a provider image
-
-Build the image and push it to a registry the cluster can pull from:
 
 ```bash
 resoluto-sandbox image build --provider claude --context ..
@@ -343,8 +308,8 @@ export AWS_SECRET_ACCESS_KEY=<your-secret>
 
 Replace all `<placeholders>` with your real values. Do not commit secrets.
 
-`RESOLUTO_SANDBOX_KUBECONTEXT` is required — the backend fails closed if it is unset
-(to prevent accidentally targeting the wrong cluster). Use
+`RESOLUTO_SANDBOX_KUBECONTEXT` is required — the backend fails closed if it is unset, to
+prevent accidentally targeting the wrong cluster. Use
 `RESOLUTO_SANDBOX_ALLOW_AMBIENT_CONTEXT=1` only in carefully controlled environments.
 
 ### 7. Smoke test
@@ -374,8 +339,6 @@ assert result.ok
 If the run hangs, check that the pod can reach the store endpoint (`kubectl logs -n
 resoluto-sandboxes <pod-name>`) and that `RESOLUTO_SANDBOX_KUBECONTEXT` points at the
 right cluster.
-
----
 
 ## Adding another backend
 

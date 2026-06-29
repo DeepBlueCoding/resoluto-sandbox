@@ -1,14 +1,4 @@
-"""Runtime-agnostic substrate backend.
-
-ONE backend that runs the program in an isolated sandbox via the injected
-`SandboxRuntime` (Docker locally, a Kata pod on k8s) and the store-mediated
-`drive_node` loop. The runtime, the host-side `Conduit`, the image, and the
-in-sandbox store env are all injected — the backend itself is platform-agnostic.
-
-`RunResult.output` carries the runner's MERGED stdout+stderr (the in-sandbox runner
-emits both as `log` span events), so `RunResult.errors` is empty by design — the
-divergence from a bare subprocess is intentional, not a dropped field.
-"""
+"""Runtime-agnostic substrate backend that runs a program in an injected sandbox."""
 from __future__ import annotations
 
 import asyncio
@@ -35,14 +25,7 @@ def _append_log_event(ev, out_lines: list[str], sink) -> None:
 
 
 class SubstrateBackend(Backend):
-    """Runs the program in a sandbox via an injected runtime + conduit + store env.
-
-    runtime:   the SandboxRuntime that launches/reaps the sandbox (Docker / k8s).
-    conduit:   the host-side Conduit the orchestrator tails (localfs / S3).
-    image:     the sandbox image (must contain python + the resoluto-sandbox wheel).
-    store_env: the RESOLUTO_STORE_* the in-sandbox runner needs to reconstruct the
-               SAME conduit (e.g. localfs+mount path for Docker, S3 vars for k8s).
-    """
+    """Runs a program in a sandbox via an injected runtime, conduit, image, and store env."""
 
     def __init__(
         self,
@@ -83,10 +66,7 @@ class SubstrateBackend(Backend):
         output_paths: Sequence[str] | None,
         stream: IO[str] | None,
     ) -> RunResult:
-        """Launch a sandbox via drive_node, stage workspace in, fetch artifacts out.
-
-        Output artifacts are extracted into the provided ``workspace`` dir (in place);
-        the caller's workspace is mutated by collected outputs."""
+        """Launch a sandbox via drive_node, stage workspace in, fetch artifacts out into ``workspace``."""
         from resoluto_sandbox.contracts import SandboxLaunchSpec
         from resoluto_sandbox.driver import drive_node
         from resoluto_sandbox.staging import fetch_outputs, put_dir
@@ -114,8 +94,6 @@ class SubstrateBackend(Backend):
             flavor="plain",
             env=pod_env,
             args=["python", "-m", "resoluto_sandbox.runner_main"],
-            # The one-shot Sandbox API exposes no resource knob; set an explicit default here so no
-            # production producer relies on the spec's value-object default (fail-loud everywhere else).
             resources=Resources.from_quantities(memory="4Gi", cpu="2"),
             store_prefix=prefix,
             labels={"resoluto.run_id": run_id, "resoluto.node_id": node_id},
@@ -149,27 +127,13 @@ class SubstrateBackend(Backend):
 
 
 def store_env_for_pod(environ: "os._Environ[str] | dict[str, str]") -> dict[str, str]:
-    """Select the store env the untrusted k8s pod is allowed to inherit.
-
-    Forwards RESOLUTO_STORE_* and RESOLUTO_TRUSTED_LOCAL. Host AWS_* creds are
-    NOT forwarded unless trusted-local (dev only) — the pod should authenticate to
-    the store via the prefix-scoped RESOLUTO_STORE_WRITE_TOKEN.
-    """
-    selected: dict[str, str] = {}
-    aws: dict[str, str] = {}
-    for k, v in environ.items():
-        if k.startswith("RESOLUTO_STORE_") or k == "RESOLUTO_TRUSTED_LOCAL":
-            selected[k] = v
-        elif k.startswith("AWS_"):
-            aws[k] = v
+    """Select the RESOLUTO_STORE_* env the sandbox may inherit; host AWS creds are never forwarded."""
+    selected = {k: v for k, v in environ.items() if k.startswith("RESOLUTO_STORE_")}
     if selected.get("RESOLUTO_STORE_WRITE_TOKEN"):
         return selected
-    if not aws:
-        return selected
-    if not environ.get("RESOLUTO_TRUSTED_LOCAL"):
+    if any(k.startswith("AWS_") for k in environ) and selected.get("RESOLUTO_STORE_KIND") == "s3":
         raise RuntimeError(
-            "backend='k8s' needs a scoped RESOLUTO_STORE_WRITE_TOKEN, or set "
-            "RESOLUTO_TRUSTED_LOCAL=1 to forward host AWS creds (dev only)"
+            "the sandbox needs a scoped RESOLUTO_STORE_WRITE_TOKEN for an s3 store — "
+            "host AWS creds are never forwarded (no trusted-local bypass)."
         )
-    selected.update(aws)
     return selected

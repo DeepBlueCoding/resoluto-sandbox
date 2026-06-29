@@ -1,7 +1,4 @@
-"""A write-only Conduit that prints telemetry to a stream (the local default).
-
-Inputs are read from the workspace in place, so get/list/copy are unsupported —
-this conduit exists only to surface events/results live on stdout."""
+"""A write-only Conduit that prints telemetry to a stream."""
 from __future__ import annotations
 import sys
 from typing import IO

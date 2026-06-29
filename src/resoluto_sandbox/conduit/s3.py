@@ -1,9 +1,4 @@
-"""S3Conduit — the portable middle (minio locally, S3/any-S3-API in cloud).
-
-The bucket is the store root; keys are full object keys (parity with LocalConduit).
-A prefix-scoped, write-only, expiring credential is supplied to the sandbox;
-the orchestrator-side reader uses fuller creds. Lazy aioboto3 import
-(behind the [s3] extra)."""
+"""S3-backed Conduit (minio or any S3-compatible store)."""
 from __future__ import annotations
 
 import json
@@ -13,8 +8,7 @@ from resoluto_sandbox.contracts import Conduit, ConduitError, ObjectInfo
 
 
 def _is_infra_error(exc: BaseException) -> bool:
-    """True for substrate/transport failures (S3 ClientError incl. storage-full,
-    botocore, connection/OS errors) — as opposed to ordinary application errors."""
+    """True for transport/storage failures rather than ordinary application errors."""
     try:
         from botocore.exceptions import BotoCoreError, ClientError
         if isinstance(exc, (BotoCoreError, ClientError)):
@@ -25,10 +19,7 @@ def _is_infra_error(exc: BaseException) -> bool:
 
 
 def _build_scoped_policy(bucket: str, prefix: str) -> str:
-    """Build an IAM policy JSON scoped to <bucket>/<prefix>/*: object read/write PLUS
-    prefix-scoped ListBucket. ListBucket is required because the sandbox's stage_inputs
-    lists `<prefix>/inbox/` (ListObjectsV2) before fetching — without it the pod gets
-    AccessDenied and crashes before shipping any telemetry (a silent lane death)."""
+    """Build an IAM policy JSON scoped to <bucket>/<prefix>/* with prefix-scoped ListBucket."""
     return json.dumps({
         "Version": "2012-10-17",
         "Statement": [
@@ -118,27 +109,17 @@ class S3Conduit(Conduit):
 
         if self._session is None:
             self._session = aioboto3.Session()
-        # A 20-min lane is tailed by polling this store every few seconds; a
-        # transient connection blip under load must be absorbed, not abort the
-        # drive (liveness is time-bounded by the death-window, not by one
-        # failed read). Standard mode retries the connection-error family with
-        # backoff; bounded timeouts fail a hung socket fast so the retry fires.
         cfg = Config(
             retries={"max_attempts": 10, "mode": "standard"},
             connect_timeout=10,
             read_timeout=30,
         )
-        # aioboto3 clients are async context managers — one per call (robust;
-        # avoids a long-lived connection, consistent with the no-stream principle).
         kwargs = {k: v for k, v in self._client_kwargs.items() if v is not None}
         return self._session.client("s3", config=cfg, **kwargs)
 
     @asynccontextmanager
     async def _io(self):
-        """Open a client and translate transport failures into a typed
-        ConduitError (substrate-native), so the worker can fail the run fast
-        with the real cause (e.g. minio storage-full) instead of leaking a raw
-        botocore traceback that gets misclassified as an agent failure."""
+        """Open a client and translate transport failures into a typed ConduitError."""
         try:
             async with self._client() as c:
                 yield c
@@ -148,8 +129,7 @@ class S3Conduit(Conduit):
             raise
 
     async def aclose(self) -> None:
-        """Drop the cached session so a stale one isn't reused after teardown.
-        (Clients are per-call async context managers, closed on exit.)"""
+        """Drop the cached session so a stale one isn't reused after teardown."""
         self._session = None
 
     async def put(self, key: str, data: bytes) -> None:
@@ -180,9 +160,6 @@ class S3Conduit(Conduit):
         return out
 
     async def copy_prefix(self, src_prefix: str, dst_prefix: str) -> int:
-        # Server-side CopyObject — the bytes never round-trip through the host
-        # (the ~184MB/lane worktree stays in the store). Single-part copy caps at
-        # 5GB/object; lane payloads are well under, so no multipart needed.
         src, dst = src_prefix.rstrip("/"), dst_prefix.rstrip("/")
         objs = await self.list_prefix(src)
         async with self._io() as c:
@@ -196,7 +173,7 @@ class S3Conduit(Conduit):
         return len(objs)
 
     async def ensure_bucket(self) -> None:
-        """Dev convenience — create the bucket if absent (minio/local)."""
+        """Create the bucket if absent."""
         from botocore.exceptions import ClientError
 
         async with self._client() as c:
