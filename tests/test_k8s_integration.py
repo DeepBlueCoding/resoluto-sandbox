@@ -5,6 +5,7 @@ Excluded by default (addopts -m 'not integration'). Requires ~/.kube/config
 pointing at k3s and the `kata` RuntimeClass + the docker:27-dind image imported.
 """
 import asyncio
+import os
 import platform
 
 import pytest
@@ -14,6 +15,9 @@ from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
 
 IMAGE = "docker.io/library/docker:27-dind"
 NS = "resoluto-itest"
+# Pin the local k3s context — the runtime refuses the ambient context (which may be a remote
+# AKS cluster) to avoid launching adversarial lane pods on the wrong cluster.
+KUBECONTEXT = os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT", "default")
 
 
 def _spec(run_id="itest", node_id="n1", args=None):
@@ -43,7 +47,7 @@ async def _wait_terminal(rt, handle, tries=80):
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_kata_pod_lifecycle(dind_image):
-    rt = K8sSandboxRuntime(namespace=NS, image_pull_policy="Never")
+    rt = K8sSandboxRuntime(namespace=NS, image_pull_policy="Never", context=KUBECONTEXT)
     handle = await rt.launch(_spec())
     try:
         st = await _wait_terminal(rt, handle)
@@ -61,7 +65,7 @@ async def test_kata_pod_lifecycle(dind_image):
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_sweep_by_label(dind_image):
-    rt = K8sSandboxRuntime(namespace=NS, image_pull_policy="Never")
+    rt = K8sSandboxRuntime(namespace=NS, image_pull_policy="Never", context=KUBECONTEXT)
     try:
         await rt.launch(_spec(run_id="sweepme", node_id="a", args=["sleep 120"]))
         await rt.launch(_spec(run_id="sweepme", node_id="b", args=["sleep 120"]))

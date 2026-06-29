@@ -37,6 +37,16 @@ def test_dind_tmpfs_emits_memory_medium():
     assert graph_vol["emptyDir"]["sizeLimit"] == str(parse_quantity("16Gi"))
 
 
+def test_dind_tmpfs_omits_sizelimit_when_graph_unset():
+    # A dind spec with no dind_graph size must NOT render sizeLimit:"None" (the literal string),
+    # which k8s rejects as an invalid quantity (BadRequest). Omit it instead.
+    rt = K8sSandboxRuntime(graph_backend="tmpfs")
+    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n", flavor="dind")
+    graph_vol = next(v for v in rt._manifest(spec, "sbx")["spec"]["volumes"] if v["name"] == "docker-graph")
+    assert graph_vol["emptyDir"]["medium"] == "Memory"
+    assert "sizeLimit" not in graph_vol["emptyDir"]  # never the string "None"
+
+
 def test_dind_block_emits_no_medium():
     # block backend + its sizeLimit are k8s-runtime config now, not spec fields.
     rt = K8sSandboxRuntime(graph_backend="block", graph_block_size="50Gi")

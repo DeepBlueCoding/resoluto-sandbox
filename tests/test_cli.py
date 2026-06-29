@@ -7,7 +7,7 @@ from resoluto_sandbox.cli import main
 @pytest.mark.integration
 def test_run_streams_and_returns_exit_code(capsys):
     rc = main([
-        "run", "--backend", "local", "--image", "resoluto-sandbox-base:0.1.0",
+        "run", "--backend", "local", "--image", "localhost:5000/resoluto-lane:dev",
         "--", "python", "-c", "print('cli-ok')",
     ])
     out = capsys.readouterr().out
@@ -18,7 +18,7 @@ def test_run_streams_and_returns_exit_code(capsys):
 @pytest.mark.integration
 def test_run_propagates_nonzero(capsys):
     rc = main([
-        "run", "--backend", "local", "--image", "resoluto-sandbox-base:0.1.0",
+        "run", "--backend", "local", "--image", "localhost:5000/resoluto-lane:dev",
         "--", "python", "-c", "import sys; sys.exit(7)",
     ])
     assert rc == 7

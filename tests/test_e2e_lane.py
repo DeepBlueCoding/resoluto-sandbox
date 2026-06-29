@@ -11,6 +11,7 @@ Run:  uv run pytest -m integration tests/test_e2e_lane.py
 Needs: live k3s+Kata, the resoluto-sandbox-runner:dev image imported into k3s
 containerd, and spike-minio on the host (0.0.0.0:9100, minioadmin/minioadmin).
 """
+import os
 import platform
 import subprocess
 import uuid
@@ -25,13 +26,22 @@ from resoluto_sandbox import (
     put_dir,
 )
 from resoluto_sandbox.conduit.s3 import S3Conduit
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
+from resoluto_sandbox.runtime.k8s import EgressConfig, K8sSandboxRuntime
+
+# These drive a FRESH runner image whose in-guest egress canary is always-on (the trusted-local
+# bypass was removed). They therefore require a CNI that actually ENFORCES the lane's egress
+# NetworkPolicy. This dev box (k3s + Flannel; kube-router netpol non-functional for egress) does
+# NOT, so the fail-closed canary correctly refuses — external egress is genuinely open here. The
+# store-mediated host→pod→minio→reap loop itself is proven GREEN by scripts/store-backend-canary.py.
+# Run these on an egress-enforcing cluster (Calico/Cilium).
+pytestmark = pytest.mark.skip(reason="needs a CNI that enforces egress NetworkPolicy (this k3s+Flannel box does not)")
 
 RUNNER_IMAGE = "docker.io/library/resoluto-sandbox-runner:dev"
 NS = "resoluto-e2e"
 HOST_ENDPOINT = "http://localhost:9100"       # host-side reader → minio
 POD_ENDPOINT = "http://192.168.1.197:9100"    # in-pod runner → minio (k3s node IP)
 MINIO_KEY = "minioadmin"
+KUBECONTEXT = os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT", "default")  # pin local k3s, not ambient AKS
 
 
 @pytest.mark.integration
@@ -68,12 +78,12 @@ async def test_real_kata_lane_store_mediated_loop(runner_image):
         },
     )
 
-    runtime = K8sSandboxRuntime(namespace=NS, image_pull_policy="Never")
+    runtime = K8sSandboxRuntime(namespace=NS, image_pull_policy="Never", context=KUBECONTEXT, egress=EgressConfig.from_store_env())
     pool = SandboxPool(runtime, max_concurrent=1)
     seen = []
     try:
         result = await drive_node(
-            pool, store, spec, on_event=seen.append,
+            runtime, store, spec, admit=pool, on_event=seen.append,
             poll_interval_s=3.0, dead_after_s=240.0,
         )
     finally:
@@ -147,11 +157,12 @@ async def test_real_repo_stages_in_and_diff_comes_back_out(tmp_path, runner_imag
         },
     )
 
-    runtime = K8sSandboxRuntime(namespace=NS, image_pull_policy="Never")
+    runtime = K8sSandboxRuntime(namespace=NS, image_pull_policy="Never", context=KUBECONTEXT, egress=EgressConfig.from_store_env())
     pool = SandboxPool(runtime, max_concurrent=1)
     seen = []
     try:
-        result = await drive_node(pool, store, spec, on_event=seen.append, poll_interval_s=3.0, dead_after_s=240.0)
+        result = await drive_node(
+            runtime, store, spec, admit=pool, on_event=seen.append, poll_interval_s=3.0, dead_after_s=240.0)
     finally:
         await runtime.close()
 

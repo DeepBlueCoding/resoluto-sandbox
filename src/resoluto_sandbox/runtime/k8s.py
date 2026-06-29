@@ -264,10 +264,10 @@ class K8sSandboxRuntime(SandboxRuntime):
                      "emptyDir": {"sizeLimit": self._graph_block_size}}
                 )
             else:
-                volumes.append(
-                    {"name": "docker-graph",
-                     "emptyDir": {"medium": "Memory", "sizeLimit": str(res.dind_graph_bytes)}}
-                )
+                graph_empty_dir: dict = {"medium": "Memory"}
+                if res.dind_graph_bytes is not None:
+                    graph_empty_dir["sizeLimit"] = str(res.dind_graph_bytes)
+                volumes.append({"name": "docker-graph", "emptyDir": graph_empty_dir})
 
         pod_spec: dict = {
             "runtimeClassName": self._runtime_class or None,

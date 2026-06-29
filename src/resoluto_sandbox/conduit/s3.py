@@ -7,11 +7,23 @@ from contextlib import asynccontextmanager
 from resoluto_sandbox.contracts import Conduit, ConduitError, ObjectInfo
 
 
+# Permanent authorization/authentication denials — NOT transient transport failures. These must
+# propagate as the raw ClientError (e.g. a scoped-credential cross-prefix write being denied), not
+# be masked as a retryable "object store I/O failed".
+_AUTH_ERROR_CODES = frozenset({
+    "AccessDenied", "AccessDeniedException", "InvalidAccessKeyId", "SignatureDoesNotMatch",
+    "ExpiredToken", "ExpiredTokenException", "InvalidToken", "UnauthorizedAccess",
+})
+
+
 def _is_infra_error(exc: BaseException) -> bool:
-    """True for transport/storage failures rather than ordinary application errors."""
+    """True for transport/storage failures rather than ordinary application or authorization errors."""
     try:
         from botocore.exceptions import BotoCoreError, ClientError
-        if isinstance(exc, (BotoCoreError, ClientError)):
+        if isinstance(exc, ClientError):
+            code = exc.response.get("Error", {}).get("Code", "")
+            return code not in _AUTH_ERROR_CODES
+        if isinstance(exc, BotoCoreError):
             return True
     except Exception:
         pass
