@@ -4,12 +4,25 @@ from __future__ import annotations
 import asyncio
 import time
 from pathlib import Path
-from typing import Callable
+from typing import TYPE_CHECKING, Awaitable, Callable
 
 from resoluto_sandbox.contracts import Conduit, NodeResult
 from resoluto_sandbox.spans import SpanEmitter
 from resoluto_sandbox.staging import collect_outputs, stage_inputs
 from resoluto_sandbox.telemetry import ChunkShipper, result_key
+
+if TYPE_CHECKING:
+    from resoluto_sandbox.egress_canary import CanaryVerdict
+
+CanaryRunner = Callable[[Conduit, str], Awaitable["CanaryVerdict"]]
+
+
+def _default_canary(probe_host: str, probe_port: int) -> CanaryRunner:
+    """Bind the real egress canary to its probe target as a (store, prefix) -> CanaryVerdict callable."""
+    async def _run(store: Conduit, prefix: str) -> "CanaryVerdict":
+        from resoluto_sandbox.egress_canary import run_egress_canary
+        return await run_egress_canary(store, prefix, probe_host=probe_host, probe_port=probe_port)
+    return _run
 
 
 async def _heartbeat(shipper: ChunkShipper, interval_s: float) -> None:
@@ -45,38 +58,30 @@ async def run_node_in_sandbox(
     cleanup_argv: list[str] | None = None,
     heartbeat_interval_s: float = 5.0,
     clock: Callable[[], float] = time.time,
-    skip_egress_canary: bool = False,
     canary_probe_host: str = "1.1.1.1",
     canary_probe_port: int = 80,
+    run_canary: CanaryRunner | None = None,
 ) -> NodeResult:
-    """Run one node's workload (with optional setup/cleanup hooks and input/output staging), self-report telemetry to the store, and return the NodeResult (also written to `<prefix>/result.json`)."""
+    """Run one node's workload (with optional setup/cleanup hooks and input/output staging), self-report telemetry to the store, and return the NodeResult (also written to `<prefix>/result.json`). `run_canary` overrides the egress-isolation canary (tests inject a stub); the canary always runs."""
     shipper = ChunkShipper(store, prefix, clock=clock)
     em = SpanEmitter(shipper, run_id, clock=clock)
     hb = asyncio.ensure_future(_heartbeat(shipper, heartbeat_interval_s))
     result = NodeResult(node_id=node_id)
+    canary = run_canary or _default_canary(canary_probe_host, canary_probe_port)
     try:
         async with em.span("", "node", node_id, inputs={"argv": workload_argv}) as node_sid:
-            canary_ok = True
-            if skip_egress_canary:
-                await em.log(node_sid, "egress canary skipped (trusted-local)")
-            else:
-                from resoluto_sandbox.egress_canary import run_egress_canary
-                async with em.span(node_sid, "egress_canary", "egress_canary") as canary_sid:
-                    verdict = await run_egress_canary(
-                        store, prefix,
-                        probe_host=canary_probe_host,
-                        probe_port=canary_probe_port,
+            async with em.span(node_sid, "egress_canary", "egress_canary") as canary_sid:
+                verdict = await canary(store, prefix)
+                for r in verdict.results:
+                    await em.log(
+                        canary_sid,
+                        f"probe {r.target}: passed={r.passed} "
+                        f"(expected_reachable={r.expected_reachable}, actual={r.actual_reachable})",
                     )
-                    for r in verdict.results:
-                        await em.log(
-                            canary_sid,
-                            f"probe {r.target}: passed={r.passed} "
-                            f"(expected_reachable={r.expected_reachable}, actual={r.actual_reachable})",
-                        )
-                    if not verdict.passed:
-                        result.status = "failure"
-                        result.reason = verdict.reason
-                        canary_ok = False
+                canary_ok = verdict.passed
+                if not verdict.passed:
+                    result.status = "failure"
+                    result.reason = verdict.reason
 
             if canary_ok:
                 if workspace_dir is not None:

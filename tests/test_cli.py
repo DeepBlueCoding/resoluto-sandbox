@@ -1,5 +1,6 @@
 import pytest
 
+import resoluto_sandbox.cli as cli
 from resoluto_sandbox.cli import main
 
 
@@ -23,20 +24,35 @@ def test_run_propagates_nonzero(capsys):
     assert rc == 7
 
 
-def test_run_without_program_is_usage_error(capsys):
-    rc = main(["run", "--backend", "local"])
+@pytest.mark.parametrize(
+    "argv, err_contains",
+    [
+        (["run", "--backend", "local"], None),                                   # no program
+        (["run", "--backend", "local", "junk", "--", "python", "-c", "x"],       # stray args
+         "unexpected arguments before '--'"),
+    ],
+)
+def test_run_usage_errors(capsys, argv, err_contains):
+    rc = main(argv)
     assert rc == 2
+    if err_contains:
+        assert err_contains in capsys.readouterr().err
 
 
-def test_doctor_returns_zero(capsys):
+def test_doctor_reports_ready_and_exits_zero(monkeypatch, capsys):
+    monkeypatch.setattr(cli.os.path, "exists", lambda p: True)
+    monkeypatch.setattr(cli.shutil, "which", lambda x: f"/usr/bin/{x}")
     rc = main(["doctor"])
     out = capsys.readouterr().out
     assert rc == 0
-    assert "docker" in out.lower() or "uv" in out.lower()
+    assert "local: /dev/kvm" in out and "[OK]" in out
 
 
-def test_run_stray_args_before_dashdash_is_usage_error(capsys):
-    rc = main(["run", "--backend", "local", "junk", "--", "python", "-c", "print(1)"])
-    assert rc == 2
+def test_doctor_exits_nonzero_when_local_backend_not_ready(monkeypatch, capsys):
+    # no kvm, no nerdctl, no dedicated containerd → critical checks MISSING
+    monkeypatch.setattr(cli.os.path, "exists", lambda p: False)
+    monkeypatch.setattr(cli.shutil, "which", lambda x: None)
+    rc = main(["doctor"])
     err = capsys.readouterr().err
-    assert "unexpected arguments before '--'" in err
+    assert rc == 1
+    assert "local backend NOT ready" in err

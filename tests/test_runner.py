@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from canary_stub import pass_canary
 from resoluto_sandbox.contracts import NodeResult
 from resoluto_sandbox.conduit import LocalConduit
 from resoluto_sandbox.runner import run_node_in_sandbox
@@ -22,7 +23,7 @@ async def test_runner_ships_spans_logs_and_result(store):
         run_id="r1",
         node_id="compile",
         workload_argv=["sh", "-c", "echo hello; echo world"],
-        skip_egress_canary=True,
+        run_canary=pass_canary,
     )
 
     assert (result.node_id, result.status, result.exit_code) == ("compile", "success", 0)
@@ -49,7 +50,7 @@ async def test_cleanup_hook_always_runs_even_on_workload_failure(store, tmp_path
         store=store, prefix=prefix, run_id="r1", node_id="gate",
         workload_argv=["sh", "-c", "echo working; exit 3"],
         cleanup_argv=["sh", "-c", f"echo pruning; touch {marker}"],
-        skip_egress_canary=True,
+        run_canary=pass_canary,
     )
 
     # workload verdict is preserved; cleanup ran regardless and is observable
@@ -69,7 +70,7 @@ async def test_setup_hook_failure_aborts_node_before_workload(store, tmp_path):
         store=store, prefix=prefix, run_id="r1", node_id="staged",
         setup_argv=["sh", "-c", "echo bad-setup; exit 2"],
         workload_argv=["sh", "-c", f"touch {ran}"],
-        skip_egress_canary=True,
+        run_canary=pass_canary,
     )
 
     assert result.status == "failure"
@@ -81,7 +82,7 @@ async def test_runner_nonzero_exit_marks_failure_but_still_reports(store):
     result = await run_node_in_sandbox(
         store=store, prefix=prefix, run_id="r1", node_id="boom",
         workload_argv=["sh", "-c", "echo dying; exit 7"],
-        skip_egress_canary=True,
+        run_canary=pass_canary,
     )
 
     assert (result.node_id, result.status, result.exit_code) == ("boom", "failure", 7)
@@ -132,16 +133,15 @@ async def test_canary_fail_aborts_workload_and_sets_reason(store, tmp_path):
     assert not ran.exists()  # workload never ran
 
 
-async def test_skip_egress_canary_bypasses_probes_and_logs_skip(store):
-    prefix = "run/r2/nodes/canary-skip"
+async def test_injected_canary_runs_and_emits_its_span(store):
+    prefix = "run/r2/nodes/canary-inject"
     result = await run_node_in_sandbox(
-        store=store, prefix=prefix, run_id="r2", node_id="canary-skip",
+        store=store, prefix=prefix, run_id="r2", node_id="canary-inject",
         workload_argv=["sh", "-c", "echo ok"],
-        skip_egress_canary=True,
+        run_canary=pass_canary,
     )
 
     assert result.status == "success"
+    # the canary always runs (there is no production bypass); the stub just skips real probes
     events = await ChunkReader(store, prefix).poll()
-    logs = [e.data.get("line", "") for e in events if e.event == "log"]
-    assert any("egress canary skipped" in line for line in logs)
-    assert not any(e.kind == "egress_canary" for e in events)
+    assert any(e.kind == "egress_canary" for e in events)

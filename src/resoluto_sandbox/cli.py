@@ -70,25 +70,34 @@ def _cmd_run(args: argparse.Namespace, rest: list[str]) -> int:
     return result.exit_code
 
 
-def _cmd_doctor() -> int:
-    """Print a readiness report for the sandbox backends. Returns 0."""
+def _doctor_checks() -> list[tuple[str, bool, bool, str]]:
+    """Readiness checks as (label, ok, critical, note); critical checks gate the exit code."""
     nerdctl = os.environ.get("RESOLUTO_LOCAL_NERDCTL", "/opt/resoluto-local/bin/nerdctl")
     sock = os.environ.get("RESOLUTO_LOCAL_CONTAINERD_ADDRESS",
                           "/run/resoluto-local/containerd/containerd.sock")
-    checks = [
-        ("local: /dev/kvm", os.path.exists("/dev/kvm"), "Kata microVMs need KVM"),
-        ("local: nerdctl", shutil.which(nerdctl) is not None or os.path.exists(nerdctl),
+    return [
+        ("local: /dev/kvm", os.path.exists("/dev/kvm"), True, "Kata microVMs need KVM"),
+        ("local: nerdctl", shutil.which(nerdctl) is not None or os.path.exists(nerdctl), True,
          "container client for the local backend"),
-        ("local: dedicated containerd", os.path.exists(sock),
+        ("local: dedicated containerd", os.path.exists(sock), True,
          f"run scripts/local-backend-up.sh ({sock})"),
-        ("uv", shutil.which("uv") is not None, "useful for running Python programs"),
-        ("docker", shutil.which("docker") is not None, "only needed to build images"),
-        ("k8s: RESOLUTO_SANDBOX_KUBECONTEXT", "RESOLUTO_SANDBOX_KUBECONTEXT" in os.environ,
+        ("uv", shutil.which("uv") is not None, False, "useful for running Python programs"),
+        ("docker", shutil.which("docker") is not None, False, "only needed to build images"),
+        ("k8s: RESOLUTO_SANDBOX_KUBECONTEXT", "RESOLUTO_SANDBOX_KUBECONTEXT" in os.environ, False,
          "pinned kube context for the k8s backend"),
     ]
-    for label, ok, note in checks:
-        status = "OK" if ok else "MISSING"
+
+
+def _cmd_doctor() -> int:
+    """Print a local-backend readiness report. Returns 1 if any critical check is MISSING, else 0."""
+    checks = _doctor_checks()
+    for label, ok, critical, note in checks:
+        status = "OK" if ok else ("MISSING" if critical else "absent")
         print(f"[{status}] {label}  ({note})")
+    missing = [label for label, ok, critical, _ in checks if critical and not ok]
+    if missing:
+        print(f"local backend NOT ready — missing: {', '.join(missing)}", file=sys.stderr)
+        return 1
     return 0
 
 

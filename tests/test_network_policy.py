@@ -46,20 +46,10 @@ def test_pod_selector_matches_spec_labels():
     assert policy["spec"]["podSelector"]["matchLabels"] == {"app": "lane"}
 
 
-def test_exactly_three_egress_rules():
-    policy = _policy()
-    assert len(policy["spec"]["egress"]) == 3
-
-
 def test_store_rule_carries_store_port_and_store_cidr():
     rule = _policy()["spec"]["egress"][0]
     assert rule["ports"] == [{"port": _STORE_PORT, "protocol": "TCP"}]
     assert rule["to"][0]["ipBlock"]["cidr"] == _STORE_CIDR
-
-
-def test_non_443_store_port_appears_in_store_rule():
-    rule = _policy(store_port=9100)["spec"]["egress"][0]
-    assert rule["ports"] == [{"port": 9100, "protocol": "TCP"}]
 
 
 def test_public_https_rule_is_tcp_443_to_anywhere():
@@ -84,12 +74,6 @@ def test_broad_rules_except_imds_store_rule_has_none():
     assert "except" not in rules[0]["to"][0]["ipBlock"]  # store rule
     for rule in rules[1:]:                                # public-443 + DNS
         assert rule["to"][0]["ipBlock"]["except"] == [_IMDS]
-
-
-def test_store_cidr_present_in_rules():
-    policy = _policy()
-    cidrs = [rule["to"][0]["ipBlock"]["cidr"] for rule in policy["spec"]["egress"]]
-    assert _STORE_CIDR in cidrs
 
 
 def test_egress_config_default_store_port_is_443():

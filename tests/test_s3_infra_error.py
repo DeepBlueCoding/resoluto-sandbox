@@ -1,5 +1,6 @@
 """S3Conduit translates transport failures (e.g. minio storage-full) into a
-typed ConduitError so the engine can fail the run fast with the real cause."""
+typed ConduitError so the engine can fail the run fast with the real cause —
+while ordinary application errors pass through unreclassified."""
 import pytest
 
 from resoluto_sandbox.contracts import ConduitError
@@ -25,39 +26,31 @@ class _FakeCM:
         return False
 
 
-@pytest.mark.asyncio
-async def test_put_wraps_clienterror_as_infrastructure_error(monkeypatch):
+def _client_error():
     from botocore.exceptions import ClientError
-    exc = ClientError(
+    return ClientError(
         {"Error": {"Code": "XMinioStorageFull", "Message": "min free drive threshold"}},
         "PutObject",
     )
+
+
+@pytest.mark.parametrize(
+    "make_exc, expected, must_contain",
+    [
+        (_client_error, ConduitError, ["object store I/O failed", "XMinioStorageFull"]),
+        (lambda: ConnectionError("refused"), ConduitError, []),
+        (lambda: ValueError("bug"), ValueError, []),  # application error is NOT reclassified
+    ],
+)
+async def test_put_reclassifies_only_transport_failures(monkeypatch, make_exc, expected, must_contain):
     store = S3Conduit("lanes")
-    monkeypatch.setattr(store, "_client", lambda: _FakeCM(exc))
-
-    with pytest.raises(ConduitError) as ei:
+    monkeypatch.setattr(store, "_client", lambda: _FakeCM(make_exc()))
+    with pytest.raises(expected) as ei:
         await store.put("k", b"data")
-    assert "object store I/O failed" in str(ei.value)
-    assert "XMinioStorageFull" in str(ei.value)
+    for fragment in must_contain:
+        assert fragment in str(ei.value)
 
 
-@pytest.mark.asyncio
-async def test_put_wraps_connection_error_as_infrastructure_error(monkeypatch):
-    store = S3Conduit("lanes")
-    monkeypatch.setattr(store, "_client", lambda: _FakeCM(ConnectionError("refused")))
-    with pytest.raises(ConduitError):
-        await store.put("k", b"data")
-
-
-@pytest.mark.asyncio
-async def test_non_infra_error_is_not_reclassified(monkeypatch):
-    store = S3Conduit("lanes")
-    monkeypatch.setattr(store, "_client", lambda: _FakeCM(ValueError("bug")))
-    with pytest.raises(ValueError):
-        await store.put("k", b"data")
-
-
-@pytest.mark.asyncio
 async def test_aclose_is_safe():
     store = S3Conduit("lanes")
     await store.aclose()  # no session yet → no-op, must not raise

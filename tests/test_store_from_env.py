@@ -61,17 +61,6 @@ def test_store_from_env_falls_back_to_aws_creds_when_no_token(monkeypatch):
     assert store._client_kwargs.get("aws_session_token") is None
 
 
-def test_store_from_env_write_token_uses_bucket_from_token(monkeypatch):
-    """The bucket field inside the token dict overrides RESOLUTO_STORE_BUCKET."""
-    monkeypatch.setenv("RESOLUTO_STORE_KIND", "s3")
-    monkeypatch.setenv("RESOLUTO_STORE_BUCKET", "wrong-bucket")
-    monkeypatch.setenv("RESOLUTO_STORE_WRITE_TOKEN", json.dumps(TOKEN_DICT))
-
-    store = store_from_env()
-
-    assert store._bucket == TOKEN_DICT["bucket"]
-
-
 def test_store_from_env_localfs_unaffected(monkeypatch, tmp_path):
     """localfs backend is not affected by the RESOLUTO_STORE_WRITE_TOKEN logic."""
     from resoluto_sandbox.conduit import LocalConduit

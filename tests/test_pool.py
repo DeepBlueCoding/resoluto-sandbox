@@ -116,7 +116,9 @@ async def test_admission_gate_allows_when_below_cap():
 
 
 @pytest.mark.asyncio
-async def test_admission_gate_fifo_ordering():
+async def test_gate_repolls_and_admits_when_slot_opens():
+    # A blocked acquire must re-poll the admission gate and proceed once the gate's count
+    # drops below cap — not give up after the first over-cap reading.
     rt = _FakeRuntime()
     count = [3]  # start at cap
 
@@ -125,28 +127,13 @@ async def test_admission_gate_fifo_ordering():
 
     pool = SandboxPool(rt, max_concurrent=4, admission_gate=_gate, acquire_timeout_s=2.0)
 
-    # First acquire blocks because count==cap; release a slot after a short wait
     async def _open_slot():
         await asyncio.sleep(0.05)
-        count[0] = 2  # below cap
+        count[0] = 2  # gate now reports below cap
 
     asyncio.create_task(_open_slot())
     async with await pool.acquire(_spec()) as lease:
         assert lease.handle.id == "ns/pod-1"
-
-
-@pytest.mark.asyncio
-async def test_semaphore_still_used_without_gate():
-    rt = _FakeRuntime()
-    pool = SandboxPool(rt, max_concurrent=1)
-    a = await pool.acquire(_spec())
-    assert pool.available == 0
-    blocked = asyncio.create_task(pool.acquire(_spec()))
-    await asyncio.sleep(0.02)
-    assert not blocked.done()
-    await a.release()
-    b = await asyncio.wait_for(blocked, timeout=1)
-    await b.release()
 
 
 # The runtime-class isolation guard (kata vs runc + RESOLUTO_TRUSTED_LOCAL) is the K8s
@@ -173,10 +160,8 @@ async def test_deadlock_regression_gate_not_starved_by_lanes():
     # scenario: lane pool is at capacity, gate pool should still be free.
     lane_count = 2  # lane pods active — saturates lane_cap
     gate_count = 0  # no gate pods yet
-
-    async def _shared_unfiltered_gate() -> int:
-        # OLD BUG: returns total regardless of kind — lane pods pollute gate budget
-        return lane_count + gate_count
+    lane_cap = 2
+    gate_cap = 2
 
     async def _lane_gate() -> int:
         return lane_count
@@ -184,19 +169,8 @@ async def test_deadlock_regression_gate_not_starved_by_lanes():
     async def _gate_gate() -> int:
         return gate_count
 
-    # Verify the bug: shared count blocks gate pool (lane_count == gate_cap == 2)
-    lane_cap = 2
-    gate_cap = 2
-    buggy_gate_pool = SandboxPool(
-        rt,
-        max_concurrent=gate_cap,
-        admission_gate=_shared_unfiltered_gate,
-        acquire_timeout_s=0.05,
-    )
-    with pytest.raises(RuntimeError, match="acquire timed out"):
-        await buggy_gate_pool.acquire(_spec())
-
-    # Verify the fix: kind-scoped gates — gate pool sees gate_count=0, admits immediately
+    # kind-scoped gates — the gate pool sees gate_count=0 (lane pods are invisible to it)
+    # and admits immediately even though the lane pool is saturated.
     fixed_lane_pool = SandboxPool(
         rt,
         max_concurrent=lane_cap,

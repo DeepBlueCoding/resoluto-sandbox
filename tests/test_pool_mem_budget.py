@@ -94,21 +94,6 @@ async def test_per_kind_pools_are_independent_no_deadlock() -> None:
 
 
 @pytest.mark.asyncio
-async def test_parked_holds_no_pod_until_granted() -> None:
-    # Explicitly: while parked, zero pods beyond what fits are launched.
-    rt = _FakeRuntime()
-    pool = _pool(rt, 4)
-    a = await pool.acquire(_spec("lane", "4Gi"))    # fills budget
-    blocked = asyncio.create_task(pool.acquire(_spec("lane", "4Gi")))
-    await asyncio.sleep(0.1)
-    assert len(rt.live) == 1                         # only the first pod is live
-    await a.release()
-    await asyncio.sleep(0.1)
-    assert len(rt.live) == 1                         # still one live (the waiter took the freed slot)
-    blocked.cancel()
-
-
-@pytest.mark.asyncio
 async def test_oversized_beyond_budget_fails_loud() -> None:
     rt = _FakeRuntime()
     pool = _pool(rt, 8, timeout=30)

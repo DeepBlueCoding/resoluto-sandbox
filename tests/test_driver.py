@@ -13,6 +13,7 @@ from resoluto_sandbox.contracts import (
     SandboxRuntime,
     SandboxStatus,
 )
+from canary_stub import pass_canary
 from resoluto_sandbox.driver import drive_node
 from resoluto_sandbox.conduit import LocalConduit
 from resoluto_sandbox.pool import SandboxPool
@@ -36,7 +37,7 @@ class RunnerBackedRuntime(SandboxRuntime):
             store=self._store, prefix=spec.store_prefix, run_id=self._run_id,
             node_id=spec.labels.get("node_id", "n"), workload_argv=spec.command,
             heartbeat_interval_s=0.01,
-            skip_egress_canary=True,
+            run_canary=pass_canary,
         ))
         return SandboxHandle(id=hid, labels=spec.labels)
 
@@ -278,3 +279,101 @@ def test_sandbox_pool_satisfies_admission_protocol():
     from resoluto_sandbox.runtime import k8s  # noqa: F401 — ensure import path is clean
     pool = SandboxPool(DeadRuntime(), max_concurrent=1)
     assert isinstance(pool, Admission)  # structural: pool is a valid admitter, no inheritance
+
+
+class _CompletedRuntime(SandboxRuntime):
+    """Reports terminal 'succeeded' immediately, shipping nothing — the work product is whatever
+    is already in the store at result_key (the test seeds it)."""
+
+    def __init__(self):
+        self.destroyed: list[str] = []
+
+    async def launch(self, spec):
+        return SandboxHandle(id="done/1", labels=spec.labels)
+
+    async def status(self, handle):
+        return SandboxStatus(phase="succeeded", exit_code=0)
+
+    async def destroy(self, handle):
+        self.destroyed.append(handle.id)
+
+    async def sweep(self, labels):
+        return 0
+
+    async def logs(self, handle, *, tail=200):
+        return ""
+
+
+async def test_drive_node_corrupt_result_json_is_attributed_distinctly(tmp_path):
+    # A present-but-corrupt result.json must NOT be masked as "no result.json" — the driver
+    # distinguishes a parse failure (real serialization bug) from a missing work product.
+    from resoluto_sandbox.telemetry import result_key
+    store = LocalConduit(tmp_path)
+    prefix = "run/r1/nodes/corrupt"
+    await store.put(result_key(prefix), b'{"status": 12345}')  # status must be a literal string
+
+    result = await drive_node(
+        _CompletedRuntime(), store, _spec(prefix, ["true"]), poll_interval_s=0,
+    )
+
+    assert result.status == "failure"
+    assert "result.json failed to parse" in result.reason
+    assert "no result.json" not in result.reason  # not the missing-work-product path
+
+
+async def test_drive_node_missing_result_json_is_attributed_as_missing(tmp_path):
+    # The complementary branch: completed pod but nothing at result_key → "no result.json".
+    store = LocalConduit(tmp_path)
+    result = await drive_node(
+        _CompletedRuntime(), store, _spec("run/r1/nodes/empty", ["true"]), poll_interval_s=0,
+    )
+    assert result.status == "failure"
+    assert result.reason == "no result.json in store"
+
+
+class _VanishingRuntime(SandboxRuntime):
+    """Runs on the first poll (arming the watchdog), then reports 'unknown' forever — the pod
+    was deleted out-of-band. Drives the 'external' disposition."""
+
+    def __init__(self, state):
+        self._state = state
+        self.destroyed: list[str] = []
+
+    async def launch(self, spec):
+        return SandboxHandle(id="ext/1", labels=spec.labels)
+
+    async def status(self, handle):
+        self._state["polls"] += 1
+        phase = "running" if self._state["polls"] == 1 else "unknown"
+        return SandboxStatus(phase=phase)
+
+    async def destroy(self, handle):
+        self.destroyed.append(handle.id)
+
+    async def sweep(self, labels):
+        return 0
+
+    async def logs(self, handle, *, tail=200):
+        return ""
+
+
+async def test_drive_node_raw_external_disposition_on_vanished_pod(tmp_path):
+    # Sustained 'unknown' phase + telemetry silence (after the watchdog armed at running) ==
+    # the pod was terminated externally. The worker keys on this disposition.
+    from resoluto_sandbox.driver import drive_node_raw
+    store = LocalConduit(tmp_path)
+    state = {"polls": 0}
+    # Time stays 0 (so arm stamps at 0 and the running poll is never "dead") until the pod has
+    # been polled as 'unknown', at which point the death window is crossed.
+    def clock():
+        return 0.0 if state["polls"] <= 1 else 1000.0
+
+    rt = _VanishingRuntime(state)
+    outcome = await drive_node_raw(
+        rt, store, _spec("run/r1/nodes/vanish", ["true"]),
+        poll_interval_s=0, external_gone_polls=1, dead_after_s=30.0, clock=clock,
+    )
+
+    assert outcome.disposition == "external"
+    assert "terminated externally" in outcome.reason
+    assert rt.destroyed == ["ext/1"]  # reaped even when it vanished

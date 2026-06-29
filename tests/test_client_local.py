@@ -4,7 +4,7 @@ NO real microVM launches. Asserts the SubstrateBackend the local preset builds: 
 NodeResult→RunResult mapping."""
 import pytest
 
-from resoluto_sandbox import RunResult, Sandbox, SubstrateBackend
+from resoluto_sandbox import RunResult, Sandbox
 from resoluto_sandbox.contracts import NodeResult, SpanEvent
 
 
@@ -37,12 +37,6 @@ def _patch_local_substrate(monkeypatch, *, on_event_payload=None, captured=None,
     monkeypatch.setattr(rt, "KataNerdctlSandboxRuntime", FakeRuntime)
     monkeypatch.setattr(staging, "put_dir", fake_put_dir)
     monkeypatch.setattr(staging, "fetch_outputs", fake_fetch_outputs)
-
-
-def test_local_preset_builds_substrate_backend(monkeypatch):
-    _patch_local_substrate(monkeypatch)
-    sb = Sandbox(backend="local")
-    assert isinstance(sb._backend, SubstrateBackend)
 
 
 def test_local_spec_carries_workload_and_localfs_store_env(monkeypatch):

@@ -29,37 +29,23 @@ def test_all_probes_pass_returns_passed_verdict():
     assert len(verdict.results) == 3
 
 
-def test_non_allowlisted_reachable_fails_with_egress_in_reason():
+@pytest.mark.parametrize(
+    "idx, broken, named",
+    [
+        (0, _p("1.1.1.1:80", expected=False, actual=True), "1.1.1.1:80"),          # external not blocked
+        (1, _p("169.254.169.254:80", expected=False, actual=True), "169.254.169.254:80"),  # IMDS not blocked
+        (2, _p("store", expected=True, actual=False), "store"),                    # store unreachable
+    ],
+)
+def test_single_probe_failure_fails_verdict_and_names_target(idx, broken, named):
     results = _passing_results()
-    results[0] = _p("1.1.1.1:80", expected=False, actual=True)  # egress NOT blocked
+    results[idx] = broken
 
     verdict = evaluate_verdict(results)
 
     assert verdict.passed is False
     assert "egress" in verdict.reason
-    assert "1.1.1.1:80" in verdict.reason
-
-
-def test_imds_reachable_fails_verdict():
-    results = _passing_results()
-    results[1] = _p("169.254.169.254:80", expected=False, actual=True)
-
-    verdict = evaluate_verdict(results)
-
-    assert verdict.passed is False
-    assert "egress" in verdict.reason
-    assert "169.254.169.254:80" in verdict.reason
-
-
-def test_store_unreachable_fails_verdict():
-    results = _passing_results()
-    results[2] = _p("store", expected=True, actual=False)
-
-    verdict = evaluate_verdict(results)
-
-    assert verdict.passed is False
-    assert "egress" in verdict.reason
-    assert "store" in verdict.reason
+    assert named in verdict.reason
 
 
 def test_multiple_failures_names_all_failed_probes():

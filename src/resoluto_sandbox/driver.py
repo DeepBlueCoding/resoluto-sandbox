@@ -7,9 +7,12 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Awaitable, Callable
 
+from pydantic import ValidationError
+
 from resoluto_sandbox.contracts import (
     Admission,
     Conduit,
+    ConduitError,
     NodeResult,
     SandboxHandle,
     SandboxLaunchSpec,
@@ -147,8 +150,18 @@ async def drive_node(
             reason=outcome.reason, substrate_logs=outcome.substrate_logs,
         )
     try:
-        result = NodeResult.model_validate_json(await store.get(result_key(spec.store_prefix)))
-    except Exception:  # noqa: BLE001
-        result = NodeResult(node_id=node_id, status="failure", reason="no result.json in store")
+        raw = await store.get(result_key(spec.store_prefix))
+    except (ConduitError, OSError):
+        return NodeResult(
+            node_id=node_id, status="failure", observed_phase=outcome.observed_phase,
+            reason="no result.json in store",
+        )
+    try:
+        result = NodeResult.model_validate_json(raw)
+    except ValidationError as e:
+        return NodeResult(
+            node_id=node_id, status="failure", observed_phase=outcome.observed_phase,
+            reason=f"result.json failed to parse: {e.error_count()} validation error(s)",
+        )
     result.observed_phase = outcome.observed_phase
     return result

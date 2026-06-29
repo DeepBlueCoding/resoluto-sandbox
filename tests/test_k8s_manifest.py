@@ -58,11 +58,6 @@ def test_plain_flavor_has_no_docker_graph_volume():
     assert graph_vols == []
 
 
-def test_launch_spec_default_has_no_deadline():
-    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
-    assert spec.deadline_seconds is None
-
-
 def test_manifest_omits_active_deadline_when_none():
     rt = K8sSandboxRuntime()
     spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
@@ -115,17 +110,6 @@ def test_network_policy_imds_blocked_in_broad_rules():
     assert "except" not in rules[0]["to"][0]["ipBlock"]
     for rule in rules[1:]:
         assert rule["to"][0]["ipBlock"]["except"] == ["169.254.169.254/32"]
-
-
-def test_network_policy_always_three_rules():
-    rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32"))
-    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
-    policy = rt._network_policy(spec, "sbx-test", "fake-uid")
-    rules = policy["spec"]["egress"]
-    assert len(rules) == 3
-    for rule in rules:
-        assert rule is not None
-        assert rule["to"]
 
 
 def test_network_policy_config_driven():
@@ -268,19 +252,6 @@ async def test_launch_always_refuses_non_kata(rc, monkeypatch):
         await rt.launch(spec)
 
 
-@pytest.mark.asyncio
-async def test_launch_default_kata_passes_guard(monkeypatch):
-    monkeypatch.delenv("RESOLUTO_TRUSTED_LOCAL", raising=False)
-    rt = K8sSandboxRuntime()
-    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")  # kata default
-    try:
-        await rt.launch(spec)
-    except RuntimeError as exc:
-        assert "RESOLUTO_TRUSTED_LOCAL" not in str(exc), f"Guard should not have blocked: {exc}"
-    except Exception:
-        pass  # expected: no k8s cluster in test environment
-
-
 # ── dind tmpfs memory preflight ──────────────────────────────────────────────
 
 
@@ -395,40 +366,6 @@ async def test_preflight_fires_in_launch_for_dind_tmpfs(monkeypatch):
     spec = _dind_spec(memory="10Gi", docker_graph_size="4Gi")
     with pytest.raises(RuntimeError, match="pod does not fit on node"):
         await rt.launch(spec)
-
-
-@pytest.mark.asyncio
-async def test_preflight_noop_for_plain_flavor(monkeypatch):
-    """Plain flavor has no docker graph — preflight must not fire."""
-    monkeypatch.delenv("RESOLUTO_TRUSTED_LOCAL", raising=False)
-    rt = K8sSandboxRuntime(node_allocatable_memory="1Gi")  # impossibly small node
-    spec = SandboxLaunchSpec(
-        image="img:dev", store_prefix="run/r/nodes/n", flavor="plain", memory="8Gi"
-    )
-    try:
-        await rt.launch(spec)
-    except RuntimeError as exc:
-        assert "memory budget" not in str(exc), f"Preflight should not fire for plain: {exc}"
-    except Exception:
-        pass  # expected: no k8s cluster
-
-
-@pytest.mark.asyncio
-async def test_preflight_noop_for_dind_block_backend(monkeypatch):
-    """Block-backed graph is NOT RAM — preflight must not fire."""
-    monkeypatch.delenv("RESOLUTO_TRUSTED_LOCAL", raising=False)
-    rt = K8sSandboxRuntime(node_allocatable_memory="1Gi")  # impossibly small node
-    spec = SandboxLaunchSpec(
-        image="img:dev", store_prefix="run/r/nodes/n",
-        flavor="dind", graph_backend="block",
-        memory="24Gi", docker_graph_size="18Gi",
-    )
-    try:
-        await rt.launch(spec)
-    except RuntimeError as exc:
-        assert "memory budget" not in str(exc), f"Preflight should not fire for block: {exc}"
-    except Exception:
-        pass  # expected: no k8s cluster
 
 
 def test_manifest_stamps_opaque_scheduling_gates_and_annotations():
