@@ -11,12 +11,27 @@ from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_
 DEFAULT_LOCAL_IMAGE = "resoluto-sandbox-base:dev"
 
 
+def _local_conduit_base() -> str:
+    """Return a user-private (0o700), disk-backed base directory for local conduits.
+
+    The Kata guest (launched via sudo nerdctl) writes into the bind-mounted conduit as a
+    different uid, so the leaf must stay group/world-writable. Gating it behind a 0o700 parent
+    that only the invoking user can traverse keeps lane data (and any staged tokens) unreachable
+    to other local users regardless of the leaf's mode. Disk-backed (not XDG_RUNTIME_DIR tmpfs),
+    since lane artifacts can be large.
+    """
+    base = os.path.join(tempfile.gettempdir(), f"resoluto-sandbox-{os.getuid()}")
+    os.makedirs(base, mode=0o700, exist_ok=True)
+    os.chmod(base, 0o700)  # enforce 0o700 even if it pre-existed with a looser mode
+    return base
+
+
 def _build_local_backend(image: str | None) -> SubstrateBackend:
     """Build the local preset wiring a fresh temp LocalConduit to a KataNerdctlSandboxRuntime. Inputs: optional image override. Output: a SubstrateBackend."""
     from resoluto_sandbox.conduit import LocalConduit
     from resoluto_sandbox.runtime.kata_nerdctl import KataNerdctlSandboxRuntime
 
-    conduit_dir = tempfile.mkdtemp(prefix="resoluto-sbx-")
+    conduit_dir = tempfile.mkdtemp(prefix="sbx-", dir=_local_conduit_base())
     conduit = LocalConduit(conduit_dir, world_writable=True)
     runtime = KataNerdctlSandboxRuntime.from_env(conduit_host_dir=conduit_dir, conduit_mount="/conduit")
     store_env = {
