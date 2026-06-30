@@ -234,6 +234,21 @@ uv run python examples/smoke_both_backends.py              # both  (--local-only
 `local` is GREEN when its bootstrap is up; `k8s` is GREEN when the CNI enforces egress in time,
 else `BLOCKED` (a clearly-reported environment limit, not a code failure).
 
+**See a REAL LLM call's input and output** with `examples/smoke_llm.py` — it runs
+`examples/llm_agent.py` (a real claude-agent-sdk program) through the sandbox and prints the
+prompt (input) and Claude's answer (output):
+
+```bash
+uv run python examples/smoke_llm.py "In five words, why do sandboxes matter?"
+#   INPUT  (prompt to the LLM): 'In five words, why do sandboxes matter?'
+#   OUTPUT (the LLM's answer) : 'They prevent untrusted code escaping containment.'
+```
+
+Auth is `CLAUDE_CODE_OAUTH_TOKEN` (or, as a convenience, the OAuth access token read from your
+subscription `~/.claude/.credentials.json`); `ANTHROPIC_API_KEY` stays unset for subscription
+billing. NOTE: the workspace tar does NOT carry dot-dirs, so a `.claude/` staged into `workspace`
+won't reach the guest — pass auth via `env=`, not a staged file.
+
 ### k8s hard limit
 
 - **No `stdin`** → `NotImplementedError`. Pass input via argv, env, or workspace files.

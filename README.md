@@ -48,6 +48,15 @@ set -a; source store.env; source ../local.env; set +a
 uv run python examples/smoke_both_backends.py        # or --local-only / --k8s-only
 ```
 
+To see a **real LLM call's** input and output through the sandbox (subscription auth via
+`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY` unset):
+
+```bash
+uv run python examples/smoke_llm.py "In five words, why do sandboxes matter?"
+#   INPUT  (prompt to the LLM): 'In five words, why do sandboxes matter?'
+#   OUTPUT (the LLM's answer) : 'They prevent untrusted code escaping containment.'
+```
+
 ---
 
 ## The program contract
