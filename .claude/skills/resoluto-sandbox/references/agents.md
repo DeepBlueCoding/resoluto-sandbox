@@ -259,20 +259,22 @@ carries pod forensics (e.g. `OOMKilled`, evicted) when present.
 
 ### `EgressConfig` (default-deny pod egress)
 
-`from resoluto_sandbox.runtime.k8s import EgressConfig` — frozen dataclass; ALL fields
-MUST be CIDR notation (NetworkPolicy `ipBlock` has no FQDN support — resolve hostnames
-to IPs yourself, else `ValueError`):
+`from resoluto_sandbox.runtime.k8s import EgressConfig` — frozen dataclass with exactly TWO fields
+(there is NO `llm_cidr`/`git_cidrs`; any HTTPS is already allowed):
 
 ```python
 EgressConfig(
-    store_cidr="10.0.0.5/32",          # object store endpoint
-    llm_cidr="160.79.104.0/23",        # LLM provider API (e.g. api.anthropic.com), resolve to a CIDR
-    git_cidrs=[],                       # git hosts; default [] = no git egress
+    store_cidr="10.0.0.5/32",   # object store CIDR — must be CIDR, not an FQDN (else ValueError)
+    store_port=9100,            # the store's port (default 443)
 )
+# or: EgressConfig.from_store_env()   # derive it from RESOLUTO_STORE_ENDPOINT
 ```
 
-Applied: default-deny + the declared CIDRs on TCP/443 + kube-dns UDP/53. `egress=None`
-⇒ unrestricted egress (Kata kernel isolation only).
+Applied as default-deny egress + three allow rules: **store_cidr:store_port (TCP)**, **all public
+443 (`0.0.0.0/0`, any HTTPS — LLM/git/API)**, **DNS 53** — IMDS `169.254.169.254/32` excepted on the
+broad rules. `egress=None` ⇒ unrestricted egress (Kata kernel isolation only). To tighten 443 to
+specific hosts, allow a non-443 port, or add a deny, edit `K8sSandboxRuntime._network_policy` — see
+`networking.md` ("Modifying the egress allowlist").
 
 ## Conduits (where workspace/artifacts travel)
 

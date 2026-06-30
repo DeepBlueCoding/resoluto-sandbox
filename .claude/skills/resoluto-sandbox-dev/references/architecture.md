@@ -24,7 +24,7 @@ from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
-    egress=EgressConfig(store_cidr="10.0.0.5/32", llm_cidr="1.2.3.4/32"),
+    egress=EgressConfig(store_cidr="10.0.0.5/32", store_port=443),   # + ALL public 443 (LLM/git) + DNS auto-allowed; IMDS denied
 )
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
@@ -180,8 +180,7 @@ runtime = K8sSandboxRuntime(
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
     egress=EgressConfig(                         # None (default) = unrestricted egress (Kata isolation only)
         store_cidr="10.0.0.5/32",                # object store endpoint
-        llm_cidr="1.2.3.4/32",                   # LLM provider API
-        git_cidrs=["140.82.112.0/20"],           # default [] = no git egress
+        store_port=443,                          # store port; + ALL public 443 (LLM/git, no per-host) + DNS auto-allowed; IMDS denied
     ),
 )
 backend = SubstrateBackend(

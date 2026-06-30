@@ -25,7 +25,7 @@ r = Sandbox(backend="local").run(["agent.py"], workspace="/work")
 print(r.output, r.ok)   # RunResult(exit_code, output, errors, artifacts, result, reason, ok)
 
 # k8s: Kata pod — inject SubstrateBackend
-egress = EgressConfig(store_cidr="10.0.0.5/32", llm_cidr="1.2.3.4/32")
+egress = EgressConfig(store_cidr="10.0.0.5/32", store_port=443)   # + ALL public 443 (LLM/git) + DNS auto-allowed; IMDS denied
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
@@ -47,7 +47,7 @@ Sandbox(backend=SubstrateBackend(
 |-----------|-----|
 | Run locally | `Sandbox(backend="local").run(argv, workspace=...)` — needs `/dev/kvm`, `nerdctl`, the dedicated containerd + an image |
 | Run in Kata pod | `Sandbox(backend=SubstrateBackend(runtime=K8sSandboxRuntime(...), conduit=..., image=..., store_env=store_env_for_pod(os.environ))).run(...)` |
-| Restrict pod egress | `K8sSandboxRuntime(egress=EgressConfig(store_cidr=, llm_cidr=, git_cidrs=[]))` (CIDRs only, no FQDNs) |
+| Restrict pod egress | `K8sSandboxRuntime(egress=EgressConfig(store_cidr=, store_port=443))` (store CIDR only, no FQDNs; + ALL public 443 + DNS) |
 | Collect outputs | `output_paths=["out/*.json"]` → globbed into `RunResult.artifacts` (extracted into `workspace`) |
 | Read structured result | program writes `result.json` → `RunResult.result: dict | None` |
 | Add a new runtime | subclass `contracts.py:SandboxRuntime` (`launch`/`status`/`destroy`/`sweep`), wire into `SubstrateBackend` |

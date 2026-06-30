@@ -121,9 +121,8 @@ Sandbox(backend=SubstrateBackend(
         namespace="resoluto-sandboxes",
         context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
         egress=EgressConfig(                # None → unrestricted k8s egress (Kata isolation only)
-            store_cidr="10.0.0.5/32",
-            llm_cidr="1.2.3.4/32",
-            git_cidrs=["140.82.112.0/24"],  # optional; default [] = no git egress
+            store_cidr="10.0.0.5/32",       # object store; + ALL public 443 (LLM/git, no per-host) + DNS auto-allowed; IMDS denied
+            store_port=443,                 # default 443
         ),
     ),
     conduit=store_from_env(),               # or inject a Conduit instance
@@ -209,7 +208,7 @@ from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
-    egress=EgressConfig(store_cidr="10.0.0.5/32", llm_cidr="1.2.3.4/32"),
+    egress=EgressConfig(store_cidr="10.0.0.5/32", store_port=443),
 )
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,

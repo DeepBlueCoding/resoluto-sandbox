@@ -110,6 +110,45 @@ scoped store token is the only credential it receives. The `evaluate_verdict` pu
 pass/fail logic) is unit-tested in `tests/test_egress_canary.py`; the in-guest execution is the live
 check.
 
+## Modifying the egress allowlist (whitelist / blacklist)
+
+Both backends are **default-deny whitelist** — you widen or narrow the allowlist; there is no per-rule
+blacklist (IMDS, and on local the RFC1918 ranges, are hardcoded denies). The defaults already allow the
+store, all public HTTPS (`:443`), and DNS.
+
+**k8s — `EgressConfig` exposes only the store rule:**
+
+```python
+EgressConfig(store_cidr="10.0.0.5/32", store_port=9100)   # the only allowlist knob
+EgressConfig.from_store_env()                              # derive it from RESOLUTO_STORE_ENDPOINT
+# env overrides for a DNAT'd store: RESOLUTO_STORE_EGRESS_CIDR / RESOLUTO_STORE_EGRESS_PORT
+```
+
+LLM/git/any HTTPS is already covered by the blanket `0.0.0.0/0:443` rule — nothing to configure.
+`egress=None` turns egress off (allow all). To **tighten** 443 to specific hosts, allow a **non-443**
+port, or **blacklist** a host, edit `K8sSandboxRuntime._network_policy` (`runtime/k8s.py`) and adjust
+the `egress` rule list — e.g. replace the broad `0.0.0.0/0:443` with narrower `ipBlock` CIDRs, or append
+`{"ports": [{"port": 6379, "protocol": "TCP"}], "to": [{"ipBlock": {"cidr": "<cidr>"}}]}`. (k8s `ipBlock`
+is allow-only with `except` carve-outs — no DROP rule — so "blacklisting" means narrowing the allow.)
+
+**local — edit the host firewall in `scripts/local-backend-up.sh`** (workspace root), step
+"4/7 egress firewall". The `iptables` chain (first match wins):
+
+```bash
+ESTABLISHED,RELATED            -> ACCEPT
+udp/tcp --dport 53             -> ACCEPT     # DNS
+-d 169.254.0.0/16              -> REJECT     # IMDS
+-d 10/8, 172.16/12, 192.168/16 -> REJECT     # RFC1918
+tcp --dport 443                -> ACCEPT     # HTTPS public
+(default)                      -> REJECT     # deny
+```
+
+- **Whitelist**: add an `ACCEPT` before the final `REJECT` (and before the RFC1918 `REJECT`s for a
+  private target): `iptables -A "$CHAIN" -p tcp --dport 6379 -d 203.0.113.5/32 -j ACCEPT`.
+- **Blacklist**: add a `REJECT` for the host before the `--dport 443 ACCEPT`.
+
+Edit the rules in the script (so they survive a re-provision) and re-run it; the Kata canary re-verifies.
+
 ## What you can manage
 
 | Knob | Local backend | k8s backend |

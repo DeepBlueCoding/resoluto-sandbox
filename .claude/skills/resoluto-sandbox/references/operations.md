@@ -251,11 +251,15 @@ MERGED stream and `RunResult.errors == ""`. This is by design, not a dropped fie
 
 ### Egress allowlist — `EgressConfig` (frozen dataclass, `runtime/k8s.py`)
 ```python
-EgressConfig(store_cidr: str, llm_cidr: str, git_cidrs: list[str] = [])
+EgressConfig(store_cidr: str, store_port: int = 443)   # exactly two fields
 ```
-When set, applies a default-deny egress NetworkPolicy: allows ONLY the declared CIDRs on TCP/443
-plus kube-dns on UDP/53; every rule excepts the IMDS CIDR `169.254.169.254/32`.
-> FOOTGUN: all fields MUST be CIDR notation (`1.2.3.4/32`) — k8s `ipBlock` rejects FQDNs.
+When set, applies a default-deny egress NetworkPolicy with exactly three allow rules: the object
+store at `store_cidr:store_port` (TCP); ALL public 443 (any HTTPS — LLM/git/any API, no per-host
+CIDR); and DNS on UDP+TCP/53. The two public rules `except` the IMDS CIDR `169.254.169.254/32`, so
+IMDS is always denied. To tighten or blacklist, edit `K8sSandboxRuntime._network_policy`.
+`EgressConfig.from_store_env()` derives `store_cidr`/`store_port` from `RESOLUTO_STORE_ENDPOINT`
+(honoring `RESOLUTO_STORE_EGRESS_CIDR`/`RESOLUTO_STORE_EGRESS_PORT` overrides).
+> FOOTGUN: `store_cidr` MUST be CIDR notation (`1.2.3.4/32`) — k8s `ipBlock` rejects FQDNs.
 > Resolve hostnames to IPs yourself first; a bare hostname raises `ValueError` in `__post_init__`.
 > `egress=None` → no NetworkPolicy → unrestricted egress (kernel isolation only).
 

@@ -70,9 +70,8 @@ runtime = K8sSandboxRuntime(
     namespace=os.environ.get("RESOLUTO_SANDBOX_NAMESPACE", "resoluto-sandboxes"),
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
     egress=EgressConfig(                         # None → unrestricted egress (Kata kernel isolation only)
-        store_cidr="10.0.0.5/32",                # ALL fields must be CIDR; FQDNs rejected in __post_init__
-        llm_cidr="160.79.104.0/23",
-        git_cidrs=[],                            # default empty == no git egress
+        store_cidr="10.0.0.5/32",                # store_cidr must be CIDR; FQDNs rejected in __post_init__
+        store_port=443,                          # default 443; + ALL public 443 (LLM/git, no per-host) + DNS auto-allowed; IMDS denied
     ),
 )
 sb = Sandbox(backend=SubstrateBackend(
@@ -353,11 +352,15 @@ substrate never constructs/names/removes a gate). GC anchor = per-run owner Conf
 cascade-delete even if the dispatcher is long dead. `reap_stale_run_owners(keep_run_id, max_age_s=7200)`
 backstops kill-9'd runs.
 
-**`EgressConfig`** (`from resoluto_sandbox.runtime.k8s import EgressConfig`): `store_cidr`, `llm_cidr`,
-`git_cidrs=[]`. ALL must be CIDR (`__post_init__` rejects a missing `/` — k8s ipBlock has no FQDNs;
-resolve hostnames first). Builds a default-deny egress NetworkPolicy: store + LLM + each git host on
-TCP/443, kube-dns on UDP/53, and `except=[169.254.169.254/32]` on every rule (blocks cloud IMDS). `None`
-→ unrestricted egress (Kata kernel isolation only).
+**`EgressConfig`** (`from resoluto_sandbox.runtime.k8s import EgressConfig`): exactly two fields —
+`store_cidr` and `store_port=443`. `store_cidr` must be CIDR (`__post_init__` rejects a missing `/` —
+k8s ipBlock has no FQDNs; resolve hostnames first). Builds a default-deny egress NetworkPolicy with
+exactly three allow rules: the store at `store_cidr:store_port` (TCP); ALL public 443 (any HTTPS —
+LLM/git/any API, no per-host CIDR); and DNS on UDP+TCP/53 — the two public rules carry
+`except=[169.254.169.254/32]` so IMDS is always blocked. `from_store_env()` derives the fields from
+`RESOLUTO_STORE_ENDPOINT` (honoring `RESOLUTO_STORE_EGRESS_CIDR`/`RESOLUTO_STORE_EGRESS_PORT`). To
+tighten/blacklist, edit `K8sSandboxRuntime._network_policy`. `None` → unrestricted egress (Kata kernel
+isolation only).
 
 ---
 

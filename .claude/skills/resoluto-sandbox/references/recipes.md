@@ -115,8 +115,10 @@ print(r.result)             # parsed work/result.json if the program wrote one
 
 ### 4. Lock down egress (k8s only — untrusted code)
 
-Default-deny egress NetworkPolicy: only the listed CIDRs on TCP/443 + kube-dns
-UDP/53. IMDS (`169.254.169.254`) is ALWAYS blocked. CIDR-only — no FQDNs.
+Default-deny egress NetworkPolicy: allows `store_cidr:store_port` (TCP) + ALL public
+443 (any HTTPS — LLM/git need no per-host config) + kube-dns 53. IMDS
+(`169.254.169.254`) is ALWAYS blocked. CIDR-only — no FQDNs. To tighten/blacklist,
+edit `K8sSandboxRuntime._network_policy`.
 
 ```python
 import os
@@ -127,8 +129,7 @@ from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig   # NOT
 
 egress = EgressConfig(
     store_cidr="192.168.1.197/32",      # object store (minio / S3-compatible)
-    llm_cidr="160.79.104.0/23",         # resolve api.anthropic.com → CIDR yourself
-    git_cidrs=["140.82.112.0/20"],      # optional; [] = no git egress
+    store_port=9100,                    # store port (minio); + ALL public 443 (LLM/git) + DNS auto-allowed
 )
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",

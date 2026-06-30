@@ -60,10 +60,10 @@ sb = Sandbox(backend=SubstrateBackend(
 ))
 ```
 
-`EgressConfig` (a dataclass, `runtime/k8s.py`) — default-deny NetworkPolicy, allows only declared CIDRs on TCP/443 + kube-dns UDP/53. **CIDR notation only; no FQDNs** (resolve hostnames to IPs yourself):
+`EgressConfig` (a frozen dataclass, `runtime/k8s.py`) — exactly two fields (`store_cidr`, `store_port=443`). Default-deny NetworkPolicy allowing `store_cidr:store_port` (TCP) + ALL public 443 (any HTTPS — LLM/git need no per-host config) + DNS 53; IMDS always denied. To tighten/blacklist, edit `K8sSandboxRuntime._network_policy`. **`store_cidr` is CIDR notation only; no FQDNs** (resolve hostnames to IPs yourself):
 ```python
-EgressConfig(store_cidr="10.0.0.5/32", llm_cidr="160.79.104.0/23", git_cidrs=["140.82.112.0/20"])
-# non-CIDR (missing "/") → ValueError at construction
+EgressConfig(store_cidr="10.0.0.5/32", store_port=443)
+# non-CIDR store_cidr (missing "/") → ValueError at construction
 ```
 
 ### k8s real limit (NOT roadmap — the backend IS implemented via `drive_node` → real Kata pod)

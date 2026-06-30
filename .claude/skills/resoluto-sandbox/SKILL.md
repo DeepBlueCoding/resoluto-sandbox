@@ -25,7 +25,7 @@ Both backends merge stdout+stderr into `output` (`errors` empty by design). `std
 | Collect outputs | `output_paths=["dist/*","*.json"]` → globbed into `r.artifacts`; mutated into `workspace` |
 | Structured result | program writes `result.json` in workspace → `r.result` |
 | Dependencies | put `uv run`/`pip install` in your argv, or use a prebuilt image |
-| Restrict k8s egress | `K8sSandboxRuntime(egress=EgressConfig(store_cidr=..., llm_cidr=..., git_cidrs=[...]))` |
+| Restrict k8s egress | `K8sSandboxRuntime(egress=EgressConfig(store_cidr=..., store_port=443))` — store + ALL public 443 (LLM/git, no per-host) + DNS; IMDS denied |
 | Pick store conduit | inject `conduit=` to `SubstrateBackend`; else `store_from_env()` via `RESOLUTO_STORE_KIND` |
 | CLI | `resoluto-sandbox run [--backend local\|k8s] [--image T] -- <prog> [args]` ; also `doctor`, `image build --provider claude\|langchain\|openai\|all` |
 | Build SDK image | `resoluto-sandbox image build --provider claude` (tag locked to wheel version) |
