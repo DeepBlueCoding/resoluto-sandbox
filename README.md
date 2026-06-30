@@ -34,6 +34,20 @@ print(result.ok)       # True
 The result captures the output, the exit code, and any files you asked to collect (`output_paths`).
 `stdin` is not supported — pass inputs via argv, env, or workspace files.
 
+> The local backend runs in a Kata microVM and needs a lane image present in its containerd — pass
+> `Sandbox(backend="local", image="…")` (default `resoluto-sandbox-base:dev`; build it from
+> `Dockerfile.base`). Run argv with the **guest's** `python` and workspace-relative paths, not host
+> absolute paths.
+
+**Verify both backends end to end** with the smoke test — it runs a minimal agent through `local`
+(Kata via nerdctl) and `k8s` (Kata pod) and asserts input (argv + env) → output (stdout +
+`result.json`):
+
+```bash
+set -a; source store.env; source ../local.env; set +a
+uv run python examples/smoke_both_backends.py        # or --local-only / --k8s-only
+```
+
 ---
 
 ## The program contract

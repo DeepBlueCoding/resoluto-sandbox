@@ -169,33 +169,70 @@ the credentials-file mount.
 ## k8s backend — real Kata pod
 
 `backend="k8s"` launches a real Kata pod via `drive_node` (fully implemented — not a
-stub). Inject a configured `SubstrateBackend`; the image is a backend concern:
+stub). Inject a configured `SubstrateBackend`; the image is a backend concern.
+
+**An s3 store needs a SCOPED write token.** Host AWS creds are NEVER forwarded to the pod —
+`store_env_for_pod(os.environ)` raises if `AWS_*` are set and there is no
+`RESOLUTO_STORE_WRITE_TOKEN`. Mint a prefix-scoped STS token (the substrate writes under
+`run/...`) and hand it to the pod via `store_env`. The host conduit keeps the full creds for
+staging; the pod gets only the scoped token:
 
 ```python
-import os
+import asyncio, json, os
 from resoluto_sandbox import Sandbox
-from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto_sandbox.backends.substrate import SubstrateBackend
 from resoluto_sandbox.conduit.factory import store_from_env
+from resoluto_sandbox.conduit.s3 import mint_scoped_credential
 from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
+
+token = asyncio.run(mint_scoped_credential(
+    bucket=os.environ["RESOLUTO_STORE_BUCKET"], prefix="run",
+    endpoint_url=os.environ["RESOLUTO_STORE_ENDPOINT"],
+    region=os.environ.get("RESOLUTO_STORE_REGION", "us-east-1"),
+    access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+    secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+    sts_role_arn=os.environ["RESOLUTO_STORE_STS_ROLE_ARN"],
+))
+store_env = {k: v for k, v in os.environ.items() if k.startswith("RESOLUTO_STORE_")}
+store_env["RESOLUTO_STORE_WRITE_TOKEN"] = json.dumps(token)   # pod authenticates with THIS only
 
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
-    context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
-    egress=None,                           # None → unrestricted egress (Kata isolation only)
+    context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),   # pin the cluster; ambient is refused
+    egress=EgressConfig.from_store_env(),                     # default-deny egress (or None = unrestricted)
 )
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
-    conduit=store_from_env(),              # needs RESOLUTO_STORE_KIND
-    image="resoluto-sandbox:claude",       # REQUIRED
-    store_env=store_env_for_pod(os.environ),
+    conduit=store_from_env(),              # host keeps full creds for staging; needs RESOLUTO_STORE_KIND
+    image=os.environ["RESOLUTO_LANE_IMAGE"],   # REQUIRED, and present in the cluster's containerd
+    store_env=store_env,
 ))
-res = sb.run(["python", "claude_agent.py", "Say hi"], workspace="examples",
-             output_paths=["*.json"], env={"CLAUDE_CODE_OAUTH_TOKEN": "..."})
+res = sb.run(["python", "echo_agent.py", "ping-42"], workspace="examples",
+             output_paths=["result.json"], env={"SMOKE_TAG": "x"})
 ```
 
-Requires `RESOLUTO_STORE_KIND` in the environment (the conduit is how the pod's
-workspace/artifacts travel). Workspace is staged into the store and extracted back into
-your `workspace` dir in place.
+Requires `RESOLUTO_STORE_KIND` (the conduit is how the pod's workspace/artifacts travel).
+Workspace is staged into the store and extracted back into your `workspace` dir in place.
+
+> **Egress enforcement is the CNI's job.** `EgressConfig` is a default-deny NetworkPolicy, but it
+> only blocks traffic if your CNI enforces NetworkPolicy (Cilium/Calico — **not** stock Flannel).
+> The in-guest egress canary is fail-closed, so on a non-enforcing CNI a lane will refuse to run
+> (and there can be a brief startup window where a fast pod out-races policy programming). On a
+> single host, prefer `backend="local"`, which enforces egress host-side on its own bridge.
+
+### Verify both backends — the smoke test
+
+`examples/smoke_both_backends.py` runs the minimal `examples/echo_agent.py` through BOTH
+backends and asserts the full input→agent→output contract (argv + env in; stdout + `result.json`
+out). Run it from `resoluto-sandbox/`:
+
+```bash
+set -a; source store.env; source ../local.env; set +a     # store + local-Kata config
+uv run python examples/smoke_both_backends.py              # both  (--local-only / --k8s-only)
+```
+
+`local` is GREEN when its bootstrap is up; `k8s` is GREEN when the CNI enforces egress in time,
+else `BLOCKED` (a clearly-reported environment limit, not a code failure).
 
 ### k8s hard limit
 

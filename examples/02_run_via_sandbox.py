@@ -2,25 +2,30 @@
 # /// script
 # requires-python = ">=3.12"
 # ///
-"""Driver: run 01_local_hello.py via Sandbox.run() and print captured stdout.
+"""Driver: run 01_local_hello.py INSIDE the local Kata sandbox and print its stdout.
 
-Run from the repo root:
+The program is staged into the guest workspace and run with the guest's OWN `python`
+on a path relative to that workspace — NOT the host interpreter or host absolute paths,
+which do not exist inside the Kata microVM.
+
+Run from resoluto-sandbox/ (local Kata backend provisioned via scripts/local-backend-up.sh):
     uv run python examples/02_run_via_sandbox.py
 """
 import io
+import os
 import sys
 from pathlib import Path
 
 from resoluto_sandbox import Sandbox
 
-repo_root = Path(__file__).resolve().parent.parent
-hello_script = repo_root / "examples" / "01_local_hello.py"
+examples = Path(__file__).resolve().parent
+# the local backend needs an image present in its dedicated containerd; override if yours differs
+image = os.environ.get("RESOLUTO_LOCAL_LANE_IMAGE", "localhost:5000/resoluto-lane:dev")
 
-sink = io.StringIO()
-result = Sandbox(backend="local").run(
-    [sys.executable, str(hello_script), "sandbox"],
-    workspace=str(repo_root),
-    stream=sink,
+result = Sandbox(backend="local", image=image).run(
+    ["python", "01_local_hello.py", "sandbox"],   # guest python; path relative to the staged workspace
+    workspace=str(examples),
+    stream=io.StringIO(),                          # capture only; we print result.output ourselves
 )
 print(result.output, end="")
 sys.exit(result.exit_code)
