@@ -15,6 +15,9 @@ from resoluto_sandbox.contracts import (
     check_runtime_class_guard,
     parse_quantity,
 )
+# Egress allowlist + rendering live in the backend-neutral `egress` module so every provider shares
+# ONE config and renders it its own way. Re-exported here for back-compat (existing imports work).
+from resoluto_sandbox.egress import EgressConfig, k8s_egress_rules
 
 logger = logging.getLogger(__name__)
 
@@ -28,50 +31,6 @@ _PHASE_MAP = {
     "Failed": "failed",
     "Unknown": "unknown",
 }
-
-_IMDS_CIDR = "169.254.169.254/32"
-
-
-@dataclass(frozen=True)
-class EgressConfig:
-    """Allowlist for the lane pod's default-deny egress NetworkPolicy: the object store at store_cidr:store_port, plus public 443 and DNS. store_cidr must be CIDR notation."""
-
-    store_cidr: str
-    store_port: int = 443
-
-    def __post_init__(self) -> None:
-        if "/" not in self.store_cidr:
-            raise ValueError(
-                f"EgressConfig: store_cidr {self.store_cidr!r} is not a CIDR (missing '/'); "
-                "k8s NetworkPolicy ipBlock requires CIDR notation"
-            )
-
-    @classmethod
-    def from_store_env(cls, env: "dict[str, str] | None" = None) -> "EgressConfig | None":
-        """Build the egress allowlist from RESOLUTO_STORE_ENDPOINT, honoring RESOLUTO_STORE_EGRESS_CIDR/PORT overrides; None when no store endpoint is set."""
-        import socket
-        from urllib.parse import urlparse
-
-        e = env if env is not None else os.environ
-        raw = (e.get("RESOLUTO_STORE_ENDPOINT") or "").strip()
-        if not raw:
-            return None
-        u = urlparse(raw if "://" in raw else f"http://{raw}")
-        endpoint_port = u.port or (443 if u.scheme == "https" else 80)
-
-        override = (e.get("RESOLUTO_STORE_EGRESS_CIDR") or "").strip()
-        if override:
-            port = e.get("RESOLUTO_STORE_EGRESS_PORT")
-            return cls(store_cidr=override, store_port=int(port) if port else endpoint_port)
-
-        if not u.hostname:
-            return None
-        try:
-            ip = socket.gethostbyname(u.hostname)
-        except OSError:
-            return None
-        return cls(store_cidr=f"{ip}/32", store_port=endpoint_port)
-
 
 def _no_local_kubeconfig_errors() -> tuple[type[BaseException], ...]:
     """Return exceptions that mean no usable local kube-config."""
@@ -313,20 +272,7 @@ class K8sSandboxRuntime(SandboxRuntime):
         """Build the default-deny egress NetworkPolicy manifest for a lane pod: store on store_port, public 443, DNS; IMDS excepted on the broad rules."""
         assert self._egress is not None
 
-        egress_rules = [
-            {
-                "ports": [{"port": self._egress.store_port, "protocol": "TCP"}],
-                "to": [{"ipBlock": {"cidr": self._egress.store_cidr}}],
-            },
-            {
-                "ports": [{"port": 443, "protocol": "TCP"}],
-                "to": [{"ipBlock": {"cidr": "0.0.0.0/0", "except": [_IMDS_CIDR]}}],
-            },
-            {
-                "ports": [{"port": 53, "protocol": "UDP"}, {"port": 53, "protocol": "TCP"}],
-                "to": [{"ipBlock": {"cidr": "0.0.0.0/0", "except": [_IMDS_CIDR]}}],
-            },
-        ]
+        egress_rules = k8s_egress_rules(self._egress)
 
         if owner_name and owner_uid:
             owner_ref = {

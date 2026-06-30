@@ -97,3 +97,58 @@ def test_network_policy_namespace_matches_runtime():
     spec = _spec({"app": "lane"})
     policy = rt._network_policy(spec, "pod-x", "uid-x")
     assert policy["metadata"]["namespace"] == "resoluto-sandboxes"
+
+
+# ── simple allowlist knobs: allow=[...] / allow_port / public_https ──────────
+
+
+def _rules(egress: EgressConfig) -> list[dict]:
+    return _runtime(egress)._network_policy(_spec({"app": "lane"}), "pod-x", "uid-x")["spec"]["egress"]
+
+
+def test_allow_cidr_adds_rule_on_allow_port():
+    # a CIDR in `allow` is used verbatim, on allow_port (e.g. 22 for git-over-SSH)
+    rules = _rules(EgressConfig(store_cidr=_STORE_CIDR, allow=["203.0.113.0/24"], allow_port=22))
+    allow_rule = next(r for r in rules if r["ports"] == [{"port": 22, "protocol": "TCP"}])
+    assert allow_rule["to"] == [{"ipBlock": {"cidr": "203.0.113.0/24"}}]
+
+
+def test_public_https_false_drops_the_blanket_443_rule():
+    rules = _rules(EgressConfig(store_cidr=_STORE_CIDR, public_https=False))
+    # no 0.0.0.0/0:443 rule remains...
+    assert not [r for r in rules
+                if {"port": 443, "protocol": "TCP"} in r["ports"]
+                and r["to"][0]["ipBlock"]["cidr"] == "0.0.0.0/0"]
+    # ...but the store rule and DNS still do
+    assert any(r["to"][0]["ipBlock"]["cidr"] == _STORE_CIDR for r in rules)
+    assert any({"port": 53, "protocol": "UDP"} in r["ports"] for r in rules)
+
+
+def test_allow_hostnames_resolve_to_cidrs(monkeypatch):
+    # a hostname in `allow` is resolved to one /32 per A record (deduped)
+    import socket
+    monkeypatch.setattr(socket, "getaddrinfo", lambda host, *a, **k: [
+        (2, 1, 6, "", ("93.184.216.34", 0)),
+        (2, 1, 6, "", ("93.184.216.35", 0)),
+    ])
+    rules = _rules(EgressConfig(store_cidr=_STORE_CIDR, store_port=9100,
+                                allow=["example.com"], public_https=False))
+    allow_rule = next(r for r in rules if r["ports"] == [{"port": 443, "protocol": "TCP"}]
+                      and r["to"][0]["ipBlock"]["cidr"] != "0.0.0.0/0")
+    assert [t["ipBlock"]["cidr"] for t in allow_rule["to"]] == ["93.184.216.34/32", "93.184.216.35/32"]
+
+
+def test_resolve_cidrs_passes_cidrs_through_and_dedupes(monkeypatch):
+    import socket
+    from resoluto_sandbox.egress import resolve_cidrs
+    monkeypatch.setattr(socket, "getaddrinfo", lambda host, *a, **k: [
+        (2, 1, 6, "", ("1.2.3.4", 0)), (2, 1, 6, "", ("1.2.3.4", 0)),  # dup A records
+    ])
+    assert resolve_cidrs(["10.0.0.0/8", "host", "10.0.0.0/8"]) == ["10.0.0.0/8", "1.2.3.4/32"]
+
+
+def test_allow_unresolvable_host_raises():
+    import pytest
+    from resoluto_sandbox.egress import resolve_cidrs
+    with pytest.raises(ValueError, match="cannot resolve host"):
+        resolve_cidrs(["definitely-not-a-real-host.invalid"])

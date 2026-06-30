@@ -110,44 +110,48 @@ scoped store token is the only credential it receives. The `evaluate_verdict` pu
 pass/fail logic) is unit-tested in `tests/test_egress_canary.py`; the in-guest execution is the live
 check.
 
-## Modifying the egress allowlist (whitelist / blacklist)
+## Modifying the egress allowlist (whitelist) — ONE config, both backends
 
-Both backends are **default-deny whitelist** — you widen or narrow the allowlist; there is no per-rule
-blacklist (IMDS, and on local the RFC1918 ranges, are hardcoded denies). The defaults already allow the
-store, all public HTTPS (`:443`), and DNS.
+Egress is configured by a single backend-neutral value object, `resoluto_sandbox.egress.EgressConfig`,
+which each backend renders to its own mechanism (k8s → NetworkPolicy, local → host `iptables`). It is
+**default-deny whitelist**: all public HTTPS (`:443`), DNS, and your extras are allowed; IMDS (and on
+local, RFC1918) are always denied. So **github, api.anthropic.com, package mirrors, etc. already work**
+— they're HTTPS on 443. You only configure egress to add a non-443 destination or to lock down.
 
-**k8s — `EgressConfig` exposes only the store rule:**
+Three simple knobs (no CIDRs or code edits needed):
 
+| Knob | Meaning |
+|---|---|
+| `allow=[...]` | extra destinations — **hostnames OR CIDRs** — allowed on `allow_port`. Hostnames are resolved to CIDRs when rendered. |
+| `allow_port` | port for `allow` (default 443; e.g. **22** for git-over-SSH, or a private service port) |
+| `public_https` | `True` (default) allows all `:443`; set **`False`** to allow ONLY your store + `allow` + DNS |
+
+**In code (k8s):**
 ```python
-EgressConfig(store_cidr="10.0.0.5/32", store_port=9100)   # the only allowlist knob
-EgressConfig.from_store_env()                              # derive it from RESOLUTO_STORE_ENDPOINT
-# env overrides for a DNAT'd store: RESOLUTO_STORE_EGRESS_CIDR / RESOLUTO_STORE_EGRESS_PORT
+from resoluto_sandbox.egress import EgressConfig
+EgressConfig(store_cidr="10.0.0.5/32", store_port=9100,
+             allow=["github.com"], allow_port=22)        # + git-over-SSH, keep all HTTPS
+EgressConfig(store_cidr="10.0.0.5/32",
+             allow=["198.51.100.7/32"], public_https=False)  # LOCK DOWN: only store + that host + DNS
 ```
 
-LLM/git/any HTTPS is already covered by the blanket `0.0.0.0/0:443` rule — nothing to configure.
-`egress=None` turns egress off (allow all). To **tighten** 443 to specific hosts, allow a **non-443**
-port, or **blacklist** a host, edit `K8sSandboxRuntime._network_policy` (`runtime/k8s.py`) and adjust
-the `egress` rule list — e.g. replace the broad `0.0.0.0/0:443` with narrower `ipBlock` CIDRs, or append
-`{"ports": [{"port": 6379, "protocol": "TCP"}], "to": [{"ipBlock": {"cidr": "<cidr>"}}]}`. (k8s `ipBlock`
-is allow-only with `except` carve-outs — no DROP rule — so "blacklisting" means narrowing the allow.)
-
-**local — edit the host firewall in `scripts/local-backend-up.sh`** (workspace root), step
-"4/7 egress firewall". The `iptables` chain (first match wins):
-
+**Via env (works for BOTH backends — k8s reads these in `from_store_env()`, the local provisioner
+reads them too):**
 ```bash
-ESTABLISHED,RELATED            -> ACCEPT
-udp/tcp --dport 53             -> ACCEPT     # DNS
--d 169.254.0.0/16              -> REJECT     # IMDS
--d 10/8, 172.16/12, 192.168/16 -> REJECT     # RFC1918
-tcp --dport 443                -> ACCEPT     # HTTPS public
-(default)                      -> REJECT     # deny
+export RESOLUTO_EGRESS_ALLOW="github.com,198.51.100.0/24"   # comma list of hosts/CIDRs
+export RESOLUTO_EGRESS_ALLOW_PORT=22                        # default 443
+export RESOLUTO_EGRESS_PUBLIC_HTTPS=0                       # 0 = lock down to allow-list only
 ```
 
-- **Whitelist**: add an `ACCEPT` before the final `REJECT` (and before the RFC1918 `REJECT`s for a
-  private target): `iptables -A "$CHAIN" -p tcp --dport 6379 -d 203.0.113.5/32 -j ACCEPT`.
-- **Blacklist**: add a `REJECT` for the host before the `--dport 443 ACCEPT`.
+- **local**: `scripts/local-backend-up.sh` renders the firewall from these env knobs via the SAME
+  renderer (`python -m resoluto_sandbox.egress local-iptables`). Set them and re-run the script; the
+  Kata canary re-verifies enforcement.
+- **k8s**: pass an `EgressConfig` to `K8sSandboxRuntime(egress=...)`, or `EgressConfig.from_store_env()`
+  (which reads the same env). `egress=None` = no restriction.
 
-Edit the rules in the script (so they survive a re-provision) and re-run it; the Kata canary re-verifies.
+There is no per-rule *blacklist* primitive (the model is default-deny; IMDS/RFC1918 are hardcoded
+denies). "Blacklist a host" = run with `public_https=False` and `allow=[everything-except-it]`. To add a
+NEW backend, write a renderer that maps `EgressConfig` to its mechanism (see `src/resoluto_sandbox/egress.py`).
 
 ## What you can manage
 
