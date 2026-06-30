@@ -19,12 +19,13 @@ sb = Sandbox(backend="k8s")            # SubstrateBackend(K8sSandboxRuntime + st
 import os
 from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
 from resoluto_sandbox.conduit.factory import store_from_env
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
+from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
+from resoluto_sandbox.egress import EgressConfig   # backend-neutral; re-exported from runtime.k8s
 
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
-    egress=EgressConfig(store_cidr="10.0.0.5/32", store_port=443),   # + ALL public 443 (LLM/git) + DNS auto-allowed; IMDS denied
+    egress=EgressConfig(store_cidr="10.0.0.5/32", store_port=443),   # +public 443 (github/anthropic/any HTTPS) + DNS; IMDS denied. allow=/public_https= to extend/lock down
 )
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
@@ -149,7 +150,7 @@ Implementations:
 
 `contracts.py` and the backend models are pydantic `BaseModel` + ABCs with NO platform deps (no kubernetes, no boto3 at module top). Heavy clients are imported lazily INSIDE methods (`store_from_env` imports `S3Conduit` only on the `s3` branch; `K8sSandboxRuntime._client` imports `kubernetes_asyncio` lazily). Litmus: importing `resoluto_sandbox.contracts` must not pull a cloud SDK. Keep new contracts dep-light; push platform imports down into the concrete impl.
 
-Key pydantic contracts: `RunResult`, `SandboxLaunchSpec`, `SandboxHandle`, `SandboxStatus`, `NodeResult`, `ObjectInfo`, `SpanEvent`. `EgressConfig` is a frozen `@dataclass` (not pydantic) in `runtime.k8s`.
+Key pydantic contracts: `RunResult`, `SandboxLaunchSpec`, `SandboxHandle`, `SandboxStatus`, `NodeResult`, `ObjectInfo`, `SpanEvent`. `EgressConfig` is a frozen `@dataclass` (not pydantic) in `resoluto_sandbox.egress` (pure stdlib; re-exported from `runtime.k8s`).
 
 ## Where each concern lives
 
@@ -164,7 +165,7 @@ Key pydantic contracts: `RunResult`, `SandboxLaunchSpec`, `SandboxHandle`, `Sand
 | local Kata runtime (local preset) | `runtime/kata_nerdctl.py` (`KataNerdctlSandboxRuntime`) |
 | k8s Kata runtime | `runtime/k8s.py` (`K8sSandboxRuntime`) |
 | admission (WHEN) — separate from substrate (HOW) | `contracts.py` (`Admission`/`Lease`), `pool.py` |
-| egress policy | `runtime/k8s.py` (`EgressConfig`) |
+| egress policy (backend-neutral config + renderers) | `egress.py` (`EgressConfig`, `k8s_egress_rules`, `local_egress_iptables`) |
 | wire schema | `contracts.py` (`SpanEvent`) + `spec/PROTOCOL.md` |
 
 ## Configuring the k8s backend
@@ -173,14 +174,17 @@ Key pydantic contracts: `RunResult`, `SandboxLaunchSpec`, `SandboxHandle`, `Sand
 import os
 from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
 from resoluto_sandbox.conduit.s3 import S3Conduit
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
+from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
+from resoluto_sandbox.egress import EgressConfig
 
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
     egress=EgressConfig(                         # None (default) = unrestricted egress (Kata isolation only)
-        store_cidr="10.0.0.5/32",                # object store endpoint
-        store_port=443,                          # store port; + ALL public 443 (LLM/git, no per-host) + DNS auto-allowed; IMDS denied
+        store_cidr="10.0.0.5/32",                # object store endpoint (k8s only)
+        store_port=443,                          # store port; +public 443 (github/anthropic/any HTTPS) + DNS auto-allowed; IMDS denied
+        # allow=["github.com"], allow_port=22,   # add a non-443 dest (e.g. git-over-SSH)
+        # public_https=False,                    # lock down to store + allow + DNS only
     ),
 )
 backend = SubstrateBackend(
@@ -195,7 +199,7 @@ sb = Sandbox(backend=backend)
 res = sb.run(["agent.py"], workspace="/work", output_paths=["out/*.json"])
 ```
 
-`EgressConfig` applies a default-deny NetworkPolicy: allows only the declared CIDRs on TCP/443 plus kube-dns on UDP/53. All fields MUST be CIDR (`x.x.x.x/32`) — k8s ipBlock has no FQDN support, so resolve hostnames yourself; a missing `/` raises `ValueError`.
+`EgressConfig` is backend-neutral: `k8s_egress_rules()` renders a default-deny NetworkPolicy, `local_egress_iptables()` renders the host iptables chain — same config. Allows: `store_cidr:store_port` (k8s only), all public 443 when `public_https=True`, each `allow` entry on `allow_port`, and DNS on UDP+TCP/53; IMDS always denied. `store_cidr` and CIDR `allow` entries MUST be CIDR (`x.x.x.x/32`) — k8s ipBlock has no FQDN support (a bad `store_cidr` raises `ValueError`); hostname `allow` entries resolve at render time. Env: `RESOLUTO_EGRESS_ALLOW` / `_ALLOW_PORT` / `_PUBLIC_HTTPS` (both backends).
 
 ## Adding a new substrate (ECS / Temporal / Fly / …)
 

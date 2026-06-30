@@ -64,14 +64,17 @@ import os
 from resoluto_sandbox import Sandbox
 from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
 from resoluto_sandbox.conduit.factory import store_from_env
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig   # EgressConfig lives in runtime.k8s
+from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
+from resoluto_sandbox.egress import EgressConfig   # canonical home (pure stdlib); re-exported from runtime.k8s
 
 runtime = K8sSandboxRuntime(
     namespace=os.environ.get("RESOLUTO_SANDBOX_NAMESPACE", "resoluto-sandboxes"),
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
     egress=EgressConfig(                         # None → unrestricted egress (Kata kernel isolation only)
         store_cidr="10.0.0.5/32",                # store_cidr must be CIDR; FQDNs rejected in __post_init__
-        store_port=443,                          # default 443; + ALL public 443 (LLM/git, no per-host) + DNS auto-allowed; IMDS denied
+        store_port=443,                          # default 443; +public 443 (github/anthropic/any HTTPS) + DNS auto-allowed; IMDS denied
+        # allow=["github.com"], allow_port=22,   # add a non-443 dest (e.g. git-over-SSH)
+        # public_https=False,                    # lock down to store + allow + DNS only
     ),
 )
 sb = Sandbox(backend=SubstrateBackend(
@@ -352,15 +355,21 @@ substrate never constructs/names/removes a gate). GC anchor = per-run owner Conf
 cascade-delete even if the dispatcher is long dead. `reap_stale_run_owners(keep_run_id, max_age_s=7200)`
 backstops kill-9'd runs.
 
-**`EgressConfig`** (`from resoluto_sandbox.runtime.k8s import EgressConfig`): exactly two fields —
-`store_cidr` and `store_port=443`. `store_cidr` must be CIDR (`__post_init__` rejects a missing `/` —
-k8s ipBlock has no FQDNs; resolve hostnames first). Builds a default-deny egress NetworkPolicy with
-exactly three allow rules: the store at `store_cidr:store_port` (TCP); ALL public 443 (any HTTPS —
-LLM/git/any API, no per-host CIDR); and DNS on UDP+TCP/53 — the two public rules carry
-`except=[169.254.169.254/32]` so IMDS is always blocked. `from_store_env()` derives the fields from
-`RESOLUTO_STORE_ENDPOINT` (honoring `RESOLUTO_STORE_EGRESS_CIDR`/`RESOLUTO_STORE_EGRESS_PORT`). To
-tighten/blacklist, edit `K8sSandboxRuntime._network_policy`. `None` → unrestricted egress (Kata kernel
-isolation only).
+**`EgressConfig`** (`from resoluto_sandbox.egress import EgressConfig`; re-exported from `runtime.k8s`):
+backend-neutral frozen dataclass — fields `allow=()`, `allow_port=443`, `public_https=True`,
+`store_cidr=None`, `store_port=443`. Two pure renderers in `egress.py` drive the SAME config on both
+backends: `k8s_egress_rules()` (NetworkPolicy) and `local_egress_iptables()` (host iptables). Default
+allows: the store at `store_cidr:store_port` (TCP, k8s only — local store is a file mount); ALL public
+443 when `public_https=True` (the broad rules `except=[169.254.169.254/32]`); each `allow` entry on
+`allow_port`; and DNS on UDP+TCP/53 — IMDS always blocked (local also denies RFC1918). `store_cidr`
+and CIDR `allow` entries must be CIDR (`__post_init__` rejects a `store_cidr` missing `/`); hostname
+`allow` entries resolve at render time. **github / api.anthropic.com / any HTTPS already work** —
+configure only to add a non-443 dest (`allow`/`allow_port`) or lock down (`public_https=False`).
+`from_store_env()` derives `store_cidr`/`store_port` from `RESOLUTO_STORE_ENDPOINT` (honoring
+`RESOLUTO_STORE_EGRESS_CIDR`/`RESOLUTO_STORE_EGRESS_PORT`) AND the `RESOLUTO_EGRESS_ALLOW` /
+`_ALLOW_PORT` / `_PUBLIC_HTTPS` knobs (both backends; local via `scripts/local-backend-up.sh`'s
+`python -m resoluto_sandbox.egress local-iptables`). A NEW backend = one new renderer in `egress.py`.
+`None` → unrestricted egress (Kata kernel isolation only).
 
 ---
 

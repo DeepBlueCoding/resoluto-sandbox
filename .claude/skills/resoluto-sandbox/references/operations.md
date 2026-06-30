@@ -220,7 +220,8 @@ import os
 from resoluto_sandbox.client import Sandbox
 from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
 from resoluto_sandbox.conduit.factory import store_from_env
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
+from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
+from resoluto_sandbox.egress import EgressConfig   # backend-neutral; re-exported from runtime.k8s
 
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
@@ -249,18 +250,24 @@ prefix, runs `python -m resoluto_sandbox.runner_main`, fetches `output_paths` ba
 The in-sandbox runner emits stdout AND stderr as `log` span events, so `RunResult.output` carries the
 MERGED stream and `RunResult.errors == ""`. This is by design, not a dropped field.
 
-### Egress allowlist — `EgressConfig` (frozen dataclass, `runtime/k8s.py`)
+### Egress allowlist — `EgressConfig` (backend-neutral, frozen dataclass, `egress.py`)
 ```python
-EgressConfig(store_cidr: str, store_port: int = 443)   # exactly two fields
+EgressConfig(allow=(), allow_port=443, public_https=True, store_cidr=None, store_port=443)
 ```
-When set, applies a default-deny egress NetworkPolicy with exactly three allow rules: the object
-store at `store_cidr:store_port` (TCP); ALL public 443 (any HTTPS — LLM/git/any API, no per-host
-CIDR); and DNS on UDP+TCP/53. The two public rules `except` the IMDS CIDR `169.254.169.254/32`, so
-IMDS is always denied. To tighten or blacklist, edit `K8sSandboxRuntime._network_policy`.
-`EgressConfig.from_store_env()` derives `store_cidr`/`store_port` from `RESOLUTO_STORE_ENDPOINT`
-(honoring `RESOLUTO_STORE_EGRESS_CIDR`/`RESOLUTO_STORE_EGRESS_PORT` overrides).
-> FOOTGUN: `store_cidr` MUST be CIDR notation (`1.2.3.4/32`) — k8s `ipBlock` rejects FQDNs.
-> Resolve hostnames to IPs yourself first; a bare hostname raises `ValueError` in `__post_init__`.
+Canonical home `resoluto_sandbox.egress` (re-exported from `runtime.k8s` for back-compat). It is
+**backend-neutral**: two pure renderers — `k8s_egress_rules()` (NetworkPolicy) and
+`local_egress_iptables()` (host iptables) — drive the SAME config on BOTH backends. Default allows:
+object store at `store_cidr:store_port` (k8s only — local store is a file mount); ALL public 443 (any
+HTTPS) when `public_https=True`; each `allow` entry on `allow_port`; and DNS UDP+TCP/53. IMDS
+`169.254.169.254` is always denied (the local renderer also denies RFC1918). **github / api.anthropic.com
+/ any HTTPS already work** — configure egress only to add a non-443 destination (`allow`/`allow_port`,
+e.g. `22` for git-over-SSH) or to lock down (`public_https=False`). `EgressConfig.from_store_env()`
+derives `store_cidr`/`store_port` from `RESOLUTO_STORE_ENDPOINT` (honoring `RESOLUTO_STORE_EGRESS_CIDR`/
+`RESOLUTO_STORE_EGRESS_PORT`) AND the `RESOLUTO_EGRESS_ALLOW` / `_ALLOW_PORT` / `_PUBLIC_HTTPS` knobs
+(both backends honor those — local via `scripts/local-backend-up.sh`). To add a NEW backend, write a
+renderer in `egress.py`.
+> FOOTGUN: `store_cidr` (and CIDR `allow` entries) MUST be CIDR notation (`1.2.3.4/32`) — k8s `ipBlock`
+> rejects FQDNs (`__post_init__` raises `ValueError`); hostname `allow` entries resolve at render time.
 > `egress=None` → no NetworkPolicy → unrestricted egress (kernel isolation only).
 
 ### Kube-context safety

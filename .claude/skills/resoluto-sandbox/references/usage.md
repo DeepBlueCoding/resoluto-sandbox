@@ -114,15 +114,18 @@ Sandbox(backend="k8s", image="<tag>")        # k8s preset — reads RESOLUTO_STO
 import os
 from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
 from resoluto_sandbox.conduit.factory import store_from_env
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
+from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
+from resoluto_sandbox.egress import EgressConfig   # backend-neutral allowlist (k8s + local); re-exported from runtime.k8s
 
 Sandbox(backend=SubstrateBackend(
     runtime=K8sSandboxRuntime(
         namespace="resoluto-sandboxes",
         context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
         egress=EgressConfig(                # None → unrestricted k8s egress (Kata isolation only)
-            store_cidr="10.0.0.5/32",       # object store; + ALL public 443 (LLM/git, no per-host) + DNS auto-allowed; IMDS denied
+            store_cidr="10.0.0.5/32",       # object store (k8s only); all public 443 (github/anthropic/any HTTPS) + DNS auto-allowed; IMDS denied
             store_port=443,                 # default 443
+            # allow=["github.com"], allow_port=22,   # add a non-443 dest (e.g. git-over-SSH)
+            # public_https=False,                    # lock down to store + allow + DNS only
         ),
     ),
     conduit=store_from_env(),               # or inject a Conduit instance
@@ -203,12 +206,13 @@ import os
 from resoluto_sandbox import Sandbox
 from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
 from resoluto_sandbox.conduit.factory import store_from_env
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
+from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
+from resoluto_sandbox.egress import EgressConfig
 
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
-    egress=EgressConfig(store_cidr="10.0.0.5/32", store_port=443),
+    egress=EgressConfig(store_cidr="10.0.0.5/32", store_port=443),   # +public 443/DNS; add allow=/public_https= to extend or lock down
 )
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,

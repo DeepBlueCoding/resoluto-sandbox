@@ -183,7 +183,8 @@ from resoluto_sandbox import Sandbox
 from resoluto_sandbox.backends.substrate import SubstrateBackend
 from resoluto_sandbox.conduit.factory import store_from_env
 from resoluto_sandbox.conduit.s3 import mint_scoped_credential
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
+from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
+from resoluto_sandbox.egress import EgressConfig
 
 token = asyncio.run(mint_scoped_credential(
     bucket=os.environ["RESOLUTO_STORE_BUCKET"], prefix="run",
@@ -259,22 +260,28 @@ carries pod forensics (e.g. `OOMKilled`, evicted) when present.
 
 ### `EgressConfig` (default-deny pod egress)
 
-`from resoluto_sandbox.runtime.k8s import EgressConfig` — frozen dataclass with exactly TWO fields
-(there is NO `llm_cidr`/`git_cidrs`; any HTTPS is already allowed):
+`from resoluto_sandbox.egress import EgressConfig` — backend-neutral frozen dataclass (also re-exported
+from `resoluto_sandbox.runtime.k8s` for back-compat). There is NO `llm_cidr`/`git_cidrs`; any HTTPS is
+already allowed via `public_https`:
 
 ```python
 EgressConfig(
-    store_cidr="10.0.0.5/32",   # object store CIDR — must be CIDR, not an FQDN (else ValueError)
+    store_cidr="10.0.0.5/32",   # k8s object store CIDR (REQUIRED for k8s; local ignores it — file mount)
     store_port=9100,            # the store's port (default 443)
+    allow=["github.com"],       # OPTIONAL extra destinations — hostnames OR CIDRs — on allow_port
+    allow_port=22,              # port for `allow` (default 443; e.g. 22 for git-over-SSH)
+    public_https=True,          # True = all public :443; False = lock down to store + allow + DNS
 )
-# or: EgressConfig.from_store_env()   # derive it from RESOLUTO_STORE_ENDPOINT
+# or: EgressConfig.from_store_env()   # store_cidr:port + RESOLUTO_EGRESS_* knobs, from env
 ```
 
-Applied as default-deny egress + three allow rules: **store_cidr:store_port (TCP)**, **all public
-443 (`0.0.0.0/0`, any HTTPS — LLM/git/API)**, **DNS 53** — IMDS `169.254.169.254/32` excepted on the
-broad rules. `egress=None` ⇒ unrestricted egress (Kata kernel isolation only). To tighten 443 to
-specific hosts, allow a non-443 port, or add a deny, edit `K8sSandboxRuntime._network_policy` — see
-`networking.md` ("Modifying the egress allowlist").
+It is **backend-neutral** — the same config renders to a k8s NetworkPolicy (`k8s_egress_rules()`) OR
+local iptables (`local_egress_iptables()`). The default allows: **store_cidr:store_port (TCP)**, **all
+public 443** (when `public_https=True`), each **`allow` entry on `allow_port`**, and **DNS 53** — IMDS
+`169.254.169.254` is always denied. **github / api.anthropic.com / any HTTPS already work** by default;
+configure egress only to add a non-443 destination (`allow`/`allow_port`) or lock down
+(`public_https=False`). `egress=None` ⇒ unrestricted egress (Kata kernel isolation only). Env knobs
+`RESOLUTO_EGRESS_ALLOW` / `_ALLOW_PORT` / `_PUBLIC_HTTPS` work for both backends — see `networking.md`.
 
 ## Conduits (where workspace/artifacts travel)
 

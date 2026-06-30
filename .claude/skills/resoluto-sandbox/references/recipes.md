@@ -113,23 +113,27 @@ print(r.artifacts)          # e.g. ["/abs/work/dist/app-1.0.whl", "/abs/work/rep
 print(r.result)             # parsed work/result.json if the program wrote one
 ```
 
-### 4. Lock down egress (k8s only — untrusted code)
+### 4. Configure egress (one backend-neutral `EgressConfig` — k8s + local)
 
-Default-deny egress NetworkPolicy: allows `store_cidr:store_port` (TCP) + ALL public
-443 (any HTTPS — LLM/git need no per-host config) + kube-dns 53. IMDS
-(`169.254.169.254`) is ALWAYS blocked. CIDR-only — no FQDNs. To tighten/blacklist,
-edit `K8sSandboxRuntime._network_policy`.
+Default-deny allowlist: `store_cidr:store_port` (k8s) + ALL public 443 (any HTTPS) +
+DNS, with IMDS always blocked. **github / api.anthropic.com / any HTTPS already work**
+— you only configure egress to add a non-443 destination (`allow`/`allow_port`, e.g.
+git-over-SSH `:22`) or to LOCK DOWN (`public_https=False`). The same config renders to a
+k8s NetworkPolicy OR local iptables (the two renderers in `resoluto_sandbox.egress`).
 
 ```python
 import os
 from resoluto_sandbox import Sandbox
 from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
 from resoluto_sandbox.conduit.factory import store_from_env
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig   # NOT from top-level resoluto_sandbox
+from resoluto_sandbox.egress import EgressConfig                    # canonical home (also re-exported from runtime.k8s)
+from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
 
 egress = EgressConfig(
-    store_cidr="192.168.1.197/32",      # object store (minio / S3-compatible)
-    store_port=9100,                    # store port (minio); + ALL public 443 (LLM/git) + DNS auto-allowed
+    store_cidr="192.168.1.197/32",      # object store (k8s only; local store is a file mount)
+    store_port=9100,                    # store port (minio); public 443 + DNS auto-allowed
+    allow=["github.com"], allow_port=22,    # OPTIONAL: add git-over-SSH (or any non-443 dest)
+    # public_https=False,                   # OPTIONAL: lock down to store + allow + DNS only
 )
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
@@ -144,9 +148,10 @@ sb = Sandbox(backend=SubstrateBackend(
 ))
 ```
 
-`EgressConfig.__post_init__` rejects any value without `/` (no hostnames). Needs
-a NetworkPolicy-capable CNI (see `docs/networking.md`). An in-guest canary
-fail-closes if the policy was not enforced. Full table: [docs/networking.md](../../../../docs/networking.md).
+`store_cidr`/CIDR `allow` entries must be CIDR; hostname `allow` entries resolve at render time. Env
+knobs `RESOLUTO_EGRESS_ALLOW` / `_ALLOW_PORT` / `_PUBLIC_HTTPS` drive BOTH backends (local via
+`scripts/local-backend-up.sh`). k8s needs a NetworkPolicy-capable CNI; an in-guest canary fail-closes
+if the policy was not enforced. Full table: [docs/networking.md](../../../../docs/networking.md).
 
 ### 5. Bring your own OCI image
 
@@ -245,6 +250,6 @@ Both backends merge stdout→`output` (errors stays `""`).
   contract parity with S3 — no real-GCS integration test. Run the conformance
   suite against a live bucket before relying on it.
 
-- **`EgressConfig` must come from `resoluto_sandbox.runtime.k8s`,** not the
-  top-level package (the top-level import would eagerly pull in
-  `kubernetes_asyncio`).
+- **Import `EgressConfig` from `resoluto_sandbox.egress`** (its canonical home — pure
+  stdlib, also re-exported from `resoluto_sandbox.runtime.k8s` for back-compat), NOT via
+  the top-level package (that import would eagerly pull in `kubernetes_asyncio`).
