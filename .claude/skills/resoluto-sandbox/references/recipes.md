@@ -115,11 +115,12 @@ print(r.result)             # parsed work/result.json if the program wrote one
 
 ### 4. Configure egress (one backend-neutral `EgressConfig` — k8s + local)
 
-Default-deny allowlist: `store_cidr:store_port` (k8s) + ALL public 443 (any HTTPS) +
-DNS, with IMDS always blocked. **github / api.anthropic.com / any HTTPS already work**
-— you only configure egress to add a non-443 destination (`allow`/`allow_port`, e.g.
-git-over-SSH `:22`) or to LOCK DOWN (`public_https=False`). The same config renders to a
-k8s NetworkPolicy OR local iptables (the two renderers in `resoluto_sandbox.egress`).
+SECURE BY DEFAULT: `EgressConfig()` allows ONLY `store_cidr:store_port` (k8s) + DNS,
+with IMDS always blocked. **github / api.anthropic.com / any HTTPS do NOT work until you
+open them** — use `allow=[...]` (least privilege, e.g. `["anthropic","npm","pypi"]` or
+git-over-SSH `:22` via `allow_port`) or `public_https=True` (escape hatch: ALL public
+443, trusted code). The same config renders to a k8s NetworkPolicy OR local iptables
+(the two renderers in `resoluto_sandbox.egress`).
 
 ```python
 import os
@@ -131,9 +132,9 @@ from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
 
 egress = EgressConfig(
     store_cidr="192.168.1.197/32",      # object store (k8s only; local store is a file mount)
-    store_port=9100,                    # store port (minio); public 443 + DNS auto-allowed
-    allow=["github.com"], allow_port=22,    # OPTIONAL: add git-over-SSH (or any non-443 dest)
-    # public_https=False,                   # OPTIONAL: lock down to store + allow + DNS only
+    store_port=9100,                    # store port (minio); store + DNS auto-allowed. SECURE BY DEFAULT
+    allow=["anthropic", "npm", "pypi"],     # open only what's needed (least privilege); allow_port= for a non-443 dest
+    # public_https=True,                    # escape hatch: allow ALL :443 (trusted code)
 )
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
@@ -205,14 +206,16 @@ Both backends merge stdout→`output` (errors stays `""`).
   `backend="local"` runs a Kata microVM via `nerdctl` against a dedicated, standalone containerd
   (own socket/root at `/run/resoluto-local/containerd/`) — VM-grade isolation at parity with k8s,
   on a single host. The egress canary RUNS (fail-closed); local egress is enforced HOST-SIDE on the
-  lane CNI bridge (default-deny; allow DNS + HTTPS-443-public; REJECT IMDS + RFC1918 private),
+  lane CNI bridge (default-deny: store + DNS only until you opt in via `RESOLUTO_EGRESS_ALLOW` /
+  `_PUBLIC_HTTPS`; REJECT IMDS + RFC1918 private),
   immune to in-guest root. Suitable for untrusted code, same as k8s. Needs `/dev/kvm` + nerdctl +
   the dedicated containerd + an image (default `resoluto-sandbox-base:dev`; override with `image=`).
   The image must contain python + the resoluto-sandbox wheel + your program's deps.
 
-- **k8s default egress is UNRESTRICTED.** `egress=None` (default) gives the pod
-  Kata kernel isolation but NO NetworkPolicy — it can reach anything. Pass an
-  `EgressConfig` for untrusted code (recipe 4).
+- **k8s `egress=None` is the opt-OUT.** `egress=None` (the runtime default) creates NO
+  NetworkPolicy — the pod has Kata kernel isolation but unrestricted egress. That is DIFFERENT
+  from `EgressConfig()`, which is SECURE BY DEFAULT (store + DNS only). Pass an `EgressConfig`
+  for untrusted code (recipe 4).
 
 - **`stdin` raises on both backends.** Neither `local` nor `k8s` supports `stdin=`.
   Pass inputs via argv, env, or workspace files.

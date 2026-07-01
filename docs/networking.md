@@ -4,31 +4,41 @@
 
 The local backend runs the program in a Kata microVM launched via `nerdctl` against a standalone
 containerd on this host — full Kata isolation, on a single host with no cluster. Egress is enforced
-host-side on its CNI bridge (default-deny; allow DNS + HTTPS-443 to public; reject IMDS
-`169.254.169.254` + RFC1918 private ranges), so it is immune to in-guest root. The egress canary
-always runs fail-closed before any workload, the Kata runtime-class guard is unconditional, and host
-AWS creds are never forwarded (a scoped store token only).
+host-side on its CNI bridge and is **default-deny (secure by default)**: a fresh lane reaches only
+DNS and its store. You opt in to what the workload needs at PROVISION time via the env knobs
+(`RESOLUTO_EGRESS_ALLOW` for specific destinations, `RESOLUTO_EGRESS_PUBLIC_HTTPS=1` for all
+outbound :443). IMDS `169.254.169.254` and RFC1918 private ranges are always rejected, so the
+policy is immune to in-guest root. The egress canary always runs fail-closed before any workload,
+the Kata runtime-class guard is unconditional, and host AWS creds are never forwarded (a scoped
+store token only).
 
 Provision the local backend with `scripts/local-backend-up.sh` (ends with a green Kata-microVM
-canary).
+canary). To open egress, set the env before running it, e.g.:
+
+```bash
+RESOLUTO_EGRESS_ALLOW=anthropic,npm,pypi scripts/local-backend-up.sh   # least privilege
+RESOLUTO_EGRESS_PUBLIC_HTTPS=1 scripts/local-backend-up.sh             # escape hatch: all :443
+```
 
 Use `backend="local"` for single-host development. For cluster-scale placement, use `backend="k8s"`.
 
-## k8s backend — Kata isolation + optional egress NetworkPolicy
+## k8s backend — Kata isolation + egress NetworkPolicy
 
-### Default: unrestricted egress
+### `egress=None` — the opt-OUT (no NetworkPolicy)
 
-By default (`egress=None`) a lane pod launched via `SubstrateBackend` + `K8sSandboxRuntime` has
-unrestricted egress. The pod runs inside a Kata microVM (separate OS kernel, no host process
-namespace), but no NetworkPolicy restricts which hosts the workload can reach. If you run untrusted
-code, pass an `EgressConfig`.
+`egress=None` on `K8sSandboxRuntime` is an explicit opt-OUT of network isolation: NO NetworkPolicy
+is created, so the lane pod has **unrestricted egress**. The pod still runs inside a Kata microVM
+(separate OS kernel, no host process namespace), but nothing restricts which hosts the workload can
+reach. This is DIFFERENT from `EgressConfig()`, which is deny-by-default (see below). Use
+`egress=None` only for trusted workloads where kernel isolation alone is acceptable; for untrusted
+code always pass an `EgressConfig`.
 
-### Locking down egress with EgressConfig
+### `EgressConfig` — deny by default (secure)
 
-`EgressConfig` declares the object store the workload needs; the policy then also permits public
-HTTPS (TCP/443 to anywhere — LLM + git, IMDS excepted) and DNS, and denies everything else. Pass it
-to `K8sSandboxRuntime` and it applies a default-deny egress NetworkPolicy to the lane pod (created
-before the pod) so egress is enforced from the first packet:
+`EgressConfig()` is **secure by default**: it DENIES all egress except DNS and the object store —
+a fresh lane cannot reach the internet, the LLM, or registries. You opt IN to exactly what the
+workload needs. Pass it to `K8sSandboxRuntime` and it applies a default-deny egress NetworkPolicy
+to the lane pod (created before the pod) so egress is enforced from the first packet:
 
 ```python
 import os
@@ -40,8 +50,9 @@ from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
 # The ONE shared builder — resolves RESOLUTO_STORE_ENDPOINT to the store CIDR:port (honoring the
 # RESOLUTO_STORE_EGRESS_CIDR/PORT override for a DNAT'd store; NetworkPolicy is evaluated POST-DNAT).
 egress = EgressConfig.from_store_env()
-# ...or construct it explicitly:
-egress = EgressConfig(store_cidr="192.168.1.197/32", store_port=9000)  # store; port default 443
+# ...or construct it explicitly (deny-by-default; open what you need):
+egress = EgressConfig(store_cidr="192.168.1.197/32", store_port=9000,
+                      allow=["anthropic", "npm", "pypi"])  # least privilege; store port default 443
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
@@ -60,24 +71,26 @@ sb = Sandbox(backend=SubstrateBackend(
 
 ### What the NetworkPolicy allows
 
-The generated policy is default-deny egress with these explicit allow rules:
+The generated policy is default-deny egress. It ALWAYS allows the store and DNS; the other rows are
+opt-in:
 
-| Destination | Port | Protocol |
-|---|---|---|
-| `store_cidr` | `store_port` | TCP |
-| `0.0.0.0/0` (public HTTPS — LLM + git) | 443 | TCP |
-| `0.0.0.0/0` (DNS) | 53 | UDP + TCP |
+| Destination | Port | Protocol | When |
+|---|---|---|---|
+| `store_cidr` | `store_port` | TCP | always |
+| `0.0.0.0/0` (DNS) | 53 | UDP + TCP | always |
+| each `allow` entry (preset/host/CIDR) | `allow_port` (443 default) | TCP | when `allow=[...]` is set |
+| `0.0.0.0/0` (public HTTPS) | 443 | TCP | ONLY when `public_https=True` |
 
 The broad `0.0.0.0/0` rules include `except: ["169.254.169.254/32"]` so the cloud metadata endpoint
 (IMDS) is unreachable; the `store_cidr` rule is a specific host so it carries no `except` (k8s
-requires `except ⊂ cidr`). Allowing public 443 rather than pinning the LLM/git provider to a /32
-avoids CDN-IP fragility while still blocking IMDS and non-443.
+requires `except ⊂ cidr`). Prefer `allow=[...]` (least privilege) for untrusted code; use
+`public_https=True` only as a deliberate escape hatch for trusted workloads.
 
 ### CIDR-only: no FQDNs for the store
 
 Kubernetes `NetworkPolicy` `ipBlock` does not accept hostnames, so `store_cidr` must be a CIDR
-(`EgressConfig.__post_init__` rejects anything without `/`). LLM/git need no resolution — they're
-covered by the public-443 rule. Build the config from the env with `EgressConfig.from_store_env()`,
+(`EgressConfig.__post_init__` rejects anything without `/`). Hostname/preset entries in `allow`
+resolve to CIDRs at render time. Build the config from the env with `EgressConfig.from_store_env()`,
 which resolves `RESOLUTO_STORE_ENDPOINT` (or honors the `RESOLUTO_STORE_EGRESS_CIDR/PORT` override
 for a DNAT'd store — NetworkPolicy is evaluated post-DNAT).
 
@@ -110,63 +123,64 @@ scoped store token is the only credential it receives. The `evaluate_verdict` pu
 pass/fail logic) is unit-tested in `tests/test_egress_canary.py`; the in-guest execution is the live
 check.
 
-## Modifying the egress allowlist (whitelist) — ONE config, both backends
+## Modifying the egress allowlist — ONE config, both backends
 
 Egress is configured by a single backend-neutral value object, `resoluto_sandbox.egress.EgressConfig`,
 which each backend renders to its own mechanism (k8s → NetworkPolicy, local → host `iptables`). It is
-**default-deny whitelist**: all public HTTPS (`:443`), DNS, and your extras are allowed; IMDS (and on
-local, RFC1918) are always denied. So **github, api.anthropic.com, package mirrors, etc. already work**
-— they're HTTPS on 443. You only configure egress to add a non-443 destination or to lock down.
+**deny-by-default**: `EgressConfig()` allows ONLY the store + DNS; IMDS (and on local, RFC1918) are
+always denied. So github, api.anthropic.com, package mirrors, etc. do NOT work until you open them.
+You opt in with `allow=[...]` (least privilege) or, for trusted code, `public_https=True` (all :443).
 
 Three simple knobs (no CIDRs or code edits needed):
 
 | Knob | Meaning |
 |---|---|
-| `allow=[...]` | extra destinations — **preset names**, **hostnames**, OR **CIDRs** — allowed on `allow_port`. Names/hostnames resolve to CIDRs when rendered. |
+| `allow=[...]` | extra destinations — **preset names**, **hostnames**, OR **CIDRs** — allowed on `allow_port`. Names/hostnames resolve to CIDRs when rendered. The least-privilege way to open egress. |
 | `allow_port` | port for `allow` (default 443; e.g. **22** for git-over-SSH, or a private service port) |
-| `public_https` | `True` (default) allows all `:443`; set **`False`** to allow ONLY your store + `allow` + DNS |
+| `public_https` | `False` (default) = deny all outbound except store + `allow` + DNS; set **`True`** to allow ALL `:443` (escape hatch for trusted code) |
 
-**Presets** (for the lock-down case — expand to the provider's API hosts): LLM APIs `anthropic openai
-openrouter gemini groq mistral cohere deepseek together perplexity fireworks xai` (bundle `llms`); package
-registries `npm pypi uv composer cargo go rubygems github huggingface` (bundle `registries`). So a
-locked-down agent lane reads `EgressConfig(allow=["anthropic", "npm", "pypi"], public_https=False)` (or
-`RESOLUTO_EGRESS_ALLOW="anthropic,npm,pypi"`). Preset/hostname entries resolve to **current** IPs when
-the policy is rendered; these APIs are CDN-backed (rotating IPs), so for reliable access keep
-`public_https=True` (the default) — it already allows all of them — and use presets only when you
-deliberately lock down and accept periodic re-resolve.
+**Presets** (expand to the provider's API hosts): LLM APIs `anthropic openai openrouter gemini groq
+mistral cohere deepseek together perplexity fireworks xai` (bundle `llms`); package registries
+`npm pypi uv composer cargo go rubygems github huggingface` (bundle `registries`). So an agent lane
+that needs the LLM + npm/pypi reads `EgressConfig(allow=["anthropic", "npm", "pypi"])` (or
+`RESOLUTO_EGRESS_ALLOW="anthropic,npm,pypi"`). Preset/hostname entries resolve to **current** IPs
+when the policy is rendered; these APIs are CDN-backed (rotating IPs), so a pinned allowlist is
+best-effort and needs periodic re-resolve — when you need reliable access from otherwise-restricted
+code, `public_https=True` (all :443) is the pragmatic escape hatch.
 
 **In code (k8s):**
 ```python
 from resoluto_sandbox.egress import EgressConfig
 EgressConfig(store_cidr="10.0.0.5/32", store_port=9100,
-             allow=["github.com"], allow_port=22)        # + git-over-SSH, keep all HTTPS
-EgressConfig(store_cidr="10.0.0.5/32",
-             allow=["198.51.100.7/32"], public_https=False)  # LOCK DOWN: only store + that host + DNS
+             allow=["github.com"], allow_port=22)        # least privilege: + git-over-SSH
+EgressConfig(store_cidr="10.0.0.5/32", public_https=True)  # escape hatch: all outbound :443
 ```
 
 **Via env (works for BOTH backends — k8s reads these in `from_store_env()`, the local provisioner
 reads them too):**
 ```bash
-export RESOLUTO_EGRESS_ALLOW="github.com,198.51.100.0/24"   # comma list of hosts/CIDRs
+export RESOLUTO_EGRESS_ALLOW="github.com,198.51.100.0/24"   # comma list of hosts/CIDRs/presets
 export RESOLUTO_EGRESS_ALLOW_PORT=22                        # default 443
-export RESOLUTO_EGRESS_PUBLIC_HTTPS=0                       # 0 = lock down to allow-list only
+export RESOLUTO_EGRESS_PUBLIC_HTTPS=1                       # opt IN to all :443 (default 0 = deny)
 ```
 
 - **local**: `scripts/local-backend-up.sh` renders the firewall from these env knobs via the SAME
   renderer (`python -m resoluto_sandbox.egress local-iptables`). Set them and re-run the script; the
   Kata canary re-verifies enforcement.
 - **k8s**: pass an `EgressConfig` to `K8sSandboxRuntime(egress=...)`, or `EgressConfig.from_store_env()`
-  (which reads the same env). `egress=None` = no restriction.
+  (which reads the same env). `egress=None` = opt OUT of isolation entirely (no NetworkPolicy,
+  unrestricted egress) — distinct from `EgressConfig()`, which denies by default.
 
 There is no per-rule *blacklist* primitive (the model is default-deny; IMDS/RFC1918 are hardcoded
-denies). "Blacklist a host" = run with `public_https=False` and `allow=[everything-except-it]`. To add a
-NEW backend, write a renderer that maps `EgressConfig` to its mechanism (see `src/resoluto_sandbox/egress.py`).
+denies). "Blacklist a host" = enumerate the hosts you DO want in `allow=[...]` and leave
+`public_https=False`. To add a NEW backend, write a renderer that maps `EgressConfig` to its
+mechanism (see `src/resoluto_sandbox/egress.py`).
 
 ## What you can manage
 
 | Knob | Local backend | k8s backend |
 |---|---|---|
-| Egress allowlist | host-side iptables on the CNI bridge (default-deny; DNS + 443; REJECT IMDS + RFC1918) | `EgressConfig.from_store_env()` → default-deny NetworkPolicy (store + public-443 + DNS; IMDS denied), enforced by the cluster's NetworkPolicy controller (k3s kube-router) |
+| Egress allowlist | host-side iptables on the CNI bridge (default-deny; DNS + store; opt-in `allow`/`public_https`; REJECT IMDS + RFC1918) | `EgressConfig.from_store_env()` → default-deny NetworkPolicy (store + DNS always; opt-in `allow`/public-443; IMDS denied), enforced by the cluster's NetworkPolicy controller (k3s kube-router) |
 | IMDS block | always on (host-side REJECT of `169.254.169.254`) | always on when `EgressConfig` is passed |
 | Egress canary | on by default, fail-closed | on by default, fail-closed |
 | Runtime class | Kata (pinned, unconditional) | Kata (pinned, unconditional) |

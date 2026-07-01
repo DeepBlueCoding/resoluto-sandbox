@@ -80,9 +80,11 @@ Sandbox(backend="local").run(argv, workspace, output_paths)
    → RunResult(output, exit_code, artifacts)     # no k8s, no S3
 ```
 
-Egress is enforced host-side on the CNI bridge (default-deny; allow DNS + HTTPS-443 to
-public; reject IMDS `169.254.169.254` + RFC1918 private ranges), so it is immune to
-in-guest root. The egress canary runs fail-closed before your workload; there is no
+Egress is enforced host-side on the CNI bridge and is default-deny (secure by default):
+a fresh lane reaches only DNS + its store, and you opt in to what the workload needs at
+provision time (`RESOLUTO_EGRESS_ALLOW` for specific destinations, `RESOLUTO_EGRESS_PUBLIC_HTTPS=1`
+for all outbound :443). IMDS `169.254.169.254` + RFC1918 private ranges are always rejected, so it
+is immune to in-guest root. The egress canary runs fail-closed before your workload; there is no
 trusted-local bypass.
 
 ### What you need

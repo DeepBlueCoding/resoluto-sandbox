@@ -226,7 +226,7 @@ from resoluto_sandbox.egress import EgressConfig   # backend-neutral; re-exporte
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
-    egress=None,                    # or EgressConfig(...)
+    egress=None,                    # None = opt OUT (unrestricted); EgressConfig(...) = secure by default
 )
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
@@ -252,23 +252,25 @@ MERGED stream and `RunResult.errors == ""`. This is by design, not a dropped fie
 
 ### Egress allowlist — `EgressConfig` (backend-neutral, frozen dataclass, `egress.py`)
 ```python
-EgressConfig(allow=(), allow_port=443, public_https=True, store_cidr=None, store_port=443)
+EgressConfig(allow=(), allow_port=443, public_https=False, store_cidr=None, store_port=443)
 ```
 Canonical home `resoluto_sandbox.egress` (re-exported from `runtime.k8s` for back-compat). It is
 **backend-neutral**: two pure renderers — `k8s_egress_rules()` (NetworkPolicy) and
-`local_egress_iptables()` (host iptables) — drive the SAME config on BOTH backends. Default allows:
-object store at `store_cidr:store_port` (k8s only — local store is a file mount); ALL public 443 (any
-HTTPS) when `public_https=True`; each `allow` entry on `allow_port`; and DNS UDP+TCP/53. IMDS
-`169.254.169.254` is always denied (the local renderer also denies RFC1918). **github / api.anthropic.com
-/ any HTTPS already work** — configure egress only to add a non-443 destination (`allow`/`allow_port`,
-e.g. `22` for git-over-SSH) or to lock down (`public_https=False`). `EgressConfig.from_store_env()`
+`local_egress_iptables()` (host iptables) — drive the SAME config on BOTH backends. SECURE BY DEFAULT:
+`EgressConfig()` ALWAYS allows only the object store at `store_cidr:store_port` (k8s only — local store
+is a file mount) and DNS UDP+TCP/53; opt-in adds each `allow` entry on `allow_port`, and ALL public 443
+ONLY when `public_https=True`. IMDS `169.254.169.254` is always denied (the local renderer also denies
+RFC1918). **github / api.anthropic.com / any HTTPS do NOT work until you open them** — use `allow=[...]`
+(least privilege, e.g. `["anthropic","npm","pypi"]`, or `allow_port=22` for git-over-SSH) or
+`public_https=True` (escape hatch: ALL :443, trusted code). `EgressConfig.from_store_env()`
 derives `store_cidr`/`store_port` from `RESOLUTO_STORE_ENDPOINT` (honoring `RESOLUTO_STORE_EGRESS_CIDR`/
-`RESOLUTO_STORE_EGRESS_PORT`) AND the `RESOLUTO_EGRESS_ALLOW` / `_ALLOW_PORT` / `_PUBLIC_HTTPS` knobs
-(both backends honor those — local via `scripts/local-backend-up.sh`). To add a NEW backend, write a
-renderer in `egress.py`.
+`RESOLUTO_STORE_EGRESS_PORT`) AND the `RESOLUTO_EGRESS_ALLOW` / `_ALLOW_PORT` / `_PUBLIC_HTTPS` (default
+0/deny) knobs (both backends honor those — local via `scripts/local-backend-up.sh`). To add a NEW
+backend, write a renderer in `egress.py`.
 > FOOTGUN: `store_cidr` (and CIDR `allow` entries) MUST be CIDR notation (`1.2.3.4/32`) — k8s `ipBlock`
 > rejects FQDNs (`__post_init__` raises `ValueError`); hostname `allow` entries resolve at render time.
-> `egress=None` → no NetworkPolicy → unrestricted egress (kernel isolation only).
+> `egress=None` → opt OUT of isolation (no NetworkPolicy, unrestricted egress) — DIFFERENT from
+> `EgressConfig()`, which denies by default.
 
 ### Kube-context safety
 `K8sSandboxRuntime` PINS the context from `RESOLUTO_SANDBOX_KUBECONTEXT`. With NO context and no

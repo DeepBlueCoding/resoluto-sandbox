@@ -261,27 +261,29 @@ carries pod forensics (e.g. `OOMKilled`, evicted) when present.
 ### `EgressConfig` (default-deny pod egress)
 
 `from resoluto_sandbox.egress import EgressConfig` — backend-neutral frozen dataclass (also re-exported
-from `resoluto_sandbox.runtime.k8s` for back-compat). There is NO `llm_cidr`/`git_cidrs`; any HTTPS is
-already allowed via `public_https`:
+from `resoluto_sandbox.runtime.k8s` for back-compat). SECURE BY DEFAULT — `EgressConfig()` allows only
+store + DNS; there is NO `llm_cidr`/`git_cidrs`, you open HTTPS via `allow=[...]` or `public_https`:
 
 ```python
 EgressConfig(
-    store_cidr="10.0.0.5/32",   # k8s object store CIDR (REQUIRED for k8s; local ignores it — file mount)
-    store_port=9100,            # the store's port (default 443)
-    allow=["github.com"],       # OPTIONAL extra destinations — hostnames OR CIDRs — on allow_port
-    allow_port=22,              # port for `allow` (default 443; e.g. 22 for git-over-SSH)
-    public_https=True,          # True = all public :443; False = lock down to store + allow + DNS
+    store_cidr="10.0.0.5/32",              # k8s object store CIDR (REQUIRED for k8s; local ignores it — file mount)
+    store_port=9100,                       # the store's port (default 443)
+    allow=["anthropic", "npm", "pypi"],    # open specific destinations — presets/hostnames OR CIDRs — on allow_port
+    allow_port=443,                        # port for `allow` (default 443; e.g. 22 for git-over-SSH)
+    public_https=False,                    # DEFAULT deny all :443; True = allow ALL public :443 (escape hatch)
 )
 # or: EgressConfig.from_store_env()   # store_cidr:port + RESOLUTO_EGRESS_* knobs, from env
 ```
 
 It is **backend-neutral** — the same config renders to a k8s NetworkPolicy (`k8s_egress_rules()`) OR
-local iptables (`local_egress_iptables()`). The default allows: **store_cidr:store_port (TCP)**, **all
-public 443** (when `public_https=True`), each **`allow` entry on `allow_port`**, and **DNS 53** — IMDS
-`169.254.169.254` is always denied. **github / api.anthropic.com / any HTTPS already work** by default;
-configure egress only to add a non-443 destination (`allow`/`allow_port`) or lock down
-(`public_https=False`). `egress=None` ⇒ unrestricted egress (Kata kernel isolation only). Env knobs
-`RESOLUTO_EGRESS_ALLOW` / `_ALLOW_PORT` / `_PUBLIC_HTTPS` work for both backends — see `networking.md`.
+local iptables (`local_egress_iptables()`). It ALWAYS allows: **store_cidr:store_port (TCP)** and
+**DNS 53**; opt-in adds each **`allow` entry on `allow_port`** and **all public 443** (only when
+`public_https=True`) — IMDS `169.254.169.254` is always denied. **SECURE BY DEFAULT: github /
+api.anthropic.com / any HTTPS do NOT work until you open them** — use `allow=[...]` (least privilege)
+or `public_https=True` (escape hatch, trusted code). `egress=None` ⇒ opt OUT of isolation (no
+NetworkPolicy, unrestricted egress) — distinct from `EgressConfig()`, which denies by default. Env
+knobs `RESOLUTO_EGRESS_ALLOW` / `_ALLOW_PORT` / `_PUBLIC_HTTPS` (default 0/deny) work for both
+backends — see `networking.md`.
 
 ## Conduits (where workspace/artifacts travel)
 

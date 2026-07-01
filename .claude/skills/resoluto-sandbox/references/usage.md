@@ -121,11 +121,11 @@ Sandbox(backend=SubstrateBackend(
     runtime=K8sSandboxRuntime(
         namespace="resoluto-sandboxes",
         context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
-        egress=EgressConfig(                # None → unrestricted k8s egress (Kata isolation only)
-            store_cidr="10.0.0.5/32",       # object store (k8s only); all public 443 (github/anthropic/any HTTPS) + DNS auto-allowed; IMDS denied
+        egress=EgressConfig(                # None → opt OUT (no NetworkPolicy, unrestricted egress)
+            store_cidr="10.0.0.5/32",       # object store (k8s only); store + DNS auto-allowed; IMDS denied. SECURE BY DEFAULT
             store_port=443,                 # default 443
-            # allow=["github.com"], allow_port=22,   # add a non-443 dest (e.g. git-over-SSH)
-            # public_https=False,                    # lock down to store + allow + DNS only
+            allow=["anthropic", "npm", "pypi"],    # open only what's needed (least privilege)
+            # public_https=True,                    # escape hatch: allow ALL :443 (trusted code)
         ),
     ),
     conduit=store_from_env(),               # or inject a Conduit instance
@@ -143,7 +143,7 @@ facade does `isinstance(backend, Backend)` and uses it directly.
 
 | concern | `local` (Kata microVM via nerdctl) | `k8s` (Kata pod) |
 |---|---|---|
-| isolation | Kata microVM (hardware-virtualized) via nerdctl + a dedicated containerd; VM-grade, parity with k8s. Egress canary RUNS; egress enforced HOST-SIDE on the CNI bridge (default-deny; DNS+443-public; REJECT IMDS+RFC1918). Suitable for untrusted code. | Kata microVM (kernel isolation), curated env, optional egress NetworkPolicy. Use for untrusted/adversarial code. |
+| isolation | Kata microVM (hardware-virtualized) via nerdctl + a dedicated containerd; VM-grade, parity with k8s. Egress canary RUNS; egress enforced HOST-SIDE on the CNI bridge (default-deny: store+DNS only until you opt in via `RESOLUTO_EGRESS_ALLOW`/`_PUBLIC_HTTPS`; REJECT IMDS+RFC1918). Suitable for untrusted code. | Kata microVM (kernel isolation), curated env, optional egress NetworkPolicy. Use for untrusted/adversarial code. |
 | output | captured (from `log` span events) + live-teed to `stream` | captured (from `log` span events) + live-teed to `stream` |
 | errors | **always `""` by design** (runner merges both streams as `log` events) | **always `""` by design** (runner merges both streams as `log` events) |
 | `result` | `result.json` read from `workspace` only if `output_paths` AND `workspace` set | `result.json` fetched back only if `output_paths` AND `workspace` set |
@@ -212,7 +212,7 @@ from resoluto_sandbox.egress import EgressConfig
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
-    egress=EgressConfig(store_cidr="10.0.0.5/32", store_port=443),   # +public 443/DNS; add allow=/public_https= to extend or lock down
+    egress=EgressConfig(store_cidr="10.0.0.5/32", store_port=443),   # SECURE BY DEFAULT: store + DNS only; add allow=[...] or public_https=True to open egress
 )
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,

@@ -26,7 +26,7 @@ r = Sandbox(backend="local").run(["agent.py"], workspace="/work")
 print(r.output, r.ok)   # RunResult(exit_code, output, errors, artifacts, result, reason, ok)
 
 # k8s: Kata pod — inject SubstrateBackend
-egress = EgressConfig(store_cidr="10.0.0.5/32", store_port=443)   # +public 443 (github/anthropic/any HTTPS) + DNS; IMDS denied. allow=/allow_port= add a non-443 dest; public_https=False locks down
+egress = EgressConfig(store_cidr="10.0.0.5/32", store_port=443, allow=["anthropic","npm","pypi"])   # SECURE BY DEFAULT: EgressConfig() = store + DNS only; allow=[...] opens dests (least privilege); public_https=True = escape hatch (all :443). IMDS denied
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
@@ -48,7 +48,7 @@ Sandbox(backend=SubstrateBackend(
 |-----------|-----|
 | Run locally | `Sandbox(backend="local").run(argv, workspace=...)` — needs `/dev/kvm`, `nerdctl`, the dedicated containerd + an image |
 | Run in Kata pod | `Sandbox(backend=SubstrateBackend(runtime=K8sSandboxRuntime(...), conduit=..., image=..., store_env=store_env_for_pod(os.environ))).run(...)` |
-| Restrict egress (k8s + local) | `EgressConfig(store_cidr=…, allow=["github.com"], allow_port=22, public_https=…)` — backend-neutral (renders to NetworkPolicy OR iptables); +public 443/DNS auto; env `RESOLUTO_EGRESS_ALLOW`/`_ALLOW_PORT`/`_PUBLIC_HTTPS` |
+| Restrict egress (k8s + local) | `EgressConfig(store_cidr=…, allow=["anthropic","npm","pypi"])` — backend-neutral (renders to NetworkPolicy OR iptables); SECURE BY DEFAULT (store + DNS only); `allow=[...]` opens dests, `public_https=True` = escape hatch (all :443); env `RESOLUTO_EGRESS_ALLOW`/`_ALLOW_PORT`/`_PUBLIC_HTTPS` (default 0/deny) |
 | Collect outputs | `output_paths=["out/*.json"]` → globbed into `RunResult.artifacts` (extracted into `workspace`) |
 | Read structured result | program writes `result.json` → `RunResult.result: dict | None` |
 | Add a new runtime | subclass `contracts.py:SandboxRuntime` (`launch`/`status`/`destroy`/`sweep`), wire into `SubstrateBackend` |
@@ -61,8 +61,8 @@ Proven conduits: `local`/`stdout` (local backend) and `s3` against minio (k8s). 
 
 ## Footguns
 
-- **k8s egress defaults to UNRESTRICTED** — Kata kernel isolation only. Pass `egress=EgressConfig(...)` for default-deny. `EgressConfig` is **backend-neutral** (`resoluto_sandbox.egress`): two renderers — `k8s_egress_rules()` (NetworkPolicy) and `local_egress_iptables()` (iptables) — drive the SAME config on both backends; knobs `allow` / `allow_port` / `public_https` (env `RESOLUTO_EGRESS_ALLOW` / `_ALLOW_PORT` / `_PUBLIC_HTTPS`). A new provider = one new renderer.
-- **`local` = Kata microVM (hardware-virtualized) via nerdctl + a dedicated containerd** — each sandbox is a Kata microVM (VM-grade isolation, parity with k8s, single host, no cluster), NOT a Docker container, NOT a bare host subprocess. Needs `/dev/kvm`, `nerdctl`, the dedicated containerd up (`scripts/local-backend-up.sh`) + an image (default `resoluto-sandbox-base:dev`). The egress canary RUNS (fail-closed); local egress is enforced HOST-SIDE on the lane CNI bridge (default-deny; allow DNS + 443-public; REJECT IMDS + RFC1918) — immune to in-guest root.
+- **`egress=None` is the k8s opt-OUT** (no NetworkPolicy → UNRESTRICTED, Kata kernel isolation only) — DIFFERENT from `EgressConfig()`, which is SECURE BY DEFAULT (store + DNS only). Pass `egress=EgressConfig(...)` and open what you need. `EgressConfig` is **backend-neutral** (`resoluto_sandbox.egress`): two renderers — `k8s_egress_rules()` (NetworkPolicy) and `local_egress_iptables()` (iptables) — drive the SAME config on both backends; knobs `allow` / `allow_port` (least privilege) / `public_https` (escape hatch, default False) — env `RESOLUTO_EGRESS_ALLOW` / `_ALLOW_PORT` / `_PUBLIC_HTTPS` (default 0/deny). A new provider = one new renderer.
+- **`local` = Kata microVM (hardware-virtualized) via nerdctl + a dedicated containerd** — each sandbox is a Kata microVM (VM-grade isolation, parity with k8s, single host, no cluster), NOT a Docker container, NOT a bare host subprocess. Needs `/dev/kvm`, `nerdctl`, the dedicated containerd up (`scripts/local-backend-up.sh`) + an image (default `resoluto-sandbox-base:dev`). The egress canary RUNS (fail-closed); local egress is enforced HOST-SIDE on the lane CNI bridge (default-deny: store + DNS only until you opt in via `RESOLUTO_EGRESS_ALLOW` / `_PUBLIC_HTTPS`; REJECT IMDS + RFC1918) — immune to in-guest root.
 - **`stdin` NOT supported on either backend** — both raise `NotImplementedError`. Pass inputs via argv, env, or workspace files.
 - **Image tag == wheel** — the `k8s` image bakes a specific build; sandbox-side code changes need a rebuild+republish. The host gets source changes instantly → they drift. Bump the tag.
 - **No wall-clock timeouts** — liveness is substrate-silence (`dead_after_s` since last chunk) + heartbeat, never a duration cap on the work.
