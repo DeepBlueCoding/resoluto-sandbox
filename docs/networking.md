@@ -148,6 +148,26 @@ when the policy is rendered; these APIs are CDN-backed (rotating IPs), so a pinn
 best-effort and needs periodic re-resolve — when you need reliable access from otherwise-restricted
 code, `public_https=True` (all :443) is the pragmatic escape hatch.
 
+### Allow by DOMAIN, not IP — the SNI egress proxy (scales)
+
+`allow=[...]` is CIDR-based (resolves hostnames to IPs at render time), so it goes stale for CDN-backed
+APIs (rotating IPs) and can never match a URL path — TLS encrypts everything but the destination IP:port
+and the **SNI** hostname. For a domain allowlist that scales, route lane `:443` through the built-in
+**SNI proxy** (`resoluto_sandbox.egress_proxy`): a transparent forward proxy that reads the TLS
+ClientHello, and splices the (still-encrypted) stream to the original destination ONLY if the SNI
+matches — exact (`api.anthropic.com`) or `*.wildcard` (`*.openai.com`). No IP pinning, no CA/MITM,
+works under any CNI; it also refuses internal/IMDS destinations even on an SNI match (no SSRF).
+
+```bash
+# local: opt in at provision time — lane :443 is REDIRECTed to the proxy
+RESOLUTO_EGRESS_DOMAINS="api.anthropic.com,*.openai.com,registry.npmjs.org" scripts/local-backend-up.sh
+```
+
+Verified end-to-end: with only `api.anthropic.com` allowed, a real Kata lane reached it over TLSv1.3
+while `example.com` was blocked (SNI rejected). A URL *path* still can't be enforced at this layer
+(that needs a MITM proxy). DNS and the CIDR FORWARD chain handle everything else; `allow=[...]` remains
+for non-443 ports / explicit CIDRs.
+
 **In code (k8s):**
 ```python
 from resoluto_sandbox.egress import EgressConfig

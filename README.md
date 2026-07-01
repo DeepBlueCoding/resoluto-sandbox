@@ -153,8 +153,18 @@ Presets (expand to the provider's API hosts): LLM APIs `anthropic openai openrou
 cohere deepseek together perplexity fireworks xai` (bundle `llms`) and registries `npm pypi uv composer
 cargo go rubygems github huggingface` (bundle `registries`). On the `local` backend egress is set when
 you provision, e.g. `RESOLUTO_EGRESS_ALLOW=anthropic,npm scripts/local-backend-up.sh`; on `k8s` pass the
-`EgressConfig` to the runtime. IMDS is always blocked. `allow` entries resolve to current IPs when
-rendered — for a CDN-backed host with rotating IPs, `public_https=True` is the pragmatic choice.
+`EgressConfig` to the runtime. IMDS is always blocked.
+
+**Allow by DOMAIN, not IP (scales) — the SNI proxy.** `allow=[...]` resolves hostnames to CIDRs, which
+goes stale for CDN-backed APIs (rotating IPs) and can't match a URL path. For a domain allowlist that
+scales, route lane `:443` through the built-in **SNI egress proxy**: it reads the TLS SNI and forwards
+only matching domains (exact or `*.wildcard`), no IP pinning, no CA/MITM. On `local`, opt in at
+provision time:
+
+```bash
+RESOLUTO_EGRESS_DOMAINS="api.anthropic.com,*.openai.com,registry.npmjs.org" scripts/local-backend-up.sh
+# lane :443 now reaches ONLY those domains (proven: api.anthropic.com → TLSv1.3; example.com → blocked)
+```
 
 …or via env, honored by both backends (`local` reads them in `scripts/local-backend-up.sh`, `k8s` via
 `EgressConfig.from_store_env()`):
