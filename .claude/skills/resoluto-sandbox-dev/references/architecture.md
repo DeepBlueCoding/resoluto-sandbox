@@ -183,7 +183,7 @@ runtime = K8sSandboxRuntime(
     egress=EgressConfig(                         # egress=None = opt OUT (no NetworkPolicy, unrestricted); EgressConfig() = SECURE BY DEFAULT
         store_cidr="10.0.0.5/32",                # object store endpoint (k8s only)
         store_port=443,                          # store port; store + DNS auto-allowed; IMDS denied. Nothing else until you opt in
-        allow=["anthropic", "npm", "pypi"],      # open only what's needed (least privilege); allow_port= for a non-443 dest
+        allow=["api.anthropic.com", "registry.npmjs.org", "pypi.org"],      # open only what's needed (least privilege); allow_port= for a non-443 dest
         # public_https=True,                     # escape hatch: allow ALL :443 (trusted code)
     ),
 )
@@ -199,7 +199,7 @@ sb = Sandbox(backend=backend)
 res = sb.run(["agent.py"], workspace="/work", output_paths=["out/*.json"])
 ```
 
-`EgressConfig` is backend-neutral: `k8s_egress_rules()` renders a default-deny NetworkPolicy, `local_egress_iptables()` renders the host iptables chain — same config. SECURE BY DEFAULT — `EgressConfig()` allows ONLY `store_cidr:store_port` (k8s only) and DNS on UDP+TCP/53; opt-in adds each `allow` entry on `allow_port`, and all public 443 ONLY when `public_https=True` (escape hatch, default False). IMDS always denied. `store_cidr` and CIDR `allow` entries MUST be CIDR (`x.x.x.x/32`) — k8s ipBlock has no FQDN support (a bad `store_cidr` raises `ValueError`); hostname/preset `allow` entries resolve at render time. Env: `RESOLUTO_EGRESS_ALLOW` / `_ALLOW_PORT` / `_PUBLIC_HTTPS` (default 0/deny; both backends).
+`EgressConfig` is backend-neutral: `k8s_egress_rules()` renders a default-deny NetworkPolicy, `local_egress_iptables()` renders the host iptables chain — same config. SECURE BY DEFAULT — `EgressConfig()` allows ONLY `store_cidr:store_port` (k8s only) and DNS on UDP+TCP/53; opt-in adds each `allow` entry on `allow_port`, and all public 443 ONLY when `public_https=True` (escape hatch, default False). IMDS always denied. `store_cidr` and CIDR `allow` entries MUST be CIDR (`x.x.x.x/32`) — k8s ipBlock has no FQDN support (a bad `store_cidr` raises `ValueError`); hostname `allow` entries resolve at render time. Env: `RESOLUTO_EGRESS_ALLOW` / `_ALLOW_PORT` / `_PUBLIC_HTTPS` (default 0/deny; both backends).
 
 ## Adding a new substrate (ECS / Temporal / Fly / …)
 

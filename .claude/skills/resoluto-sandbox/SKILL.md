@@ -25,7 +25,7 @@ Both backends merge stdout+stderr into `output` (`errors` empty by design). `std
 | Collect outputs | `output_paths=["dist/*","*.json"]` → globbed into `r.artifacts`; mutated into `workspace` |
 | Structured result | program writes `result.json` in workspace → `r.result` |
 | Dependencies | put `uv run`/`pip install` in your argv, or use a prebuilt image |
-| Restrict egress (k8s + local) | `EgressConfig(store_cidr=…, allow=["anthropic","npm","pypi"])` — backend-neutral (renders to k8s NetworkPolicy OR local iptables). SECURE BY DEFAULT: `EgressConfig()` = store + DNS only, nothing else reachable; `allow=[...]` opens specific dests (least privilege), `public_https=True` is the escape hatch (all :443, trusted). Env: `RESOLUTO_EGRESS_ALLOW`/`_ALLOW_PORT`/`_PUBLIC_HTTPS` (default 0/deny, both backends) |
+| Restrict egress (k8s + local) | `EgressConfig(store_cidr=…, allow=["api.anthropic.com","registry.npmjs.org"])` — backend-neutral (renders to k8s NetworkPolicy OR local iptables). SECURE BY DEFAULT: `EgressConfig()` = store + DNS only, nothing else reachable; `allow=[...]` opens specific dests (least privilege), `public_https=True` is the escape hatch (all :443, trusted). Env: `RESOLUTO_EGRESS_ALLOW`/`_ALLOW_PORT`/`_PUBLIC_HTTPS` (default 0/deny, both backends). On local prefer per-run `run(egress=["api.anthropic.com"])` (SNI-proxy, by domain) |
 | Pick store conduit | inject `conduit=` to `SubstrateBackend`; else `store_from_env()` via `RESOLUTO_STORE_KIND` |
 | CLI | `resoluto-sandbox run [--backend local\|k8s] [--image T] -- <prog> [args]` ; also `doctor`, `image build --provider claude\|langchain\|openai\|all` |
 | Build SDK image | `resoluto-sandbox image build --provider claude` (tag locked to wheel version) |

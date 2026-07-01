@@ -117,10 +117,12 @@ print(r.result)             # parsed work/result.json if the program wrote one
 
 SECURE BY DEFAULT: `EgressConfig()` allows ONLY `store_cidr:store_port` (k8s) + DNS,
 with IMDS always blocked. **github / api.anthropic.com / any HTTPS do NOT work until you
-open them** — use `allow=[...]` (least privilege, e.g. `["anthropic","npm","pypi"]` or
-git-over-SSH `:22` via `allow_port`) or `public_https=True` (escape hatch: ALL public
+open them** — use `allow=[...]` (least privilege, e.g. `["api.anthropic.com","registry.npmjs.org","pypi.org"]`
+or git-over-SSH `:22` via `allow_port`) or `public_https=True` (escape hatch: ALL public
 443, trusted code). The same config renders to a k8s NetworkPolicy OR local iptables
-(the two renderers in `resoluto_sandbox.egress`).
+(the two renderers in `resoluto_sandbox.egress`). On the **local** backend prefer per-run
+`Sandbox.run(egress=["api.anthropic.com"])` — enforced by DOMAIN via the built-in SNI proxy
+(never goes stale for CDN-backed hosts); `EgressConfig(allow=[...])` (CIDR-based) is the k8s path.
 
 ```python
 import os
@@ -133,7 +135,7 @@ from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
 egress = EgressConfig(
     store_cidr="192.168.1.197/32",      # object store (k8s only; local store is a file mount)
     store_port=9100,                    # store port (minio); store + DNS auto-allowed. SECURE BY DEFAULT
-    allow=["anthropic", "npm", "pypi"],     # open only what's needed (least privilege); allow_port= for a non-443 dest
+    allow=["api.anthropic.com", "registry.npmjs.org", "pypi.org"],     # open only what's needed (least privilege); allow_port= for a non-443 dest
     # public_https=True,                    # escape hatch: allow ALL :443 (trusted code)
 )
 runtime = K8sSandboxRuntime(

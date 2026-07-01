@@ -16,7 +16,7 @@ Provision the local backend with `scripts/local-backend-up.sh` (ends with a gree
 canary). To open egress, set the env before running it, e.g.:
 
 ```bash
-RESOLUTO_EGRESS_ALLOW=anthropic,npm,pypi scripts/local-backend-up.sh   # least privilege
+RESOLUTO_EGRESS_ALLOW=api.anthropic.com,registry.npmjs.org scripts/local-backend-up.sh   # least privilege
 RESOLUTO_EGRESS_PUBLIC_HTTPS=1 scripts/local-backend-up.sh             # escape hatch: all :443
 ```
 
@@ -52,7 +52,7 @@ from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
 egress = EgressConfig.from_store_env()
 # ...or construct it explicitly (deny-by-default; open what you need):
 egress = EgressConfig(store_cidr="192.168.1.197/32", store_port=9000,
-                      allow=["anthropic", "npm", "pypi"])  # least privilege; store port default 443
+                      allow=["api.anthropic.com", "registry.npmjs.org", "pypi.org"])  # least privilege; store port default 443
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
@@ -78,18 +78,20 @@ opt-in:
 |---|---|---|---|
 | `store_cidr` | `store_port` | TCP | always |
 | `0.0.0.0/0` (DNS) | 53 | UDP + TCP | always |
-| each `allow` entry (preset/host/CIDR) | `allow_port` (443 default) | TCP | when `allow=[...]` is set |
+| each `allow` entry (hostname/CIDR) | `allow_port` (443 default) | TCP | when `allow=[...]` is set |
 | `0.0.0.0/0` (public HTTPS) | 443 | TCP | ONLY when `public_https=True` |
 
 The broad `0.0.0.0/0` rules include `except: ["169.254.169.254/32"]` so the cloud metadata endpoint
 (IMDS) is unreachable; the `store_cidr` rule is a specific host so it carries no `except` (k8s
-requires `except ⊂ cidr`). Prefer `allow=[...]` (least privilege) for untrusted code; use
+requires `except ⊂ cidr`). Prefer `allow=[...]` (least privilege) for untrusted code; on the
+**local** backend the preferred way to open egress is per-run `Sandbox.run(egress=["api.anthropic.com"])`
+(enforced by DOMAIN via the built-in SNI proxy, so it never goes stale for CDN-backed hosts); use
 `public_https=True` only as a deliberate escape hatch for trusted workloads.
 
 ### CIDR-only: no FQDNs for the store
 
 Kubernetes `NetworkPolicy` `ipBlock` does not accept hostnames, so `store_cidr` must be a CIDR
-(`EgressConfig.__post_init__` rejects anything without `/`). Hostname/preset entries in `allow`
+(`EgressConfig.__post_init__` rejects anything without `/`). Hostname entries in `allow`
 resolve to CIDRs at render time. Build the config from the env with `EgressConfig.from_store_env()`,
 which resolves `RESOLUTO_STORE_ENDPOINT` (or honors the `RESOLUTO_STORE_EGRESS_CIDR/PORT` override
 for a DNAT'd store — NetworkPolicy is evaluated post-DNAT).
@@ -135,18 +137,19 @@ Three simple knobs (no CIDRs or code edits needed):
 
 | Knob | Meaning |
 |---|---|
-| `allow=[...]` | extra destinations — **preset names**, **hostnames**, OR **CIDRs** — allowed on `allow_port`. Names/hostnames resolve to CIDRs when rendered. The least-privilege way to open egress. |
+| `allow=[...]` | extra destinations — **hostnames** OR **CIDRs** — allowed on `allow_port`. Hostnames resolve to CIDRs when rendered. The least-privilege way to open egress. |
 | `allow_port` | port for `allow` (default 443; e.g. **22** for git-over-SSH, or a private service port) |
 | `public_https` | `False` (default) = deny all outbound except store + `allow` + DNS; set **`True`** to allow ALL `:443` (escape hatch for trusted code) |
 
-**Presets** (expand to the provider's API hosts): LLM APIs `anthropic openai openrouter gemini groq
-mistral cohere deepseek together perplexity fireworks xai` (bundle `llms`); package registries
-`npm pypi uv composer cargo go rubygems github huggingface` (bundle `registries`). So an agent lane
-that needs the LLM + npm/pypi reads `EgressConfig(allow=["anthropic", "npm", "pypi"])` (or
-`RESOLUTO_EGRESS_ALLOW="anthropic,npm,pypi"`). Preset/hostname entries resolve to **current** IPs
-when the policy is rendered; these APIs are CDN-backed (rotating IPs), so a pinned allowlist is
-best-effort and needs periodic re-resolve — when you need reliable access from otherwise-restricted
-code, `public_https=True` (all :443) is the pragmatic escape hatch.
+So an agent lane that needs the LLM + npm/pypi reads
+`EgressConfig(allow=["api.anthropic.com", "registry.npmjs.org", "pypi.org"])` (or
+`RESOLUTO_EGRESS_ALLOW="api.anthropic.com,registry.npmjs.org"`). Hostname entries resolve to
+**current** IPs when the policy is rendered; these APIs are CDN-backed (rotating IPs), so a pinned
+allowlist is best-effort and needs periodic re-resolve. On the **local** backend prefer per-run
+`Sandbox.run(egress=["api.anthropic.com"])` (enforced by DOMAIN via the built-in SNI proxy, so it
+never goes stale for CDN-backed hosts); `EgressConfig(allow=[...])` (CIDR-based) is the k8s
+per-runtime path. When you need reliable access from otherwise-restricted code, `public_https=True`
+(all :443, trusted code) is the pragmatic escape hatch.
 
 ### Allow by DOMAIN, PER STEP — `run(egress=[...])` (the primary knob)
 
@@ -190,7 +193,7 @@ EgressConfig(store_cidr="10.0.0.5/32", public_https=True)  # escape hatch: all o
 **Via env (works for BOTH backends — k8s reads these in `from_store_env()`, the local provisioner
 reads them too):**
 ```bash
-export RESOLUTO_EGRESS_ALLOW="github.com,198.51.100.0/24"   # comma list of hosts/CIDRs/presets
+export RESOLUTO_EGRESS_ALLOW="github.com,198.51.100.0/24"   # comma list of hostnames/CIDRs
 export RESOLUTO_EGRESS_ALLOW_PORT=22                        # default 443
 export RESOLUTO_EGRESS_PUBLIC_HTTPS=1                       # opt IN to all :443 (default 0 = deny)
 ```

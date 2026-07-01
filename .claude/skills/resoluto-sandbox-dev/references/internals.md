@@ -73,7 +73,7 @@ runtime = K8sSandboxRuntime(
     egress=EgressConfig(                         # egress=None = opt OUT (no NetworkPolicy, unrestricted); EgressConfig() = SECURE BY DEFAULT
         store_cidr="10.0.0.5/32",                # store_cidr must be CIDR; FQDNs rejected in __post_init__
         store_port=443,                          # default 443; store + DNS auto-allowed; IMDS denied. Nothing else until you opt in
-        allow=["anthropic", "npm", "pypi"],      # open only what's needed (least privilege); allow_port= for a non-443 dest
+        allow=["api.anthropic.com", "registry.npmjs.org", "pypi.org"],      # open only what's needed (least privilege); allow_port= for a non-443 dest
         # public_https=True,                     # escape hatch: allow ALL :443 (trusted code)
     ),
 )
@@ -363,7 +363,7 @@ BY DEFAULT — `EgressConfig()` ALWAYS allows only the store at `store_cidr:stor
 local store is a file mount) and DNS on UDP+TCP/53; opt-in adds each `allow` entry on `allow_port`, and
 ALL public 443 ONLY when `public_https=True` (the broad rules `except=[169.254.169.254/32]`; escape
 hatch). IMDS always blocked (local also denies RFC1918). `store_cidr` and CIDR `allow` entries must be
-CIDR (`__post_init__` rejects a `store_cidr` missing `/`); hostname/preset `allow` entries resolve at
+CIDR (`__post_init__` rejects a `store_cidr` missing `/`); hostname `allow` entries resolve at
 render time. **SECURE BY DEFAULT: github / api.anthropic.com / any HTTPS do NOT work until you open
 them** — use `allow=[...]` (least privilege) or `public_https=True` (escape hatch, trusted code).
 `from_store_env()` derives `store_cidr`/`store_port` from `RESOLUTO_STORE_ENDPOINT` (honoring

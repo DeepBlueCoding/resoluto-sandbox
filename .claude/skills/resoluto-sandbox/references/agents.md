@@ -271,7 +271,7 @@ store + DNS; there is NO `llm_cidr`/`git_cidrs`, you open HTTPS via `allow=[...]
 EgressConfig(
     store_cidr="10.0.0.5/32",              # k8s object store CIDR (REQUIRED for k8s; local ignores it — file mount)
     store_port=9100,                       # the store's port (default 443)
-    allow=["anthropic", "npm", "pypi"],    # open specific destinations — presets/hostnames OR CIDRs — on allow_port
+    allow=["api.anthropic.com", "registry.npmjs.org", "pypi.org"],    # open specific destinations — hostnames OR CIDRs — on allow_port
     allow_port=443,                        # port for `allow` (default 443; e.g. 22 for git-over-SSH)
     public_https=False,                    # DEFAULT deny all :443; True = allow ALL public :443 (escape hatch)
 )

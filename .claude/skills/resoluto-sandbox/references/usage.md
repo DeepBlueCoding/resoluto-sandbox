@@ -126,7 +126,7 @@ Sandbox(backend=SubstrateBackend(
         egress=EgressConfig(                # None → opt OUT (no NetworkPolicy, unrestricted egress)
             store_cidr="10.0.0.5/32",       # object store (k8s only); store + DNS auto-allowed; IMDS denied. SECURE BY DEFAULT
             store_port=443,                 # default 443
-            allow=["anthropic", "npm", "pypi"],    # open only what's needed (least privilege)
+            allow=["api.anthropic.com", "registry.npmjs.org", "pypi.org"],    # open only what's needed (least privilege)
             # public_https=True,                    # escape hatch: allow ALL :443 (trusted code)
         ),
     ),

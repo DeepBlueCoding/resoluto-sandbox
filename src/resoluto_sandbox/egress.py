@@ -23,56 +23,6 @@ IMDS_CIDR = "169.254.169.254/32"           # cloud metadata (k8s rule `except`)
 IMDS_RANGE = "169.254.0.0/16"              # whole link-local range (local REJECT)
 RFC1918 = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
 
-# Friendly names for the most-used LLM inference endpoints and package registries, so opening egress
-# to what a workload needs reads `allow=["anthropic", "npm", "pypi"]`. Each expands to its API
-# hostname(s), resolved to CIDRs when rendered. NOTE: these are CDN-backed (rotating IPs) — a pinned
-# allowlist is best-effort and needs periodic re-resolve; when you need reliable access from otherwise
-# restricted code, `public_https=True` (allow ALL 443) is the pragmatic escape hatch. Best-effort list;
-# override with your own hosts/CIDRs anytime.
-LLM_PRESETS: dict[str, tuple[str, ...]] = {
-    "anthropic": ("api.anthropic.com",),
-    "openai": ("api.openai.com",),
-    "openrouter": ("openrouter.ai",),
-    "gemini": ("generativelanguage.googleapis.com",),
-    "groq": ("api.groq.com",),
-    "mistral": ("api.mistral.ai",),
-    "cohere": ("api.cohere.com",),
-    "deepseek": ("api.deepseek.com",),
-    "together": ("api.together.xyz",),
-    "perplexity": ("api.perplexity.ai",),
-    "fireworks": ("api.fireworks.ai",),
-    "xai": ("api.x.ai",),
-}
-REGISTRY_PRESETS: dict[str, tuple[str, ...]] = {
-    "npm": ("registry.npmjs.org",),
-    "pypi": ("pypi.org", "files.pythonhosted.org"),
-    "uv": ("pypi.org", "files.pythonhosted.org", "astral.sh"),
-    "composer": ("repo.packagist.org", "packagist.org"),
-    "cargo": ("crates.io", "static.crates.io", "index.crates.io"),
-    "go": ("proxy.golang.org", "sum.golang.org"),
-    "rubygems": ("rubygems.org", "index.rubygems.org"),
-    "github": ("github.com", "api.github.com", "codeload.github.com", "objects.githubusercontent.com"),
-    "huggingface": ("huggingface.co", "cdn-lfs.huggingface.co"),
-}
-PRESETS: dict[str, tuple[str, ...]] = {
-    **LLM_PRESETS,
-    **REGISTRY_PRESETS,
-    "llms": tuple(sorted({h for v in LLM_PRESETS.values() for h in v})),
-    "registries": tuple(sorted({h for v in REGISTRY_PRESETS.values() for h in v})),
-}
-
-
-def expand_presets(entries: Sequence[str]) -> list[str]:
-    """Expand any preset NAME (e.g. 'anthropic', 'npm', 'llms') to its hostnames; pass others through."""
-    out: list[str] = []
-    for raw in entries:
-        e = (raw or "").strip()
-        if not e:
-            continue
-        out.extend(PRESETS[e]) if e in PRESETS else out.append(e)
-    return out
-
-
 def _host_or_cidr(entry: str) -> str:
     """Normalize an allow entry to a bare hostname or a CIDR.
 
@@ -96,14 +46,14 @@ def _host_or_cidr(entry: str) -> str:
 def resolve_cidrs(entries: Sequence[str]) -> list[str]:
     """Resolve allow entries to a de-duplicated list of CIDRs.
 
-    Each entry is a preset name (expanded to hostnames), a CIDR (kept verbatim), a plain domain, or a
-    full URL / host+path (the host is used; the path is dropped — L3/L4 can't match paths). Hostnames
-    resolve to one /32 per A record. Raises ValueError if a hostname does not resolve.
+    Each entry is a CIDR (kept verbatim), a plain domain, or a full URL / host+path (the host is used;
+    the path is dropped — L3/L4 can't match paths). Hostnames resolve to one /32 per A record. Raises
+    ValueError if a hostname does not resolve.
     """
     import socket
 
     out: list[str] = []
-    for raw in expand_presets(entries):
+    for raw in entries:
         e = _host_or_cidr(raw)
         if not e:
             continue
@@ -127,10 +77,11 @@ class EgressConfig:
 
     - public_https=False (DEFAULT) → deny all outbound except DNS + store. Set **True** to allow ALL
       HTTPS (:443) — the "let it reach the internet" escape hatch for trusted workloads.
-    - allow=[...] opens SPECIFIC destinations — preset NAMES (e.g. "anthropic", "openai", "openrouter",
-      "npm", "pypi", "composer", "github", or the bundles "llms"/"registries"; see PRESETS), hostnames,
-      OR CIDRs — on allow_port (443 default; e.g. 22 for git-over-SSH). Names/hostnames resolve to CIDRs
-      when rendered. This is the RECOMMENDED way to run untrusted code: least privilege.
+    - allow=[...] opens SPECIFIC destinations — hostnames (e.g. "api.anthropic.com", "registry.npmjs.org")
+      OR CIDRs — on allow_port (443 default; e.g. 22 for git-over-SSH). Hostnames resolve to CIDRs when
+      rendered. This is the RECOMMENDED way to run untrusted code on k8s: least privilege. (On the local
+      backend, prefer per-run `Sandbox.run(egress=[domains])` — enforced by domain via the SNI proxy, so
+      it never goes stale for CDN-backed hosts.)
     - store_cidr/store_port: the k8s object-store endpoint (REQUIRED for the k8s backend; the local
       backend reaches its store over a file mount, so it ignores these). Always allowed — the lane
       must return results.

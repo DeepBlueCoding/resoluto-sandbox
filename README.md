@@ -138,49 +138,28 @@ including the vendor-neutral k8s stack — is in [`docs/backends.md`](docs/backe
 
 A sandbox for untrusted code is **locked down by default**: a fresh lane can reach **only DNS and its
 object store** — no internet, no LLM, no registries. It cannot phone home. You **opt in** to exactly
-what the workload needs, with one backend-neutral `EgressConfig` — the **same knobs on `local` and
-`k8s`**, with friendly presets for the common APIs:
+the **domains** each step needs, **per `run()`** — no re-provision between steps:
 
 ```python
-from resoluto_sandbox.egress import EgressConfig
-
-EgressConfig(allow=["anthropic", "npm", "pypi"])   # least privilege: just the LLM + these registries
-EgressConfig(allow=["github.com"], allow_port=22)  # + git over SSH
-EgressConfig(public_https=True)                    # escape hatch: allow ALL outbound HTTPS (trusted code)
+Sandbox(backend="local").run(argv, egress=["api.anthropic.com"])                    # only Anthropic
+Sandbox(backend="local").run(argv, egress=["registry.npmjs.org", "*.openai.com"])   # npm + any OpenAI host
+Sandbox(backend="local").run(argv)                                                  # None → deny all (secure default)
 ```
 
-Presets (expand to the provider's API hosts): LLM APIs `anthropic openai openrouter gemini groq mistral
-cohere deepseek together perplexity fireworks xai` (bundle `llms`) and registries `npm pypi uv composer
-cargo go rubygems github huggingface` (bundle `registries`). On the `local` backend egress is set when
-you provision, e.g. `RESOLUTO_EGRESS_ALLOW=anthropic,npm scripts/local-backend-up.sh`; on `k8s` pass the
-`EgressConfig` to the runtime. IMDS is always blocked.
+Under the hood a built-in **SNI egress proxy** reads that step's allowlist live and forwards only
+connections whose TLS **SNI** matches — exact (`api.anthropic.com`) or `*.wildcard` (`*.openai.com`).
+It allows by **domain, not IP** (so it never goes stale for CDN-backed APIs behind rotating IPs), does
+no IP pinning and no CA/MITM, and refuses internal/IMDS destinations even on a match. `None`/`[]` →
+the secure default (DNS + object store only). One-time setup runs the proxy: `scripts/local-backend-up.sh`.
 
-**Allow by DOMAIN, per step (scales).** IP allowlists (`allow=[...]`) go stale for CDN-backed APIs
-(rotating IPs) and can't match a URL path. For domains that scale, set the allowlist **per `run()`** —
-each step gets exactly the networking it needs, on the fly, no re-provision:
+Verified end-to-end, back-to-back with **no re-provision**: `pnpm add is-odd` installs only when
+`registry.npmjs.org` is in that step's `egress`; a real Claude agent answers only when
+`api.anthropic.com` is.
 
-```python
-Sandbox(backend="local").run(argv, egress=["api.anthropic.com"])    # this step reaches ONLY Anthropic
-Sandbox(backend="local").run(argv, egress=["registry.npmjs.org"])   # this step reaches ONLY the npm registry
-Sandbox(backend="local").run(argv)                                  # egress=None → deny all (secure default)
-```
-
-Under the hood a built-in **SNI egress proxy** reads the step's allowlist live and forwards only
-connections whose TLS SNI matches (exact or `*.wildcard`) — no IP pinning, no CA/MITM. One-time setup
-runs the proxy: `scripts/local-backend-up.sh`. Verified end-to-end: `pnpm add is-odd` installs only when
-`registry.npmjs.org` is in that step's `egress`; a real Claude agent answers only when `api.anthropic.com`
-is — back-to-back runs, no re-provision. (`egress=` is applied by the `local` backend today; `k8s`
-still uses `EgressConfig`.)
-
-…or via env, honored by both backends (`local` reads them in `scripts/local-backend-up.sh`, `k8s` via
-`EgressConfig.from_store_env()`):
-
-```bash
-RESOLUTO_EGRESS_ALLOW="github.com,10.1.2.3/32"   RESOLUTO_EGRESS_ALLOW_PORT=22   RESOLUTO_EGRESS_PUBLIC_HTTPS=0
-```
-
-`allow` takes hostnames **or** CIDRs (hostnames are resolved); IMDS is always blocked. Details in
-[`docs/networking.md`](docs/networking.md).
+> `run(egress=[...])` is enforced by the `local` backend today. On `k8s`, egress is set per-runtime via
+> a backend-neutral `EgressConfig` (renders to a default-deny `NetworkPolicy`); `public_https=True` is
+> the escape hatch to allow ALL outbound HTTPS for trusted code. Details in
+> [`docs/networking.md`](docs/networking.md).
 
 ---
 
@@ -195,6 +174,7 @@ Sandbox(backend="local").run(
     env=None,             # dict overlaid on the sandbox environment
     output_paths=None,    # glob patterns collected back as artifacts
     stream=None,          # live output sink; None echoes to sys.stdout
+    egress=None,          # domains allowed for THIS run (local); None/[] = deny all but DNS + store
 ) -> RunResult
 ```
 

@@ -26,7 +26,7 @@ r = Sandbox(backend="local").run(["agent.py"], workspace="/work")
 print(r.output, r.ok)   # RunResult(exit_code, output, errors, artifacts, result, reason, ok)
 
 # k8s: Kata pod — inject SubstrateBackend
-egress = EgressConfig(store_cidr="10.0.0.5/32", store_port=443, allow=["anthropic","npm","pypi"])   # SECURE BY DEFAULT: EgressConfig() = store + DNS only; allow=[...] opens dests (least privilege); public_https=True = escape hatch (all :443). IMDS denied
+egress = EgressConfig(store_cidr="10.0.0.5/32", store_port=443, allow=["api.anthropic.com","registry.npmjs.org","pypi.org"])   # SECURE BY DEFAULT: EgressConfig() = store + DNS only; allow=[...] opens dests (least privilege); public_https=True = escape hatch (all :443). IMDS denied
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
@@ -48,7 +48,7 @@ Sandbox(backend=SubstrateBackend(
 |-----------|-----|
 | Run locally | `Sandbox(backend="local").run(argv, workspace=...)` — needs `/dev/kvm`, `nerdctl`, the dedicated containerd + an image |
 | Run in Kata pod | `Sandbox(backend=SubstrateBackend(runtime=K8sSandboxRuntime(...), conduit=..., image=..., store_env=store_env_for_pod(os.environ))).run(...)` |
-| Restrict egress (k8s + local) | `EgressConfig(store_cidr=…, allow=["anthropic","npm","pypi"])` — backend-neutral (renders to NetworkPolicy OR iptables); SECURE BY DEFAULT (store + DNS only); `allow=[...]` opens dests, `public_https=True` = escape hatch (all :443); env `RESOLUTO_EGRESS_ALLOW`/`_ALLOW_PORT`/`_PUBLIC_HTTPS` (default 0/deny) |
+| Restrict egress (k8s + local) | `EgressConfig(store_cidr=…, allow=["api.anthropic.com","registry.npmjs.org"])` — backend-neutral (renders to NetworkPolicy OR iptables); SECURE BY DEFAULT (store + DNS only); `allow=[...]` opens dests, `public_https=True` = escape hatch (all :443); env `RESOLUTO_EGRESS_ALLOW`/`_ALLOW_PORT`/`_PUBLIC_HTTPS` (default 0/deny). On local prefer per-run `run(egress=["api.anthropic.com"])` (SNI-proxy, by domain) |
 | Collect outputs | `output_paths=["out/*.json"]` → globbed into `RunResult.artifacts` (extracted into `workspace`) |
 | Read structured result | program writes `result.json` → `RunResult.result: dict | None` |
 | Add a new runtime | subclass `contracts.py:SandboxRuntime` (`launch`/`status`/`destroy`/`sweep`), wire into `SubstrateBackend` |
