@@ -60,6 +60,9 @@ Sandbox(*, backend: Backend | str = "local")    # "local" | "k8s" | injected Bac
     env: dict[str, str] | None = None,  # overlays sandbox env
     output_paths: Sequence[str] | None = None,  # globs collected into RunResult.artifacts
     stream: IO[str] | None = None,      # live output sink, default sys.stdout
+    egress: Sequence[str] | None = None,  # THIS run's allowed domains (e.g. ["api.anthropic.com"]);
+                                          # None/[] = deny all. Per-step networking on the fly (local
+                                          # backend, via the SNI proxy); no re-provision.
 ) -> RunResult
 ```
 

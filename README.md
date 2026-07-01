@@ -155,18 +155,22 @@ cargo go rubygems github huggingface` (bundle `registries`). On the `local` back
 you provision, e.g. `RESOLUTO_EGRESS_ALLOW=anthropic,npm scripts/local-backend-up.sh`; on `k8s` pass the
 `EgressConfig` to the runtime. IMDS is always blocked.
 
-**Allow by DOMAIN, not IP (scales) — the SNI proxy.** `allow=[...]` resolves hostnames to CIDRs, which
-goes stale for CDN-backed APIs (rotating IPs) and can't match a URL path. For a domain allowlist that
-scales, route lane `:443` through the built-in **SNI egress proxy**: it reads the TLS SNI and forwards
-only matching domains (exact or `*.wildcard`), no IP pinning, no CA/MITM. On `local`, opt in at
-provision time:
+**Allow by DOMAIN, per step (scales).** IP allowlists (`allow=[...]`) go stale for CDN-backed APIs
+(rotating IPs) and can't match a URL path. For domains that scale, set the allowlist **per `run()`** —
+each step gets exactly the networking it needs, on the fly, no re-provision:
 
-```bash
-RESOLUTO_EGRESS_DOMAINS="api.anthropic.com,*.openai.com,registry.npmjs.org" scripts/local-backend-up.sh
-# lane :443 now reaches ONLY those domains. Verified end-to-end:
-#   allow=api.anthropic.com    → a real Claude agent answers; registry.npmjs.org is BLOCKED
-#   allow=registry.npmjs.org   → `pnpm add is-odd` installs from the registry; anything else BLOCKED
+```python
+Sandbox(backend="local").run(argv, egress=["api.anthropic.com"])    # this step reaches ONLY Anthropic
+Sandbox(backend="local").run(argv, egress=["registry.npmjs.org"])   # this step reaches ONLY the npm registry
+Sandbox(backend="local").run(argv)                                  # egress=None → deny all (secure default)
 ```
+
+Under the hood a built-in **SNI egress proxy** reads the step's allowlist live and forwards only
+connections whose TLS SNI matches (exact or `*.wildcard`) — no IP pinning, no CA/MITM. One-time setup
+runs the proxy: `scripts/local-backend-up.sh`. Verified end-to-end: `pnpm add is-odd` installs only when
+`registry.npmjs.org` is in that step's `egress`; a real Claude agent answers only when `api.anthropic.com`
+is — back-to-back runs, no re-provision. (`egress=` is applied by the `local` backend today; `k8s`
+still uses `EgressConfig`.)
 
 …or via env, honored by both backends (`local` reads them in `scripts/local-backend-up.sh`, `k8s` via
 `EgressConfig.from_store_env()`):
