@@ -163,7 +163,9 @@ provision time:
 
 ```bash
 RESOLUTO_EGRESS_DOMAINS="api.anthropic.com,*.openai.com,registry.npmjs.org" scripts/local-backend-up.sh
-# lane :443 now reaches ONLY those domains (proven: api.anthropic.com → TLSv1.3; example.com → blocked)
+# lane :443 now reaches ONLY those domains. Verified end-to-end:
+#   allow=api.anthropic.com    → a real Claude agent answers; registry.npmjs.org is BLOCKED
+#   allow=registry.npmjs.org   → `pnpm add is-odd` installs from the registry; anything else BLOCKED
 ```
 
 …or via env, honored by both backends (`local` reads them in `scripts/local-backend-up.sh`, `k8s` via
