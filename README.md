@@ -134,6 +134,29 @@ For the `local` backend, run `scripts/local-backend-up.sh` until its canary is G
 inject a configured `SubstrateBackend` (or use `Sandbox(backend="k8s", image=…)`). Full setup —
 including the vendor-neutral k8s stack — is in [`docs/backends.md`](docs/backends.md).
 
+### Restrict egress (optional)
+
+All outbound HTTPS works by default, so `git clone https://…`, `api.anthropic.com`, and package
+mirrors just run. To add a non-443 destination or lock things down, use one backend-neutral
+`EgressConfig` — the **same knobs on `local` and `k8s`**:
+
+```python
+from resoluto_sandbox.egress import EgressConfig
+
+EgressConfig(allow=["github.com"], allow_port=22)         # + git over SSH (still allow all HTTPS)
+EgressConfig(allow=["10.1.2.3/32"], public_https=False)   # lock down: only these + DNS (+ store on k8s)
+```
+
+…or via env, honored by both backends (`local` reads them in `scripts/local-backend-up.sh`, `k8s` via
+`EgressConfig.from_store_env()`):
+
+```bash
+RESOLUTO_EGRESS_ALLOW="github.com,10.1.2.3/32"   RESOLUTO_EGRESS_ALLOW_PORT=22   RESOLUTO_EGRESS_PUBLIC_HTTPS=0
+```
+
+`allow` takes hostnames **or** CIDRs (hostnames are resolved); IMDS is always blocked. Details in
+[`docs/networking.md`](docs/networking.md).
+
 ---
 
 ## `Sandbox.run()` reference
