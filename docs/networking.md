@@ -122,9 +122,18 @@ Three simple knobs (no CIDRs or code edits needed):
 
 | Knob | Meaning |
 |---|---|
-| `allow=[...]` | extra destinations — **hostnames OR CIDRs** — allowed on `allow_port`. Hostnames are resolved to CIDRs when rendered. |
+| `allow=[...]` | extra destinations — **preset names**, **hostnames**, OR **CIDRs** — allowed on `allow_port`. Names/hostnames resolve to CIDRs when rendered. |
 | `allow_port` | port for `allow` (default 443; e.g. **22** for git-over-SSH, or a private service port) |
 | `public_https` | `True` (default) allows all `:443`; set **`False`** to allow ONLY your store + `allow` + DNS |
+
+**Presets** (for the lock-down case — expand to the provider's API hosts): LLM APIs `anthropic openai
+openrouter gemini groq mistral cohere deepseek together perplexity fireworks xai` (bundle `llms`); package
+registries `npm pypi uv composer cargo go rubygems github huggingface` (bundle `registries`). So a
+locked-down agent lane reads `EgressConfig(allow=["anthropic", "npm", "pypi"], public_https=False)` (or
+`RESOLUTO_EGRESS_ALLOW="anthropic,npm,pypi"`). Preset/hostname entries resolve to **current** IPs when
+the policy is rendered; these APIs are CDN-backed (rotating IPs), so for reliable access keep
+`public_https=True` (the default) — it already allows all of them — and use presets only when you
+deliberately lock down and accept periodic re-resolve.
 
 **In code (k8s):**
 ```python

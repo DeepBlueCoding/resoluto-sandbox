@@ -22,17 +22,66 @@ IMDS_CIDR = "169.254.169.254/32"           # cloud metadata (k8s rule `except`)
 IMDS_RANGE = "169.254.0.0/16"              # whole link-local range (local REJECT)
 RFC1918 = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
 
+# Friendly names for the most-used LLM inference endpoints and package registries, so a locked-down
+# allowlist reads `allow=["anthropic", "npm", "pypi"]`. Each expands to its API hostname(s), resolved
+# to CIDRs when rendered. NOTE: these are all CDN-backed (rotating IPs) — for RELIABLE access keep
+# public_https=True (the default), which allows all of them; presets are for the public_https=False
+# lock-down case, where you accept periodic re-resolve. Maintained best-effort; override with your own
+# hosts/CIDRs anytime.
+LLM_PRESETS: dict[str, tuple[str, ...]] = {
+    "anthropic": ("api.anthropic.com",),
+    "openai": ("api.openai.com",),
+    "openrouter": ("openrouter.ai",),
+    "gemini": ("generativelanguage.googleapis.com",),
+    "groq": ("api.groq.com",),
+    "mistral": ("api.mistral.ai",),
+    "cohere": ("api.cohere.com",),
+    "deepseek": ("api.deepseek.com",),
+    "together": ("api.together.xyz",),
+    "perplexity": ("api.perplexity.ai",),
+    "fireworks": ("api.fireworks.ai",),
+    "xai": ("api.x.ai",),
+}
+REGISTRY_PRESETS: dict[str, tuple[str, ...]] = {
+    "npm": ("registry.npmjs.org",),
+    "pypi": ("pypi.org", "files.pythonhosted.org"),
+    "uv": ("pypi.org", "files.pythonhosted.org", "astral.sh"),
+    "composer": ("repo.packagist.org", "packagist.org"),
+    "cargo": ("crates.io", "static.crates.io", "index.crates.io"),
+    "go": ("proxy.golang.org", "sum.golang.org"),
+    "rubygems": ("rubygems.org", "index.rubygems.org"),
+    "github": ("github.com", "api.github.com", "codeload.github.com", "objects.githubusercontent.com"),
+    "huggingface": ("huggingface.co", "cdn-lfs.huggingface.co"),
+}
+PRESETS: dict[str, tuple[str, ...]] = {
+    **LLM_PRESETS,
+    **REGISTRY_PRESETS,
+    "llms": tuple(sorted({h for v in LLM_PRESETS.values() for h in v})),
+    "registries": tuple(sorted({h for v in REGISTRY_PRESETS.values() for h in v})),
+}
+
+
+def expand_presets(entries: Sequence[str]) -> list[str]:
+    """Expand any preset NAME (e.g. 'anthropic', 'npm', 'llms') to its hostnames; pass others through."""
+    out: list[str] = []
+    for raw in entries:
+        e = (raw or "").strip()
+        if not e:
+            continue
+        out.extend(PRESETS[e]) if e in PRESETS else out.append(e)
+    return out
+
 
 def resolve_cidrs(entries: Sequence[str]) -> list[str]:
-    """Resolve allow entries (each a hostname OR a CIDR) to a de-duplicated list of CIDRs.
+    """Resolve allow entries to a de-duplicated list of CIDRs.
 
-    A value containing '/' is a CIDR verbatim; otherwise it is a hostname resolved to one /32 per
-    A record. Raises ValueError if a hostname does not resolve.
+    Each entry is a preset name (expanded to hostnames), a CIDR (used verbatim), or a hostname
+    (resolved to one /32 per A record). Raises ValueError if a hostname does not resolve.
     """
     import socket
 
     out: list[str] = []
-    for raw in entries:
+    for raw in expand_presets(entries):
         e = (raw or "").strip()
         if not e:
             continue
@@ -54,8 +103,10 @@ class EgressConfig:
 
     - public_https=True (default) allows ALL outbound HTTPS (:443) — so github, api.anthropic.com,
       package mirrors, etc. work with NO extra config. Set False to allow ONLY what you list.
-    - allow=[...] adds extra destinations — hostnames OR CIDRs — on allow_port (443 default; e.g. 22
-      for git-over-SSH, or a private service). Hostnames are resolved to CIDRs when rendered.
+    - allow=[...] adds extra destinations — preset NAMES (e.g. "anthropic", "openai", "openrouter",
+      "npm", "pypi", "composer", "github", or the bundles "llms"/"registries"; see PRESETS), hostnames,
+      OR CIDRs — on allow_port (443 default; e.g. 22 for git-over-SSH). Names/hostnames resolve to CIDRs
+      when rendered.
     - store_cidr/store_port: the k8s object-store endpoint (REQUIRED for the k8s backend; the local
       backend reaches its store over a file mount, so it ignores these).
 

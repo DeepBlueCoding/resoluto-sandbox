@@ -91,3 +91,32 @@ def test_from_store_env_reads_simple_allow_knobs():
 def test_egressconfig_rejects_non_cidr_store():
     with pytest.raises(ValueError, match="not a CIDR"):
         EgressConfig(store_cidr="api.anthropic.com")
+
+
+# ── provider presets (anthropic/openai/npm/pypi/…) ───────────────────────────
+
+
+def test_expand_presets_names_hosts_and_passthrough():
+    from resoluto_sandbox.egress import expand_presets
+    out = expand_presets(["anthropic", "npm", "pypi", "example.com", "10.0.0.0/8"])
+    assert "api.anthropic.com" in out
+    assert "registry.npmjs.org" in out
+    assert "pypi.org" in out and "files.pythonhosted.org" in out   # multi-host preset
+    assert "example.com" in out and "10.0.0.0/8" in out            # non-presets pass through
+
+
+def test_bundle_presets_llms_and_registries():
+    from resoluto_sandbox.egress import expand_presets
+    llms = expand_presets(["llms"])
+    assert "api.anthropic.com" in llms and "api.openai.com" in llms and "openrouter.ai" in llms
+    assert "registry.npmjs.org" in expand_presets(["registries"])
+
+
+def test_allow_preset_resolves_into_a_rule(monkeypatch):
+    import socket
+    monkeypatch.setattr(socket, "getaddrinfo", lambda h, *a, **k: [(2, 1, 6, "", ("104.18.0.7", 0))])
+    # a locked-down lane that may reach only the Anthropic API
+    rules = local_egress_iptables(EgressConfig(allow=["anthropic"], public_https=False), chain="EG")
+    joined = [" ".join(r) for r in rules]
+    assert "-A EG -p tcp --dport 443 -d 104.18.0.7/32 -j ACCEPT" in joined
+    assert "-A EG -p tcp --dport 443 -j ACCEPT" not in joined  # public_https off

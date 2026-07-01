@@ -136,16 +136,23 @@ including the vendor-neutral k8s stack — is in [`docs/backends.md`](docs/backe
 
 ### Restrict egress (optional)
 
-All outbound HTTPS works by default, so `git clone https://…`, `api.anthropic.com`, and package
-mirrors just run. To add a non-443 destination or lock things down, use one backend-neutral
-`EgressConfig` — the **same knobs on `local` and `k8s`**:
+All outbound HTTPS works by default, so **every LLM API** (`api.anthropic.com`, OpenAI, OpenRouter, …)
+and **every package registry** (npm, PyPI/uv, Composer, …), plus `git clone https://…`, just run — they
+are HTTPS on `:443`. To add a non-443 destination or lock things down, use one backend-neutral
+`EgressConfig` — the **same knobs on `local` and `k8s`**, with friendly presets for the common APIs:
 
 ```python
 from resoluto_sandbox.egress import EgressConfig
 
-EgressConfig(allow=["github.com"], allow_port=22)         # + git over SSH (still allow all HTTPS)
-EgressConfig(allow=["10.1.2.3/32"], public_https=False)   # lock down: only these + DNS (+ store on k8s)
+EgressConfig(allow=["github.com"], allow_port=22)              # + git over SSH (still allow all HTTPS)
+EgressConfig(allow=["anthropic", "npm", "pypi"], public_https=False)  # LOCK DOWN to only these + DNS
 ```
+
+Presets (expand to the provider's API hosts): `anthropic openai openrouter gemini groq mistral cohere
+deepseek together perplexity fireworks xai` (or the bundle `llms`) and `npm pypi uv composer cargo go
+rubygems github huggingface` (bundle `registries`). Preset names resolve to current IPs when rendered;
+since those APIs are CDN-backed (rotating IPs), **keep `public_https=True` (the default) for reliable
+access** — locking down to resolved IPs is best-effort.
 
 …or via env, honored by both backends (`local` reads them in `scripts/local-backend-up.sh`, `k8s` via
 `EgressConfig.from_store_env()`):
