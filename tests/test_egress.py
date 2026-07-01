@@ -104,7 +104,7 @@ def test_egressconfig_rejects_non_cidr_store():
         EgressConfig(store_cidr="api.anthropic.com")
 
 
-# ── allow=[...] takes hostnames / URLs / CIDRs (no keyword presets) ───────────
+# ── allow=[...] takes hostnames / URLs / CIDRs (no keyword expansion) ───────────
 
 
 def test_allow_accepts_plain_domain_and_full_url(monkeypatch):

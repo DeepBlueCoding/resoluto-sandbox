@@ -1,7 +1,7 @@
 # USAGE: the `Sandbox.run()` contract end-to-end
 
 How to USE or EXTEND this sandbox from your own system. One entrypoint, one
-result type, two backend presets. Plain programs in, structured results out.
+result type, two built-in backends. Plain programs in, structured results out.
 
 Cross-links (don't duplicate these):
 - Wire protocol (span events, manifest, result/task schemas): [`spec/PROTOCOL.md`](../../../../spec/PROTOCOL.md)
@@ -110,7 +110,7 @@ Two ways to pick a backend. Strings are for the trivial cases; **inject a config
 # By string (no config knobs)
 Sandbox(backend="local")                     # Kata microVM via nerdctl, default image
 Sandbox(backend="local", image="my:img")     # Kata microVM via nerdctl, custom image
-Sandbox(backend="k8s", image="<tag>")        # k8s preset — reads RESOLUTO_STORE_KIND from env
+Sandbox(backend="k8s", image="<tag>")        # k8s backend — reads RESOLUTO_STORE_KIND from env
 
 # By injection (DI) — the supported path for k8s config with egress/custom conduit
 import os

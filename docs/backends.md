@@ -1,7 +1,7 @@
 # Backends
 
 `Sandbox` delegates every run to a pluggable `Backend`. This page covers the two
-presets, how to install the k8s stack, and how to wire in a custom backend.
+built-in backends, how to install the k8s stack, and how to wire in a custom backend.
 
 ## Overview
 
@@ -143,7 +143,7 @@ print(result.output)   # "hi"
 print(result.ok)       # True
 ```
 
-Or use the convenience preset (reads `RESOLUTO_LANE_IMAGE` and `RESOLUTO_STORE_KIND` from env):
+Or use the convenience shortcut (reads `RESOLUTO_LANE_IMAGE` and `RESOLUTO_STORE_KIND` from env):
 
 ```python
 Sandbox(backend="k8s", image="<registry>/resoluto-lane:dev").run(...)

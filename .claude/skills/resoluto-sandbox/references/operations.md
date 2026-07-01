@@ -22,7 +22,7 @@ your program  (plain: reads argv -> writes stdout/files/exit; never imports reso
 │ SubstrateBackend (the ONE impl)  ← drive_node + Conduit + runner_main
 ├──────────────────────────────┬──────────────────────────────┤
 │ SandboxRuntime (ABC)         │  Conduit (ABC)  host<->sandbox exchange
-│   KataNerdctlSandboxRuntime  │    LocalConduit (bind-mount, local preset)
+│   KataNerdctlSandboxRuntime  │    LocalConduit (bind-mount, local backend)
 │   (Kata microVM via nerdctl, │    StdoutConduit | S3Conduit | GcsConduit(exp.)
 │    local)                    │
 │   K8sSandboxRuntime          │
@@ -204,7 +204,7 @@ GcsConduit(bucket, *, service_file=None)            # extra [gcs]; service_file 
 
 Backend ↔ conduit pairing:
 - **local** → `localfs` (`LocalConduit`, bind-mounted at `/conduit` inside the Kata microVM guest). The
-  local preset wires this automatically.
+  local backend wires this automatically.
 - **k8s** → `s3` against minio (local) or real S3 (cloud). The pod self-reports chunks to the
   store; the orchestrator tails it. `SubstrateBackend` requires a conduit (inject or `store_from_env()`).
 

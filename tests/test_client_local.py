@@ -1,5 +1,5 @@
 """Local-backend (Kata/nerdctl) `Sandbox.run` wiring — the runtime + drive_node are stubbed so
-NO real microVM launches. Asserts the SubstrateBackend the local preset builds: the spec env
+NO real microVM launches. Asserts the SubstrateBackend the local backend builds: the spec env
 (RESOLUTO_WORKLOAD_ARGV), the localfs/conduit store_env (no trusted-local), and the
 NodeResult→RunResult mapping."""
 import pytest

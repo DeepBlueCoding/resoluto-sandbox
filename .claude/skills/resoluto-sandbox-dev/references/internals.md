@@ -85,8 +85,8 @@ sb = Sandbox(backend=SubstrateBackend(
 ))
 ```
 
-The `"local"` / `"k8s"` string presets (`client.py`) build the same `SubstrateBackend` with the right
-runtime, conduit, and store_env. The k8s preset reads `RESOLUTO_SANDBOX_NAMESPACE`,
+The `"local"` / `"k8s"` string shortcuts (`client.py`) build the same `SubstrateBackend` with the right
+runtime, conduit, and store_env. The k8s backend reads `RESOLUTO_SANDBOX_NAMESPACE`,
 `RESOLUTO_SANDBOX_KUBECONTEXT`, `RESOLUTO_LANE_IMAGE_PULL_POLICY` from env; the substrate hard-codes
 `dead_after_s=600.0` on its `drive_node` call. (`KataNerdctlSandboxRuntime` is stdlib-only — it shells the
 `nerdctl` CLI; `K8sSandboxRuntime` is imported lazily so the core import stays pydantic-only.)

@@ -32,7 +32,7 @@ stage → run → collect
 ## Backends
 
 `Sandbox` holds one backend (selected by name or injected). One `SubstrateBackend` drives both
-presets; the only thing that varies is the injected `SandboxRuntime`.
+backends; the only thing that varies is the injected `SandboxRuntime`.
 
 ### `local`
 

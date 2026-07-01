@@ -6,12 +6,12 @@ Reference for an agent that will USE or EXTEND this sandbox in its own system. T
 
 `Sandbox` is a thin facade. It HOLDS one injected `Backend` and DELEGATES every call to it. No substrate logic lives in the facade — it only selects/holds a backend and forwards `run(...)`.
 
-ONE `SubstrateBackend` drives both presets. The only thing that varies is the injected `SandboxRuntime`.
+ONE `SubstrateBackend` drives both backends. The only thing that varies is the injected `SandboxRuntime`.
 
 ```python
 from resoluto_sandbox.client import Sandbox
 
-# select by name (presets)
+# select by name (backend shortcuts)
 sb = Sandbox(backend="local")          # SubstrateBackend(KataNerdctlSandboxRuntime + LocalConduit)
 sb = Sandbox(backend="k8s")            # SubstrateBackend(K8sSandboxRuntime + store_from_env()) — needs RESOLUTO_LANE_IMAGE
 
@@ -84,13 +84,13 @@ class Backend(ABC):
             output_paths=None, stream=None) -> RunResult: ...
 ```
 
-One implementation drives both presets:
+One implementation drives both backends:
 - **`SubstrateBackend(*, runtime, conduit, image, store_env)`** — fully implemented: launches a sandbox via the injected `SandboxRuntime`, stages workspace, tails Conduit for output, fetches artifacts. `stdin is not None` → `NotImplementedError`. `image` is required. `run()` calls `asyncio.run(...)` internally (sync surface, async core).
-  - With `KataNerdctlSandboxRuntime` → local preset (Kata microVM via nerdctl + a dedicated containerd, VM-grade isolation)
-  - With `K8sSandboxRuntime` → k8s preset (Kata microVM, hardware isolation + optional egress)
+  - With `KataNerdctlSandboxRuntime` → local backend (Kata microVM via nerdctl + a dedicated containerd, VM-grade isolation)
+  - With `K8sSandboxRuntime` → k8s backend (Kata microVM, hardware isolation + optional egress)
 
 **Footguns:**
-- `stdin is not None` → `NotImplementedError` on BOTH presets
+- `stdin is not None` → `NotImplementedError` on BOTH backends
 - `image` missing → `ValueError`
 
 Everything else works. It is NOT a roadmap stub.
@@ -141,8 +141,8 @@ class SandboxRuntime(ABC):
 ```
 
 Implementations:
-- **`KataNerdctlSandboxRuntime`** (`runtime/kata_nerdctl.py`) — local preset; each sandbox is a Kata microVM launched via `nerdctl` against a dedicated, standalone containerd (own socket/root `/run/resoluto-local/containerd/`). Build it with `KataNerdctlSandboxRuntime.from_env(...)`; default image `DEFAULT_LOCAL_IMAGE = "resoluto-sandbox-base:dev"`.
-- **`K8sSandboxRuntime(*, namespace="resoluto-sandboxes", kubeconfig=None, context=None, image_pull_policy="IfNotPresent", egress=None, node_allocatable_memory=None)`** — k8s preset; Kata pod. **Footgun:** `context` PINS the kube context — leave it `None` only knowingly (None follows the ambient current-context, which can wander to another cluster).
+- **`KataNerdctlSandboxRuntime`** (`runtime/kata_nerdctl.py`) — local backend; each sandbox is a Kata microVM launched via `nerdctl` against a dedicated, standalone containerd (own socket/root `/run/resoluto-local/containerd/`). Build it with `KataNerdctlSandboxRuntime.from_env(...)`; default image `DEFAULT_LOCAL_IMAGE = "resoluto-sandbox-base:dev"`.
+- **`K8sSandboxRuntime(*, namespace="resoluto-sandboxes", kubeconfig=None, context=None, image_pull_policy="IfNotPresent", egress=None, node_allocatable_memory=None)`** — k8s backend; Kata pod. **Footgun:** `context` PINS the kube context — leave it `None` only knowingly (None follows the ambient current-context, which can wander to another cluster).
 
 `SubstrateBackend` drives the runtime for you. Reach for `SandboxRuntime` directly only when building a new placement substrate.
 
@@ -162,7 +162,7 @@ Key pydantic contracts: `RunResult`, `SandboxLaunchSpec`, `SandboxHandle`, `Sand
 | host↔sandbox exchange seam | `contracts.py` (`Conduit`) + `conduit/*` |
 | conduit-from-env | `conduit/factory.py` |
 | placement/isolation seam | `contracts.py` (`SandboxRuntime`) |
-| local Kata runtime (local preset) | `runtime/kata_nerdctl.py` (`KataNerdctlSandboxRuntime`) |
+| local Kata runtime (local backend) | `runtime/kata_nerdctl.py` (`KataNerdctlSandboxRuntime`) |
 | k8s Kata runtime | `runtime/k8s.py` (`K8sSandboxRuntime`) |
 | admission (WHEN) — separate from substrate (HOW) | `contracts.py` (`Admission`/`Lease`), `pool.py` |
 | egress policy (backend-neutral config + renderers) | `egress.py` (`EgressConfig`, `k8s_egress_rules`, `local_egress_iptables`) |

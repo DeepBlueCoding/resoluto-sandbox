@@ -27,7 +27,7 @@ def _local_conduit_base() -> str:
 
 
 def _build_local_backend(image: str | None) -> SubstrateBackend:
-    """Build the local preset wiring a fresh temp LocalConduit to a KataNerdctlSandboxRuntime. Inputs: optional image override. Output: a SubstrateBackend."""
+    """Build the local backend, wiring a fresh temp LocalConduit to a KataNerdctlSandboxRuntime. Inputs: optional image override. Output: a SubstrateBackend."""
     from resoluto_sandbox.conduit import LocalConduit
     from resoluto_sandbox.runtime.kata_nerdctl import KataNerdctlSandboxRuntime
 
@@ -44,7 +44,7 @@ def _build_local_backend(image: str | None) -> SubstrateBackend:
 
 
 def _build_k8s_backend(image: str | None) -> SubstrateBackend:
-    """Build the k8s preset wiring a conduit from env to a K8sSandboxRuntime. Inputs: optional image override (falls back to RESOLUTO_LANE_IMAGE). Output: a SubstrateBackend."""
+    """Build the k8s backend, wiring a conduit from env to a K8sSandboxRuntime. Inputs: optional image override (falls back to RESOLUTO_LANE_IMAGE). Output: a SubstrateBackend."""
     from resoluto_sandbox.conduit.factory import store_from_env
     from resoluto_sandbox.runtime.k8s import EgressConfig, K8sSandboxRuntime
 

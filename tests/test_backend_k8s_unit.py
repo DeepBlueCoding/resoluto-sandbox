@@ -1,4 +1,4 @@
-"""Unit tests for the SubstrateBackend + the k8s preset DI mapping — NO pod launch.
+"""Unit tests for the SubstrateBackend + the k8s backend DI mapping — NO pod launch.
 
 These pin the wiring the integration test exercises end-to-end: the log-event key
 the runner emits (`data["line"]`), the pod_env the spec carries, the store-env
@@ -102,7 +102,7 @@ def test_run_result_reason_populated_from_node_result(monkeypatch):
     assert result.exit_code == 1
 
 
-# ── store-env selection (the k8s preset's pod-env policy) ────────────────────
+# ── store-env selection (the k8s backend's pod-env policy) ────────────────────
 
 
 def test_store_env_forwards_store_vars_only_no_aws():

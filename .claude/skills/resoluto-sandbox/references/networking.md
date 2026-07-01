@@ -79,7 +79,7 @@ SubstrateBackend(
   CIDRs (resolved when rendered). `None` → opt OUT of isolation (no NetworkPolicy, unrestricted
   egress) — distinct from `EgressConfig()`, which denies by default.
 
-`Sandbox(backend="k8s")` constructs the k8s preset (reads `RESOLUTO_LANE_IMAGE` + `RESOLUTO_STORE_KIND`
+`Sandbox(backend="k8s")` constructs the k8s backend (reads `RESOLUTO_LANE_IMAGE` + `RESOLUTO_STORE_KIND`
 from env) — only useful for simple cases; inject `SubstrateBackend` for egress/conduit config.
 
 ## Status: this is implemented, not roadmap

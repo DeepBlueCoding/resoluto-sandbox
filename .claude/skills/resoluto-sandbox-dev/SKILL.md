@@ -9,7 +9,7 @@ Run a plain program (reads argv, writes stdout/files, never imports this package
 
 ## Mental model
 
-Two seams. **SandboxRuntime** = the isolation/placement mechanism (a Kata microVM via nerdctl + a dedicated containerd locally, a Kata pod on k8s). **Conduit** = the durable store both sides rendezvous through (host never holds a connection to the guest). ONE `SubstrateBackend` drives both presets — what varies is the injected runtime + conduit.
+Two seams. **SandboxRuntime** = the isolation/placement mechanism (a Kata microVM via nerdctl + a dedicated containerd locally, a Kata pod on k8s). **Conduit** = the durable store both sides rendezvous through (host never holds a connection to the guest). ONE `SubstrateBackend` drives both backends — what varies is the injected runtime + conduit.
 
 For `k8s`: the guest self-reports append-only JSONL chunks to its Conduit prefix; `drive_node` tails + reaps. Store-mediated, so no long-lived stream to wedge.
 
