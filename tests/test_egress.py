@@ -116,6 +116,20 @@ def test_expand_presets_names_hosts_and_passthrough():
     assert "example.com" in out and "10.0.0.0/8" in out            # non-presets pass through
 
 
+def test_allow_accepts_plain_domain_and_full_url(monkeypatch):
+    import socket
+    from resoluto_sandbox.egress import _host_or_cidr, resolve_cidrs
+    # host extraction from URL / host+path / CIDR passthrough
+    assert _host_or_cidr("https://api.anthropic.com/v1/messages") == "api.anthropic.com"
+    assert _host_or_cidr("api.anthropic.com/v1") == "api.anthropic.com"
+    assert _host_or_cidr("api.anthropic.com") == "api.anthropic.com"
+    assert _host_or_cidr("10.0.0.0/8") == "10.0.0.0/8"
+    # a full URL resolves to its host's IP (path dropped — L3/L4 can't match paths)
+    monkeypatch.setattr(socket, "getaddrinfo", lambda h, *a, **k: [(2, 1, 6, "", ("1.2.3.4", 0))])
+    assert resolve_cidrs(["https://api.anthropic.com/v1/messages"]) == ["1.2.3.4/32"]
+    assert resolve_cidrs(["203.0.113.0/24"]) == ["203.0.113.0/24"]
+
+
 def test_bundle_presets_llms_and_registries():
     from resoluto_sandbox.egress import expand_presets
     llms = expand_presets(["llms"])

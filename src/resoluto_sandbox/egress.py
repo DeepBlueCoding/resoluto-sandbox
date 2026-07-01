@@ -73,17 +73,38 @@ def expand_presets(entries: Sequence[str]) -> list[str]:
     return out
 
 
+def _host_or_cidr(entry: str) -> str:
+    """Normalize an allow entry to a bare hostname or a CIDR.
+
+    Accepts a plain domain (`api.anthropic.com`), a full URL (`https://api.anthropic.com/v1/messages`
+    → host `api.anthropic.com`), a `host/path` (→ host), or a CIDR (`10.0.0.0/8`, kept verbatim).
+    NOTE: the path is dropped — L3/L4 egress cannot match a URL path (see module docs).
+    """
+    from urllib.parse import urlparse
+
+    e = (entry or "").strip()
+    if not e:
+        return ""
+    if "://" in e:
+        return urlparse(e).hostname or ""
+    head, slash, tail = e.partition("/")
+    if slash and tail.isdigit() and head.count(".") == 3 and all(p.isdigit() for p in head.split(".")):
+        return e            # a.b.c.d/nn — a real CIDR
+    return head             # bare host, or host/path → host (path dropped)
+
+
 def resolve_cidrs(entries: Sequence[str]) -> list[str]:
     """Resolve allow entries to a de-duplicated list of CIDRs.
 
-    Each entry is a preset name (expanded to hostnames), a CIDR (used verbatim), or a hostname
-    (resolved to one /32 per A record). Raises ValueError if a hostname does not resolve.
+    Each entry is a preset name (expanded to hostnames), a CIDR (kept verbatim), a plain domain, or a
+    full URL / host+path (the host is used; the path is dropped — L3/L4 can't match paths). Hostnames
+    resolve to one /32 per A record. Raises ValueError if a hostname does not resolve.
     """
     import socket
 
     out: list[str] = []
     for raw in expand_presets(entries):
-        e = (raw or "").strip()
+        e = _host_or_cidr(raw)
         if not e:
             continue
         if "/" in e:
