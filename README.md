@@ -127,8 +127,8 @@ a Kata microVM (separate guest kernel) in both. What differs is the Conduit and 
 
 | backend | where it runs | Conduit | egress isolation | needs |
 |---------|---------------|---------|------------------|-------|
-| `local` | a single host (microVM via `nerdctl` on a dedicated containerd) | bind-mounted `LocalConduit` | host-side firewall on the lane bridge | `scripts/local-backend-up.sh` (Kata + nerdctl + a dedicated containerd) |
-| `k8s`   | a Kubernetes cluster (microVM pod) | object store (`S3Conduit`, minio/S3) | default-deny `NetworkPolicy` | a cluster with Kata + an S3 store + a pinned kube context |
+| `local` | a single host (microVM via `nerdctl` on a dedicated containerd) | bind-mounted `LocalConduit` | host-side default-deny firewall on the lane bridge + a host-side SNI proxy for per-run domain allowlists (`run(egress=[...])`) | `scripts/local-backend-up.sh` (Kata + nerdctl + a dedicated containerd) |
+| `k8s`   | a Kubernetes cluster (microVM pod) | object store (`S3Conduit`, minio/S3) | default-deny `NetworkPolicy` (per-runtime `EgressConfig`) | a cluster with Kata + an S3 store + a pinned kube context |
 
 For the `local` backend, run `scripts/local-backend-up.sh` until its canary is GREEN. For `k8s`,
 inject a configured `SubstrateBackend` (or use `Sandbox(backend="k8s", image=…)`). Full setup —
