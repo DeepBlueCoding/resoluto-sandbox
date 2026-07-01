@@ -51,11 +51,12 @@ class SubstrateBackend(Backend):
         env: dict[str, str] | None = None,
         output_paths: Sequence[str] | None = None,
         stream: IO[str] | None = None,
+        egress: Sequence[str] | None = None,
     ) -> RunResult:
         if stdin is not None:
             raise NotImplementedError("stdin is not supported on the substrate backend")
         return asyncio.run(self._run_async(argv, workspace=workspace, env=env,
-                                           output_paths=output_paths, stream=stream))
+                                           output_paths=output_paths, stream=stream, egress=egress))
 
     async def _run_async(
         self,
@@ -65,8 +66,33 @@ class SubstrateBackend(Backend):
         env: dict[str, str] | None,
         output_paths: Sequence[str] | None,
         stream: IO[str] | None,
+        egress: Sequence[str] | None = None,
     ) -> RunResult:
-        """Launch a sandbox via drive_node, stage workspace in, fetch artifacts out into ``workspace``."""
+        """Launch a sandbox via drive_node, stage workspace in, fetch artifacts out into ``workspace``.
+
+        ``egress`` (a per-RUN list of allowed domains) is applied to the runtime for THIS run only —
+        set up the step's networking on the fly, then torn down — if the runtime supports it.
+        """
+        apply_egress = getattr(self._runtime, "apply_egress", None)
+        clear_egress = getattr(self._runtime, "clear_egress", None)
+        if apply_egress is not None:
+            await apply_egress(list(egress) if egress is not None else [])
+        try:
+            return await self._launch_and_collect(argv, workspace=workspace, env=env,
+                                                   output_paths=output_paths, stream=stream)
+        finally:
+            if clear_egress is not None:
+                await clear_egress()
+
+    async def _launch_and_collect(
+        self,
+        argv: Sequence[str],
+        *,
+        workspace: str | None,
+        env: dict[str, str] | None,
+        output_paths: Sequence[str] | None,
+        stream: IO[str] | None,
+    ) -> RunResult:
         from resoluto_sandbox.contracts import SandboxLaunchSpec
         from resoluto_sandbox.driver import drive_node
         from resoluto_sandbox.staging import fetch_outputs, put_dir

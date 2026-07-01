@@ -35,4 +35,5 @@ class Backend(ABC):
         env: dict[str, str] | None = None,
         output_paths: Sequence[str] | None = None,
         stream: IO[str] | None = None,
+        egress: Sequence[str] | None = None,
     ) -> RunResult: ...

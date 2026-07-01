@@ -48,6 +48,7 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
         network: str = "bridge",
         nerdctl: str = "nerdctl",
         sudo: bool = False,
+        egress_domains_file: str | None = None,
     ) -> None:
         check_runtime_class_guard(runtime)
         self._address = address
@@ -60,6 +61,22 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
         self._network = network
         self._nerdctl = nerdctl
         self._sudo = sudo
+        # the live SNI allowlist file the persistent egress proxy reads (set per-run, see apply_egress)
+        self._egress_domains_file = egress_domains_file
+
+    async def apply_egress(self, domains: "list[str] | None") -> None:
+        """Set THIS run's SNI egress allowlist by writing the proxy's live domains file — per-step
+        networking with no re-provision. Empty/None = deny all (secure). Idempotent; fail-fast if the
+        proxy file dir is missing (run scripts/local-backend-up.sh once to set it up)."""
+        if not self._egress_domains_file:
+            return
+        text = ",".join(d.strip() for d in (domains or []) if d.strip())
+        with open(self._egress_domains_file, "w", encoding="utf-8") as f:
+            f.write(text)
+
+    async def clear_egress(self) -> None:
+        """Reset this run's egress allowlist to deny-all (write the domains file empty)."""
+        await self.apply_egress([])
 
     @classmethod
     def from_env(cls, *, conduit_host_dir: str, conduit_mount: str = "/conduit") -> "KataNerdctlSandboxRuntime":
@@ -75,6 +92,8 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
             network=os.environ.get("RESOLUTO_LOCAL_NETWORK", "resoluto-local"),
             nerdctl=os.environ.get("RESOLUTO_LOCAL_NERDCTL", "/opt/resoluto-local/bin/nerdctl"),
             sudo=_resolve_sudo(),
+            egress_domains_file=os.environ.get("RESOLUTO_LOCAL_EGRESS_DOMAINS_FILE",
+                                               "/run/resoluto-local/egress-domains"),
         )
 
     def _base(self) -> list[str]:

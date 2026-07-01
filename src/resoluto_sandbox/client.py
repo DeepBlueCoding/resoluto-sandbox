@@ -84,7 +84,14 @@ class Sandbox:
         env: dict[str, str] | None = None,
         output_paths: Sequence[str] | None = None,
         stream: IO[str] | None = None,
+        egress: Sequence[str] | None = None,
     ) -> RunResult:
-        """Run ``argv`` in the sandbox with ``workspace`` cwd, ``env`` overlay, ``output_paths`` globs collected into ``RunResult.artifacts``, and live output to ``stream``; returns a ``RunResult``."""
+        """Run ``argv`` in the sandbox with ``workspace`` cwd, ``env`` overlay, ``output_paths`` globs
+        collected into ``RunResult.artifacts``, and live output to ``stream``; returns a ``RunResult``.
+
+        ``egress`` is THIS run's allowed-domain list (e.g. ``["api.anthropic.com"]``) — per-step
+        networking set up on the fly and torn down after, with no re-provisioning. ``None``/``[]`` =
+        deny all outbound (secure default). Currently applied by the ``local`` backend's SNI proxy.
+        """
         return self._backend.run(argv, workspace=workspace, stdin=stdin, env=env,
-                                 output_paths=output_paths, stream=stream)
+                                 output_paths=output_paths, stream=stream, egress=egress)

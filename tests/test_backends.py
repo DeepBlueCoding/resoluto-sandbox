@@ -22,6 +22,7 @@ class _CapturingBackend(Backend):
         env=None,
         output_paths=None,
         stream=None,
+        egress=None,
     ) -> RunResult:
         self.received = dict(
             argv=list(argv),
@@ -30,6 +31,7 @@ class _CapturingBackend(Backend):
             env=env,
             output_paths=output_paths,
             stream=stream,
+            egress=egress,
         )
         return self._result
 

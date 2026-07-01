@@ -111,11 +111,29 @@ async def _splice(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) ->
             pass
 
 
-class SniProxy:
-    """Transparent SNI-allowlisting TCP proxy. Deny by default; forward only allowed SNI to orig dst."""
+def load_domains_file(path: str) -> list[str]:
+    """Read a comma/newline-separated domain allowlist from `path`; [] (deny-all) if missing/empty."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = f.read()
+    except OSError:
+        return []
+    return [d.strip() for d in raw.replace("\n", ",").split(",") if d.strip()]
 
-    def __init__(self, patterns: Sequence[str]) -> None:
-        self._patterns = list(patterns)
+
+class SniProxy:
+    """Transparent SNI-allowlisting TCP proxy. Deny by default; forward only allowed SNI to orig dst.
+
+    The allowlist is either static (`patterns`) or read LIVE from `domains_file` on every connection,
+    so a caller can change it per run (write the file) without restarting the proxy.
+    """
+
+    def __init__(self, patterns: Sequence[str] | None = None, *, domains_file: str | None = None) -> None:
+        self._patterns = list(patterns or ())
+        self._domains_file = domains_file
+
+    def _allowlist(self) -> list[str]:
+        return load_domains_file(self._domains_file) if self._domains_file else self._patterns
 
     async def handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         peer = writer.get_extra_info("socket")
@@ -126,7 +144,7 @@ class SniProxy:
                 return
             hello = await asyncio.wait_for(reader.read(4096), timeout=10)
             sni = parse_sni(hello)
-            if not sni or not domain_allowed(sni, self._patterns):
+            if not sni or not domain_allowed(sni, self._allowlist()):
                 writer.close()
                 return
             up_r, up_w = await asyncio.open_connection(dst_ip, dst_port)
@@ -153,10 +171,17 @@ def _main(argv: "list[str] | None" = None) -> int:
     p = argparse.ArgumentParser(prog="resoluto_sandbox.egress_proxy")
     p.add_argument("--host", default="0.0.0.0")
     p.add_argument("--port", type=int, default=3129)
+    p.add_argument("--domains-file", default=os.environ.get("RESOLUTO_EGRESS_DOMAINS_FILE"),
+                   help="read the SNI allowlist LIVE from this file (per-run without restart)")
     args = p.parse_args(argv)
-    patterns = [d for d in (os.environ.get("RESOLUTO_EGRESS_DOMAINS") or "").split(",") if d.strip()]
-    print(f"[egress-proxy] SNI allowlist {patterns} on {args.host}:{args.port}", flush=True)
-    asyncio.run(SniProxy(patterns).serve(args.host, args.port))
+    if args.domains_file:
+        print(f"[egress-proxy] SNI allowlist from {args.domains_file} (live) on {args.host}:{args.port}", flush=True)
+        proxy = SniProxy(domains_file=args.domains_file)
+    else:
+        patterns = [d for d in (os.environ.get("RESOLUTO_EGRESS_DOMAINS") or "").split(",") if d.strip()]
+        print(f"[egress-proxy] SNI allowlist {patterns} on {args.host}:{args.port}", flush=True)
+        proxy = SniProxy(patterns)
+    asyncio.run(proxy.serve(args.host, args.port))
     return 0
 
 
