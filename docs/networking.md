@@ -148,25 +148,36 @@ when the policy is rendered; these APIs are CDN-backed (rotating IPs), so a pinn
 best-effort and needs periodic re-resolve — when you need reliable access from otherwise-restricted
 code, `public_https=True` (all :443) is the pragmatic escape hatch.
 
-### Allow by DOMAIN, not IP — the SNI egress proxy (scales)
+### Allow by DOMAIN, PER STEP — `run(egress=[...])` (the primary knob)
 
-`allow=[...]` is CIDR-based (resolves hostnames to IPs at render time), so it goes stale for CDN-backed
-APIs (rotating IPs) and can never match a URL path — TLS encrypts everything but the destination IP:port
-and the **SNI** hostname. For a domain allowlist that scales, route lane `:443` through the built-in
-**SNI proxy** (`resoluto_sandbox.egress_proxy`): a transparent forward proxy that reads the TLS
-ClientHello, and splices the (still-encrypted) stream to the original destination ONLY if the SNI
-matches — exact (`api.anthropic.com`) or `*.wildcard` (`*.openai.com`). No IP pinning, no CA/MITM,
-works under any CNI; it also refuses internal/IMDS destinations even on an SNI match (no SSRF).
+`allow=[...]` (below) is CIDR-based (resolves hostnames to IPs at render time), so it goes stale for
+CDN-backed APIs (rotating IPs) and can never match a URL path — TLS encrypts everything but the
+destination IP:port and the **SNI** hostname. For a domain allowlist that scales AND is set per step,
+pass `egress=[domains]` to each `run()`:
 
-```bash
-# local: opt in at provision time — lane :443 is REDIRECTed to the proxy
-RESOLUTO_EGRESS_DOMAINS="api.anthropic.com,*.openai.com,registry.npmjs.org" scripts/local-backend-up.sh
+```python
+Sandbox(backend="local").run(argv, egress=["api.anthropic.com"])    # this step reaches ONLY Anthropic
+Sandbox(backend="local").run(argv, egress=["registry.npmjs.org"])   # this step reaches ONLY the npm registry
+Sandbox(backend="local").run(argv)                                  # egress=None → deny all (secure default)
 ```
 
-Verified end-to-end: with only `api.anthropic.com` allowed, a real Kata lane reached it over TLSv1.3
-while `example.com` was blocked (SNI rejected). A URL *path* still can't be enforced at this layer
-(that needs a MITM proxy). DNS and the CIDR FORWARD chain handle everything else; `allow=[...]` remains
-for non-443 ports / explicit CIDRs.
+Each `run()` sets that step's allowed domains on the fly and clears them after — **no re-provision**.
+Under the hood the built-in **SNI proxy** (`resoluto_sandbox.egress_proxy`) reads the step's allowlist
+LIVE (from a file each run rewrites) and splices the (still-encrypted) stream to the original
+destination ONLY if the TLS SNI matches — exact (`api.anthropic.com`) or `*.wildcard` (`*.openai.com`).
+No IP pinning, no CA/MITM, works under any CNI; it refuses internal/IMDS destinations even on an SNI
+match (no SSRF). The mechanism is `KataNerdctlSandboxRuntime.apply_egress()` writing the proxy's live
+allowlist file; `SubstrateBackend.run` applies it before the lane and clears it after.
+
+One-time setup runs the proxy + the static `:443` redirect: `scripts/local-backend-up.sh` (it also
+seeds the file from `RESOLUTO_EGRESS_DOMAINS` if set — a default, overridden per run).
+
+Verified end-to-end, back-to-back with NO re-provision: `run(egress=["registry.npmjs.org"])` → a lane's
+`pnpm add is-odd` installs from the registry; `run(egress=["api.anthropic.com"])` → the same install is
+blocked (ECONNRESET) while a real Claude agent answers. A URL *path* still can't be enforced at this
+layer (that needs a MITM proxy). DNS and the CIDR FORWARD chain handle everything else; `allow=[...]`
+(below) remains for non-443 ports / explicit CIDRs. NOTE: `egress=` is applied by the `local` backend
+today; on `k8s` use `EgressConfig` (per-runtime).
 
 **In code (k8s):**
 ```python

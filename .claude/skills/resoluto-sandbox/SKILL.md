@@ -37,6 +37,11 @@ Imports: `from resoluto_sandbox import Sandbox, RunResult`; `from resoluto_sandb
 
 ## Footguns
 
+- **Per-run egress on `local` — `run(argv, egress=["api.anthropic.com"])`.** Opens exactly those
+  domains for THAT one run (set on the fly via the persistent SNI proxy's live allowlist file, cleared
+  after) — no re-provision between steps. `egress=None`/`[]` → the secure default (DNS + object store
+  only). This is the per-step knob; `EgressConfig` below is the per-runtime (k8s) / provision-time (local)
+  knob. `run(egress=...)` is applied by `local` today; on `k8s` use `EgressConfig`.
 - **`egress=None` is the k8s opt-OUT** — NO NetworkPolicy, unrestricted egress (Kata kernel isolation only); DIFFERENT from `EgressConfig()`, which is SECURE BY DEFAULT (store + DNS only). Pass an `EgressConfig` and open what you need. `EgressConfig` is **backend-neutral** (same config → k8s NetworkPolicy OR local iptables, via the two renderers in `resoluto_sandbox.egress`); knobs `allow` / `allow_port` (least privilege) / `public_https` (escape hatch, default False) — env `RESOLUTO_EGRESS_ALLOW` / `_ALLOW_PORT` / `_PUBLIC_HTTPS` (default 0/deny), honored by both backends.
 - **`local` = Kata microVM via nerdctl (hardware-virtualized, NOT a plain namespace/cgroup container).** Each sandbox runs as a Kata microVM via `nerdctl` against a dedicated, standalone containerd (own socket/root at `/run/resoluto-local/containerd/`) — VM-grade isolation at parity with k8s, on a single host, no cluster. The egress canary RUNS (fail-closed); local egress is enforced HOST-SIDE on the lane CNI bridge (default-deny: store + DNS only until you opt in via `RESOLUTO_EGRESS_ALLOW` / `_PUBLIC_HTTPS`; REJECT IMDS + RFC1918 private) — immune to in-guest root. Suitable for untrusted code at VM-grade isolation, same as k8s. NOT a bare host subprocess.
 - **Local backend needs an image.** Default `resoluto-sandbox-base:dev`; override with `Sandbox(backend="local", image="...")`. The image must contain python + the resoluto-sandbox wheel + your program's deps. Needs `/dev/kvm`, the `nerdctl` client, and the dedicated containerd up (`scripts/local-backend-up.sh`).

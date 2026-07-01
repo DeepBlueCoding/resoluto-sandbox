@@ -25,6 +25,7 @@ Sandbox(backend="local" | "k8s" | <Backend instance>).run(   # default "local"
     env=None,                   # dict[str, str] | None — overlays sandbox env
     output_paths=None,          # Sequence[str] | None — globs, collected into artifacts
     stream=None,                # IO[str] | None — live output sink (default sys.stdout)
+    egress=None,                # Sequence[str] | None — per-run domain allowlist (local); None/[] = deny all but DNS+store
 ) -> RunResult
 ```
 
@@ -141,6 +142,7 @@ class SimpleDockerBackend(Backend):
         env: dict[str, str] | None = None,
         output_paths: Sequence[str] | None = None,
         stream: IO[str] | None = None,
+        egress: Sequence[str] | None = None,   # per-run domain allowlist (None/[] = deny)
     ) -> RunResult:
         cwd = Path(workspace).resolve() if workspace else Path.cwd()
         if not cwd.is_dir():

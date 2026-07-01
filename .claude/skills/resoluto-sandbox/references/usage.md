@@ -46,6 +46,7 @@ def run(
     env: dict[str, str] | None = None,
     output_paths: Sequence[str] | None = None,
     stream: IO[str] | None = None,
+    egress: Sequence[str] | None = None,
 ) -> RunResult
 ```
 
@@ -57,6 +58,7 @@ def run(
 | `env` | overlay on top of sandbox env (`{**store_env, **env}`) | yes | yes (overlaid on the curated sandbox env) |
 | `output_paths` | globs collected into `RunResult.artifacts` after the run | yes | yes |
 | `stream` | live output sink; `None` → `sys.stdout` | yes | yes |
+| `egress` | domains allowed for THIS run's outbound TLS (`None`/`[]` → deny all but DNS + store); set on the fly per step via the SNI proxy, cleared after | yes | (use `EgressConfig` per-runtime) |
 
 Dependencies are your program's concern — put `uv run`/`pip install` in your argv, or use a prebuilt image.
 

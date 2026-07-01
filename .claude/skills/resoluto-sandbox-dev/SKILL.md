@@ -40,7 +40,7 @@ Sandbox(backend=SubstrateBackend(
 )).run(["python", "agent.py"], workspace="/work", output_paths=["out/*.json"])
 ```
 
-`Sandbox(backend="local"|"k8s"|<Backend instance>)` (default `"local"`). `.run(argv, *, workspace, stdin, env, output_paths, stream) -> RunResult`. On both backends: `stdin` raises `NotImplementedError`; `RunResult.errors` is empty (output carries merged stdout+stderr). `k8s` also needs `RESOLUTO_STORE_KIND` in env.
+`Sandbox(backend="local"|"k8s"|<Backend instance>)` (default `"local"`). `.run(argv, *, workspace, stdin, env, output_paths, stream, egress) -> RunResult` (`egress=[domains]` opens those domains for THAT run on `local` via the SNI proxy, cleared after; `None`/`[]` = deny all but DNS+store). On both backends: `stdin` raises `NotImplementedError`; `RunResult.errors` is empty (output carries merged stdout+stderr). `k8s` also needs `RESOLUTO_STORE_KIND` in env.
 
 ## Quick reference
 

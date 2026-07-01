@@ -36,8 +36,15 @@ RunResult = Sandbox.run(
     env=None,                   # dict[str,str] | None — overlays sandbox env
     output_paths=None,          # Sequence[str] | None — globs collected into RunResult.artifacts
     stream=None,                # IO[str] | None — live output sink (default sys.stdout)
+    egress=None,                # Sequence[str] | None — domains allowed for THIS run (local); None/[] = deny all but DNS+store
 )
 ```
+
+**Per-run egress (local):** `egress=["api.anthropic.com"]` opens exactly those domains for that
+one `run()` and clears them after — no re-provision. The runtime writes the SNI proxy's live
+allowlist file (`apply_egress`/`clear_egress`); the proxy reads it per connection and splices only
+TLS SNI matches. `None`/`[]` → the secure default (DNS + object store only). On `k8s`, use a
+per-runtime `EgressConfig` instead.
 
 `RunResult` (pydantic):
 ```

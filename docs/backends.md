@@ -367,7 +367,7 @@ from resoluto_sandbox.backends.base import Backend, RunResult
 
 class MyBackend(Backend):
     def run(self, argv, *, workspace=None, stdin=None, env=None,
-            output_paths=None, stream=None) -> RunResult:
+            output_paths=None, stream=None, egress=None) -> RunResult:
         ...
 
 Sandbox(backend=MyBackend(...)).run(argv, ...)
