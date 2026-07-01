@@ -30,7 +30,9 @@ def _spec(labels: dict) -> SandboxLaunchSpec:
 
 
 def _policy(*, store_port: int = _STORE_PORT) -> dict:
-    egress = EgressConfig(store_cidr=_STORE_CIDR, store_port=store_port)
+    # public_https=True so these tests exercise the store + public-443 + DNS rule shape (the default
+    # is now deny-by-default; that is covered in tests/test_egress.py).
+    egress = EgressConfig(store_cidr=_STORE_CIDR, store_port=store_port, public_https=True)
     rt = _runtime(egress)
     spec = _spec({"app": "lane"})
     return rt._network_policy(spec, "pod-x", "uid-x")

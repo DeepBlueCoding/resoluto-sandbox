@@ -12,21 +12,26 @@ from resoluto_sandbox.egress import (
 # ── k8s renderer ─────────────────────────────────────────────────────────────
 
 
-def test_k8s_default_is_store_public443_dns():
+def test_k8s_default_denies_public_https():
+    # SECURE BY DEFAULT: EgressConfig() => store + DNS only, no blanket :443.
     rules = k8s_egress_rules(EgressConfig(store_cidr="10.0.0.5/32", store_port=9100))
     assert rules[0]["to"] == [{"ipBlock": {"cidr": "10.0.0.5/32"}}]
     assert rules[0]["ports"] == [{"port": 9100, "protocol": "TCP"}]
-    assert rules[1]["ports"] == [{"port": 443, "protocol": "TCP"}]
-    assert rules[1]["to"][0]["ipBlock"] == {"cidr": "0.0.0.0/0", "except": ["169.254.169.254/32"]}
-    assert {"port": 53, "protocol": "UDP"} in rules[2]["ports"]
+    assert not any(r["ports"] == [{"port": 443, "protocol": "TCP"}] for r in rules)  # NO public 443 by default
+    assert any({"port": 53, "protocol": "UDP"} in r["ports"] for r in rules)          # DNS always
 
 
-def test_k8s_public_https_false_and_no_store():
-    rules = k8s_egress_rules(EgressConfig(public_https=False))  # neutral: no store (e.g. file-mounted)
+def test_k8s_public_https_true_opens_443():
+    rules = k8s_egress_rules(EgressConfig(store_cidr="10.0.0.5/32", store_port=9100, public_https=True))
+    r443 = next(r for r in rules if r["ports"] == [{"port": 443, "protocol": "TCP"}])
+    assert r443["to"][0]["ipBlock"] == {"cidr": "0.0.0.0/0", "except": ["169.254.169.254/32"]}
+
+
+def test_k8s_no_store_no_public_https_is_dns_only():
+    rules = k8s_egress_rules(EgressConfig())   # nothing configured => only DNS reaches out
     cidrs = [t["ipBlock"]["cidr"] for r in rules for t in r["to"]]
-    assert "0.0.0.0/0" in cidrs            # DNS still 0.0.0.0/0
-    assert not any(r["ports"] == [{"port": 443, "protocol": "TCP"}] for r in rules)  # no blanket 443
-    assert all("10.0.0" not in c for c in cidrs)  # no store rule
+    assert cidrs == ["0.0.0.0/0"]              # DNS rule only
+    assert all({"port": 53, "protocol": "UDP"} in r["ports"] for r in rules)
 
 
 def test_k8s_allow_adds_rule():
@@ -42,14 +47,20 @@ def _joined(rules):
     return [" ".join(r) for r in rules]
 
 
-def test_local_default_chain_order():
+def test_local_default_denies_public_https():
+    # SECURE BY DEFAULT: no :443 ACCEPT unless opted in; DNS + IMDS/RFC1918 denies + default-deny stand.
     rules = _joined(local_egress_iptables(EgressConfig(), chain="EG"))
     assert rules[0].endswith("ESTABLISHED,RELATED -j ACCEPT")
     assert "-A EG -p udp --dport 53 -j ACCEPT" in rules
     assert "-A EG -d 169.254.0.0/16 -j REJECT" in rules          # IMDS
     assert "-A EG -d 10.0.0.0/8 -j REJECT" in rules               # RFC1918
-    assert "-A EG -p tcp --dport 443 -j ACCEPT" in rules          # public HTTPS (default on)
+    assert "-A EG -p tcp --dport 443 -j ACCEPT" not in rules      # deny by default
     assert rules[-1] == "-A EG -j REJECT"                         # default-deny last
+
+
+def test_local_public_https_true_opens_443():
+    rules = _joined(local_egress_iptables(EgressConfig(public_https=True), chain="EG"))
+    assert "-A EG -p tcp --dport 443 -j ACCEPT" in rules
 
 
 def test_local_allow_precedes_rfc1918_reject():

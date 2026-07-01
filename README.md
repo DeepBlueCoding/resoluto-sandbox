@@ -134,25 +134,27 @@ For the `local` backend, run `scripts/local-backend-up.sh` until its canary is G
 inject a configured `SubstrateBackend` (or use `Sandbox(backend="k8s", image=…)`). Full setup —
 including the vendor-neutral k8s stack — is in [`docs/backends.md`](docs/backends.md).
 
-### Restrict egress (optional)
+### Egress — DENY by default (secure)
 
-All outbound HTTPS works by default, so **every LLM API** (`api.anthropic.com`, OpenAI, OpenRouter, …)
-and **every package registry** (npm, PyPI/uv, Composer, …), plus `git clone https://…`, just run — they
-are HTTPS on `:443`. To add a non-443 destination or lock things down, use one backend-neutral
-`EgressConfig` — the **same knobs on `local` and `k8s`**, with friendly presets for the common APIs:
+A sandbox for untrusted code is **locked down by default**: a fresh lane can reach **only DNS and its
+object store** — no internet, no LLM, no registries. It cannot phone home. You **opt in** to exactly
+what the workload needs, with one backend-neutral `EgressConfig` — the **same knobs on `local` and
+`k8s`**, with friendly presets for the common APIs:
 
 ```python
 from resoluto_sandbox.egress import EgressConfig
 
-EgressConfig(allow=["github.com"], allow_port=22)              # + git over SSH (still allow all HTTPS)
-EgressConfig(allow=["anthropic", "npm", "pypi"], public_https=False)  # LOCK DOWN to only these + DNS
+EgressConfig(allow=["anthropic", "npm", "pypi"])   # least privilege: just the LLM + these registries
+EgressConfig(allow=["github.com"], allow_port=22)  # + git over SSH
+EgressConfig(public_https=True)                    # escape hatch: allow ALL outbound HTTPS (trusted code)
 ```
 
-Presets (expand to the provider's API hosts): `anthropic openai openrouter gemini groq mistral cohere
-deepseek together perplexity fireworks xai` (or the bundle `llms`) and `npm pypi uv composer cargo go
-rubygems github huggingface` (bundle `registries`). Preset names resolve to current IPs when rendered;
-since those APIs are CDN-backed (rotating IPs), **keep `public_https=True` (the default) for reliable
-access** — locking down to resolved IPs is best-effort.
+Presets (expand to the provider's API hosts): LLM APIs `anthropic openai openrouter gemini groq mistral
+cohere deepseek together perplexity fireworks xai` (bundle `llms`) and registries `npm pypi uv composer
+cargo go rubygems github huggingface` (bundle `registries`). On the `local` backend egress is set when
+you provision, e.g. `RESOLUTO_EGRESS_ALLOW=anthropic,npm scripts/local-backend-up.sh`; on `k8s` pass the
+`EgressConfig` to the runtime. IMDS is always blocked. `allow` entries resolve to current IPs when
+rendered — for a CDN-backed host with rotating IPs, `public_https=True` is the pragmatic choice.
 
 …or via env, honored by both backends (`local` reads them in `scripts/local-backend-up.sh`, `k8s` via
 `EgressConfig.from_store_env()`):

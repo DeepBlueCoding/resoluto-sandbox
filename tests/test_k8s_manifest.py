@@ -89,10 +89,15 @@ def test_network_policy_default_deny_egress():
     assert policy["spec"]["policyTypes"] == ["Egress"]
     assert policy["kind"] == "NetworkPolicy"
     assert policy["apiVersion"] == "networking.k8s.io/v1"
+    # SECURE BY DEFAULT: no blanket public 0.0.0.0/0:443 rule unless public_https=True is opted in
+    assert not any(
+        r["ports"] == [{"port": 443, "protocol": "TCP"}] and r["to"][0]["ipBlock"]["cidr"] == "0.0.0.0/0"
+        for r in policy["spec"]["egress"]
+    )
 
 
 def test_network_policy_exact_peers_store_https_dns():
-    rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32", store_port=9100))
+    rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32", store_port=9100, public_https=True))
     spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
     policy = rt._network_policy(spec, "sbx-test", "fake-uid")
     rules = policy["spec"]["egress"]
@@ -114,7 +119,7 @@ def test_network_policy_exact_peers_store_https_dns():
 def test_network_policy_imds_blocked_in_broad_rules():
     # IMDS excepted on the broad 0.0.0.0/0 rules; the store rule (specific /32) carries no except
     # (k8s rejects an except that isn't a strict subset of the cidr).
-    rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32"))
+    rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32", public_https=True))
     spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
     rules = rt._network_policy(spec, "sbx-test", "fake-uid")["spec"]["egress"]
     assert "except" not in rules[0]["to"][0]["ipBlock"]
@@ -128,7 +133,7 @@ def test_network_policy_config_driven():
     p1 = rt1._network_policy(spec, "sbx", "uid-1")
     assert p1["spec"]["egress"][0]["to"][0]["ipBlock"]["cidr"] == "192.168.1.100/32"
 
-    rt2 = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32", store_port=9100))
+    rt2 = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32", store_port=9100, public_https=True))
     p2 = rt2._network_policy(spec, "sbx", "uid-2")
     assert p2["spec"]["egress"][0]["ports"] == [{"port": 9100, "protocol": "TCP"}]
     assert len(p2["spec"]["egress"]) == 3

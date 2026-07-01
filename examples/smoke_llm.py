@@ -14,6 +14,11 @@ $CLAUDE_CODE_OAUTH_TOKEN if set, else the OAuth access token from your subscript
 (~/.claude/.credentials.json). ANTHROPIC_API_KEY stays unset so usage bills your subscription.
 The token rides in the pod env (a secret) — fine for a local dev smoke.
 
+Egress is DENY-by-default (secure) — an agent lane can't reach the LLM until you open it. The k8s
+path here opens just the provider (`allow=["anthropic"]`). The LOCAL backend enforces egress at
+PROVISION time, so provision it with the LLM opened first:
+    RESOLUTO_EGRESS_ALLOW=anthropic bash scripts/local-backend-up.sh    # (or RESOLUTO_EGRESS_PUBLIC_HTTPS=1)
+
 Run from resoluto-sandbox/ (lane image present; backends provisioned):
     set -a; source store.env; source ../local.env; set +a
     uv run python examples/smoke_llm.py                       # local backend
@@ -113,10 +118,15 @@ def run_k8s(prompt: str, token: str) -> str:
     ))
     store_env = {k: v for k, v in os.environ.items() if k.startswith("RESOLUTO_STORE_")}
     store_env["RESOLUTO_STORE_WRITE_TOKEN"] = json.dumps(sts)
+    # Egress is DENY-by-default — the LLM lane can't phone home unless we open it. Open just the LLM
+    # provider (least privilege). CDN IPs rotate, so if this flakes, use public_https=True instead.
+    import dataclasses
+    egress = EgressConfig.from_store_env() or EgressConfig()
+    egress = dataclasses.replace(egress, allow=tuple(egress.allow) + ("anthropic",))
     runtime = K8sSandboxRuntime(
         namespace=os.environ.get("RESOLUTO_SANDBOX_NAMESPACE", "resoluto-sandboxes"),
         context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
-        egress=EgressConfig.from_store_env(),
+        egress=egress,
     )
     sb = Sandbox(backend=SubstrateBackend(
         runtime=runtime, conduit=store_from_env(),

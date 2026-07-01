@@ -1,7 +1,8 @@
 """Backend-neutral egress allowlist + per-provider renderers.
 
-`EgressConfig` is the ONE abstraction every sandbox provider shares: a default-deny allowlist —
-all public HTTPS (`:443`) + DNS + your extra `allow` destinations, with IMDS always denied. Each
+`EgressConfig` is the ONE abstraction every sandbox provider shares. SECURE BY DEFAULT: it denies
+all egress except DNS + the object store; you opt in to HTTPS (`public_https=True`) or to specific
+destinations (`allow=[...]`). IMDS is always denied. Each
 `SandboxRuntime` renders the SAME config to its own enforcement mechanism through a pure function
 here, so the policy is written once and reused everywhere:
 
@@ -22,12 +23,12 @@ IMDS_CIDR = "169.254.169.254/32"           # cloud metadata (k8s rule `except`)
 IMDS_RANGE = "169.254.0.0/16"              # whole link-local range (local REJECT)
 RFC1918 = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
 
-# Friendly names for the most-used LLM inference endpoints and package registries, so a locked-down
-# allowlist reads `allow=["anthropic", "npm", "pypi"]`. Each expands to its API hostname(s), resolved
-# to CIDRs when rendered. NOTE: these are all CDN-backed (rotating IPs) — for RELIABLE access keep
-# public_https=True (the default), which allows all of them; presets are for the public_https=False
-# lock-down case, where you accept periodic re-resolve. Maintained best-effort; override with your own
-# hosts/CIDRs anytime.
+# Friendly names for the most-used LLM inference endpoints and package registries, so opening egress
+# to what a workload needs reads `allow=["anthropic", "npm", "pypi"]`. Each expands to its API
+# hostname(s), resolved to CIDRs when rendered. NOTE: these are CDN-backed (rotating IPs) — a pinned
+# allowlist is best-effort and needs periodic re-resolve; when you need reliable access from otherwise
+# restricted code, `public_https=True` (allow ALL 443) is the pragmatic escape hatch. Best-effort list;
+# override with your own hosts/CIDRs anytime.
 LLM_PRESETS: dict[str, tuple[str, ...]] = {
     "anthropic": ("api.anthropic.com",),
     "openai": ("api.openai.com",),
@@ -99,28 +100,31 @@ def resolve_cidrs(entries: Sequence[str]) -> list[str]:
 
 @dataclass(frozen=True)
 class EgressConfig:
-    """Backend-neutral egress allowlist (default-deny). Simple knobs, same on every backend:
+    """Backend-neutral egress allowlist. SECURE BY DEFAULT: `EgressConfig()` DENIES all egress
+    except DNS and the object store — a fresh sandbox cannot phone home. You opt IN to what the
+    workload needs. Same knobs on every backend:
 
-    - public_https=True (default) allows ALL outbound HTTPS (:443) — so github, api.anthropic.com,
-      package mirrors, etc. work with NO extra config. Set False to allow ONLY what you list.
-    - allow=[...] adds extra destinations — preset NAMES (e.g. "anthropic", "openai", "openrouter",
+    - public_https=False (DEFAULT) → deny all outbound except DNS + store. Set **True** to allow ALL
+      HTTPS (:443) — the "let it reach the internet" escape hatch for trusted workloads.
+    - allow=[...] opens SPECIFIC destinations — preset NAMES (e.g. "anthropic", "openai", "openrouter",
       "npm", "pypi", "composer", "github", or the bundles "llms"/"registries"; see PRESETS), hostnames,
       OR CIDRs — on allow_port (443 default; e.g. 22 for git-over-SSH). Names/hostnames resolve to CIDRs
-      when rendered.
+      when rendered. This is the RECOMMENDED way to run untrusted code: least privilege.
     - store_cidr/store_port: the k8s object-store endpoint (REQUIRED for the k8s backend; the local
-      backend reaches its store over a file mount, so it ignores these).
+      backend reaches its store over a file mount, so it ignores these). Always allowed — the lane
+      must return results.
 
     IMDS (169.254.169.254) is ALWAYS denied; the local renderer also denies RFC1918 (no lateral
     movement) unless you explicitly `allow` a private CIDR.
 
     NOTE: NetworkPolicy/iptables are CIDR-based — pinning a CDN-backed host (e.g. api.anthropic.com
-    behind Cloudflare) to its resolved IPs is fragile (they rotate). For such hosts keep
-    public_https=True rather than listing them in `allow`.
+    behind Cloudflare) to its resolved IPs is fragile (they rotate). When you need reliable access to
+    such a host from otherwise-restricted code, `public_https=True` is the pragmatic choice.
     """
 
     allow: Sequence[str] = ()
     allow_port: int = 443
-    public_https: bool = True
+    public_https: bool = False
     store_cidr: str | None = None
     store_port: int = 443
 
@@ -141,7 +145,7 @@ class EgressConfig:
 
         e = env if env is not None else os.environ
         allow = tuple(x for x in (e.get("RESOLUTO_EGRESS_ALLOW") or "").split(",") if x.strip())
-        public_https = (e.get("RESOLUTO_EGRESS_PUBLIC_HTTPS", "1").strip().lower()
+        public_https = (e.get("RESOLUTO_EGRESS_PUBLIC_HTTPS", "0").strip().lower()
                         not in ("0", "false", "no", ""))
         allow_port = int(e.get("RESOLUTO_EGRESS_ALLOW_PORT", "443"))
 
@@ -239,7 +243,7 @@ def _main(argv: "list[str] | None" = None) -> int:
     cfg = EgressConfig(
         allow=tuple(x for x in (os.environ.get("RESOLUTO_EGRESS_ALLOW") or "").split(",") if x.strip()),
         allow_port=int(os.environ.get("RESOLUTO_EGRESS_ALLOW_PORT", "443")),
-        public_https=(os.environ.get("RESOLUTO_EGRESS_PUBLIC_HTTPS", "1").strip().lower()
+        public_https=(os.environ.get("RESOLUTO_EGRESS_PUBLIC_HTTPS", "0").strip().lower()
                       not in ("0", "false", "no", "")),
     )
     for rule in local_egress_iptables(cfg, chain=args.chain):
