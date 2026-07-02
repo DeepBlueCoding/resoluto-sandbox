@@ -23,7 +23,6 @@ _PHASE_MAP = {
     "dead": "failed",
 }
 
-
 def _resolve_sudo() -> bool:
     """Returns whether nerdctl must run via sudo -n."""
     v = os.environ.get("RESOLUTO_LOCAL_NERDCTL_SUDO")
@@ -127,7 +126,12 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
         argv += ["--memory", str(res.memory_bytes), "--memory-swap", str(res.memory_bytes)]
         argv += ["--cpus", str(res.cpu_cores)]
         if spec.privileged:
-            argv += ["--privileged", "--user", "0"]
+            # Guest-scoped privilege under Kata: grant extended privileges for docker-in-docker but
+            # do NOT bind host devices. The Kata guest already owns the default device nodes
+            # (/dev/full etc.); nerdctl's plain --privileged re-creates them in the guest and the
+            # shim fails with `Creating container device /dev/full — EEXIST`. This is the nerdctl
+            # equivalent of the k8s runtime's privileged_without_host_devices.
+            argv += ["--privileged", "--security-opt", "privileged-without-host-devices=true", "--user", "0"]
             if res.dind_graph_bytes is not None:
                 argv += ["--tmpfs", f"/var/lib/docker:size={res.dind_graph_bytes}"]
         argv += [spec.image]

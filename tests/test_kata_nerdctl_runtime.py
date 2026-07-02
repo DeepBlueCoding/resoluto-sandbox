@@ -105,6 +105,31 @@ async def test_launch_dind_is_privileged_with_tmpfs_graph(monkeypatch):
     assert argv[argv.index("--user") + 1] == "0"  # dockerd starts as root, entrypoint drops to user
     assert argv[argv.index("--tmpfs") + 1] == f"/var/lib/docker:size={10 * 1024**3}"
     assert argv[argv.index("--memory") + 1] == str(12 * 1024**3)
+    # Guest-scoped privilege: extended privileges WITHOUT host devices, or the Kata shim fails
+    # re-creating /dev/full (EEXIST). This is the nerdctl privileged_without_host_devices equivalent.
+    assert argv[argv.index("--security-opt") + 1] == "privileged-without-host-devices=true"
+
+
+@pytest.mark.asyncio
+async def test_plain_launch_is_not_privileged_and_has_no_host_device_opt(monkeypatch):
+    # A plain agent step never requests privilege — so no --privileged and no host-device security-opt.
+    rt = _rt()
+    calls = _stub_run_seq_none(monkeypatch, rt)
+    await rt.launch(_spec())
+    argv = calls[0]
+    assert "--privileged" not in argv
+    assert "privileged-without-host-devices=true" not in argv
+
+
+def _stub_run_seq_none(monkeypatch, rt):
+    calls: list[list[str]] = []
+
+    async def fake_run(*args):
+        calls.append(list(args))
+        return (0, "vm\n", "")
+
+    monkeypatch.setattr(rt, "_run", fake_run)
+    return calls
 
 
 @pytest.mark.asyncio
