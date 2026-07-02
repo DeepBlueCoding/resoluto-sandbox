@@ -54,11 +54,15 @@ def _extract(data: bytes, dest: Path) -> None:
 async def put_dir(
     store: Conduit, prefix: str, local_dir: str, *,
     name: str = "workspace", exclude: frozenset[str] = _DEFAULT_EXCLUDES,
-    protect: frozenset[str] = frozenset(),
+    protect: frozenset[str] = frozenset(), paths: list[str] | None = None,
 ) -> str:
-    """Tar `local_dir` and put it under `inbox/`; returns the object key."""
+    """Tar `local_dir` and put it under `inbox/`; returns the object key.
+
+    `paths` (each relative to `local_dir`) scopes the archive to just those subtrees. Pass the
+    task's repo paths so a lane only ever stages the repos it uses — never the surrounding
+    workspace (deps, sibling repos, or the object store itself). `None` = the whole dir."""
     key = f"{prefix.rstrip('/')}/{INBOX}/{name}.tar.gz"
-    await store.put(key, _archive(Path(local_dir), None, exclude, protect))
+    await store.put(key, _archive(Path(local_dir), paths, exclude, protect))
     return key
 
 
