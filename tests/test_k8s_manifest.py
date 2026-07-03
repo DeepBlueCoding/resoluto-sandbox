@@ -24,12 +24,13 @@ def _never_touch_a_real_cluster(monkeypatch):
 
 
 def test_dind_tmpfs_emits_memory_medium():
-    # graph_backend is now the runtime's private config (default tmpfs); the graph SIZE is a
-    # neutral resource. k8s renders the size as raw bytes (a valid quantity).
-    rt = K8sSandboxRuntime(graph_backend="tmpfs")
+    # graph_backend is now a NEUTRAL per-step field on Resources (default tmpfs); the graph SIZE
+    # is a neutral resource. tmpfs → medium:Memory emptyDir, sizeLimit = the graph bytes.
+    rt = K8sSandboxRuntime()
     spec = SandboxLaunchSpec(
         image="img:dev", store_prefix="run/r/nodes/n", flavor="dind",
-        resources=Resources.from_quantities(memory="20Gi", cpu="2", dind_graph="16Gi"),
+        resources=Resources.from_quantities(memory="20Gi", cpu="2", dind_graph="16Gi",
+                                             graph_backend="tmpfs"),
     )
     manifest = rt._manifest(spec, "sbx-test")
     graph_vol = next(v for v in manifest["spec"]["volumes"] if v["name"] == "docker-graph")
@@ -40,7 +41,7 @@ def test_dind_tmpfs_emits_memory_medium():
 def test_dind_tmpfs_omits_sizelimit_when_graph_unset():
     # A dind spec with no dind_graph size must NOT render sizeLimit:"None" (the literal string),
     # which k8s rejects as an invalid quantity (BadRequest). Omit it instead.
-    rt = K8sSandboxRuntime(graph_backend="tmpfs")
+    rt = K8sSandboxRuntime()
     spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n", flavor="dind")
     graph_vol = next(v for v in rt._manifest(spec, "sbx")["spec"]["volumes"] if v["name"] == "docker-graph")
     assert graph_vol["emptyDir"]["medium"] == "Memory"
@@ -48,20 +49,22 @@ def test_dind_tmpfs_omits_sizelimit_when_graph_unset():
 
 
 def test_dind_block_emits_no_medium():
-    # block backend + its sizeLimit are k8s-runtime config now, not spec fields.
-    rt = K8sSandboxRuntime(graph_backend="block", graph_block_size="50Gi")
+    # graph_backend=block is a NEUTRAL spec field now (both runtimes honor it). block → a
+    # disk-backed emptyDir (no medium:Memory); sizeLimit = the graph DISK size from the spec.
+    rt = K8sSandboxRuntime()
     spec = SandboxLaunchSpec(
         image="img:dev", store_prefix="run/r/nodes/n", flavor="dind",
-        resources=Resources.from_quantities(memory="20Gi", cpu="2", dind_graph="16Gi"),
+        resources=Resources.from_quantities(memory="6Gi", cpu="2", dind_graph="20Gi",
+                                             graph_backend="block"),
     )
     manifest = rt._manifest(spec, "sbx-test")
     graph_vol = next(v for v in manifest["spec"]["volumes"] if v["name"] == "docker-graph")
-    assert "medium" not in graph_vol["emptyDir"]
-    assert graph_vol["emptyDir"]["sizeLimit"] == "50Gi"
+    assert "medium" not in graph_vol["emptyDir"]  # disk-backed → RAM stays free
+    assert graph_vol["emptyDir"]["sizeLimit"] == str(parse_quantity("20Gi"))
 
 
 def test_plain_flavor_has_no_docker_graph_volume():
-    rt = K8sSandboxRuntime(graph_backend="block")
+    rt = K8sSandboxRuntime()
     spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n", flavor="plain")
     manifest = rt._manifest(spec, "sbx-test")
     graph_vols = [v for v in manifest["spec"]["volumes"] if v["name"] == "docker-graph"]
@@ -97,8 +100,9 @@ def test_network_policy_default_deny_egress():
 
 
 def test_network_policy_exact_peers_store_https_dns():
-    rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32", store_port=9100, public_https=True))
-    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
+    # public_https is graph-declared → carried on the SPEC; the runtime holds only the store base.
+    rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32", store_port=9100))
+    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n", egress_public_https=True)
     policy = rt._network_policy(spec, "sbx-test", "fake-uid")
     rules = policy["spec"]["egress"]
     assert len(rules) == 3
@@ -119,8 +123,8 @@ def test_network_policy_exact_peers_store_https_dns():
 def test_network_policy_imds_blocked_in_broad_rules():
     # IMDS excepted on the broad 0.0.0.0/0 rules; the store rule (specific /32) carries no except
     # (k8s rejects an except that isn't a strict subset of the cidr).
-    rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32", public_https=True))
-    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
+    rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32"))
+    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n", egress_public_https=True)
     rules = rt._network_policy(spec, "sbx-test", "fake-uid")["spec"]["egress"]
     assert "except" not in rules[0]["to"][0]["ipBlock"]
     for rule in rules[1:]:
@@ -133,10 +137,29 @@ def test_network_policy_config_driven():
     p1 = rt1._network_policy(spec, "sbx", "uid-1")
     assert p1["spec"]["egress"][0]["to"][0]["ipBlock"]["cidr"] == "192.168.1.100/32"
 
-    rt2 = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32", store_port=9100, public_https=True))
-    p2 = rt2._network_policy(spec, "sbx", "uid-2")
+    rt2 = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32", store_port=9100))
+    spec2 = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n", egress_public_https=True)
+    p2 = rt2._network_policy(spec2, "sbx", "uid-2")
     assert p2["spec"]["egress"][0]["ports"] == [{"port": 9100, "protocol": "TCP"}]
     assert len(p2["spec"]["egress"]) == 3
+
+
+def test_network_policy_egress_policy_comes_from_the_spec():
+    # The sandbox APPLIES the graph-declared egress carried on the SPEC (not the runtime's env).
+    # store base stays the runtime's; allow + public_https come from the spec, per step.
+    rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32", store_port=9100))
+    # spec opts into a specific host on 443 (no public_https)
+    spec = SandboxLaunchSpec(
+        image="img:dev", store_prefix="run/r/nodes/n",
+        egress_allow=["10.20.30.40/32"], egress_public_https=False,
+    )
+    rules = rt._network_policy(spec, "sbx", "uid")["spec"]["egress"]
+    cidrs = [r["to"][0]["ipBlock"]["cidr"] for r in rules]
+    assert "10.20.30.40/32" in cidrs           # the spec's allow host is opened
+    assert "10.0.0.1/32" in cidrs               # store base still present (runtime infra)
+    # no blanket public 443 because the spec did not set public_https
+    assert not any(c == "0.0.0.0/0" and {"port": 443, "protocol": "TCP"} in r["ports"]
+                   for r, c in zip(rules, cidrs))
 
 
 def test_network_policy_owner_reference():

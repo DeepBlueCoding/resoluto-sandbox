@@ -48,6 +48,7 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
         nerdctl: str = "nerdctl",
         sudo: bool = False,
         egress_domains_file: str | None = None,
+        dind_graph_dir: str = "/var/lib/resoluto-local/dind-graph",
     ) -> None:
         check_runtime_class_guard(runtime)
         self._address = address
@@ -62,6 +63,10 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
         self._sudo = sudo
         # the live SNI allowlist file the persistent egress proxy reads (set per-run, see apply_egress)
         self._egress_domains_file = egress_domains_file
+        # Base dir (on real DISK, never /run tmpfs) for a block-backed dind graph: each dind step
+        # binds its own subdir at /var/lib/docker so image layers live on disk, keeping RAM free.
+        self._dind_graph_dir = dind_graph_dir
+        self._graph_dirs: dict[str, str] = {}  # container id → its host graph dir (for cleanup)
 
     async def apply_egress(self, domains: "list[str] | None") -> None:
         """Set THIS run's SNI egress allowlist by writing the proxy's live domains file — per-step
@@ -93,6 +98,8 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
             sudo=_resolve_sudo(),
             egress_domains_file=os.environ.get("RESOLUTO_LOCAL_EGRESS_DOMAINS_FILE",
                                                "/run/resoluto-local/egress-domains"),
+            dind_graph_dir=os.environ.get("RESOLUTO_LOCAL_DIND_GRAPH_DIR",
+                                          "/var/lib/resoluto-local/dind-graph"),
         )
 
     def _base(self) -> list[str]:
@@ -132,7 +139,12 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
             # shim fails with `Creating container device /dev/full — EEXIST`. This is the nerdctl
             # equivalent of the k8s runtime's privileged_without_host_devices.
             argv += ["--privileged", "--security-opt", "privileged-without-host-devices=true", "--user", "0"]
-            if res.dind_graph_bytes is not None:
+            graph_dir = self._graph_dir_for(spec) if res.graph_backend == "block" else None
+            if graph_dir is not None:
+                # Disk-backed graph: bind a per-step host dir (real disk) at /var/lib/docker so
+                # dockerd's image layers stay OFF RAM. nerdctl creates the bind source as root.
+                argv += ["-v", f"{graph_dir}:/var/lib/docker"]
+            elif res.dind_graph_bytes is not None:
                 argv += ["--tmpfs", f"/var/lib/docker:size={res.dind_graph_bytes}"]
         argv += [spec.image]
         argv += list(spec.args or spec.command or [])
@@ -140,7 +152,16 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
         rc, out, err = await self._run(*argv)
         if rc != 0:
             raise RuntimeError(f"nerdctl run failed (rc={rc}): {err.strip() or out.strip()}")
-        return SandboxHandle(id=out.strip().splitlines()[-1], labels=spec.labels)
+        cid = out.strip().splitlines()[-1]
+        if spec.privileged and spec.resources.graph_backend == "block":
+            self._graph_dirs[cid] = self._graph_dir_for(spec)
+        return SandboxHandle(id=cid, labels=spec.labels)
+
+    def _graph_dir_for(self, spec: SandboxLaunchSpec) -> str:
+        """The per-step host graph dir for a block-backed dind step — deterministic from the
+        step's store prefix (unique per step) so it never collides with another live step."""
+        leaf = (spec.store_prefix or "step").replace("/", "_").replace(":", "_")
+        return os.path.join(self._dind_graph_dir, leaf)
 
     async def status(self, handle: SandboxHandle) -> SandboxStatus:
         rc, out, err = await self._run(
@@ -158,6 +179,19 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
 
     async def destroy(self, handle: SandboxHandle) -> None:
         await self._run("rm", "-f", handle.id)
+        await self._rm_graph_dir(handle.id)
+
+    async def _rm_graph_dir(self, cid: str) -> None:
+        """Remove a block dind step's disk graph dir after the container is gone (root-owned via
+        the guest, so remove with the same sudo escalation nerdctl uses). No-op for tmpfs steps."""
+        graph_dir = self._graph_dirs.pop(cid, None)
+        if not graph_dir:
+            return
+        cmd = (["sudo", "-n"] if self._sudo else []) + ["rm", "-rf", graph_dir]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        await proc.communicate()
 
     async def sweep(self, labels: dict[str, str]) -> int:
         argv = ["ps", "-aq"]

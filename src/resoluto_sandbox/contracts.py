@@ -30,10 +30,16 @@ class Resources(BaseModel):
     cpu_cores: float
     disk_bytes: int | None = None
     dind_graph_bytes: int | None = None
+    # Where dockerd's image graph lives for a dind step: "tmpfs" (RAM-backed) or "block"
+    # (disk-backed volume — image layers stay off RAM). Deliberately a NEUTRAL field: both
+    # runtimes (k8s emptyDir, local nerdctl volume) now honor it, so it is no longer a
+    # k8s-private concern. Ignored by non-dind steps.
+    graph_backend: str = "tmpfs"
 
     @classmethod
     def from_quantities(
         cls, *, memory: str, cpu: str = "2", disk: str | None = None, dind_graph: str | None = None,
+        graph_backend: str = "tmpfs",
     ) -> "Resources":
         """Build a Resources from human quantity strings (e.g. '4Gi', '2')."""
         return cls(
@@ -41,6 +47,7 @@ class Resources(BaseModel):
             cpu_cores=float(cpu),
             disk_bytes=parse_quantity(disk) if disk else None,
             dind_graph_bytes=parse_quantity(dind_graph) if dind_graph else None,
+            graph_backend=graph_backend,
         )
 
 
@@ -70,6 +77,11 @@ class SandboxLaunchSpec(BaseModel):
     store_prefix: str
     store_write_token: str = ""
     deadline_seconds: int | None = None
+    # Egress POLICY the sandbox applies for THIS step (the graph declares it; the runtime applies
+    # it — k8s NetworkPolicy, local SNI proxy). Store connectivity is the runtime's own infra
+    # concern and is merged in separately. Empty + public_https=False ⇒ deny-all-but-DNS+store.
+    egress_allow: list[str] = Field(default_factory=list)
+    egress_public_https: bool = False
 
 
 class SandboxHandle(BaseModel):

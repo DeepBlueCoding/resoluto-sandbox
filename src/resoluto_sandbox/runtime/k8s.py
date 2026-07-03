@@ -4,8 +4,7 @@ from __future__ import annotations
 import logging
 import os
 import uuid
-from dataclasses import dataclass, field
-from typing import Literal
+from dataclasses import dataclass, field, replace
 
 from resoluto_sandbox.contracts import (
     SandboxHandle,
@@ -55,14 +54,10 @@ class K8sSandboxRuntime(SandboxRuntime):
         egress: EgressConfig | None = None,
         node_allocatable_memory: str | None = None,
         runtime_class: str = "kata",
-        graph_backend: Literal["tmpfs", "block"] = "tmpfs",
-        graph_block_size: str = "50Gi",
     ) -> None:
         self._ns = namespace
         self._kubeconfig = kubeconfig
         self._runtime_class = runtime_class
-        self._graph_backend = graph_backend
-        self._graph_block_size = graph_block_size
         self._context = context
         self._ipp = image_pull_policy
         self._egress = egress
@@ -217,11 +212,14 @@ class K8sSandboxRuntime(SandboxRuntime):
             container.setdefault("volumeMounts", []).append(
                 {"name": "docker-graph", "mountPath": "/var/lib/docker"}
             )
-            if self._graph_backend == "block":
-                volumes.append(
-                    {"name": "docker-graph",
-                     "emptyDir": {"sizeLimit": self._graph_block_size}}
-                )
+            if res.graph_backend == "block":
+                # Disk-backed emptyDir (NO medium:Memory) — image layers live on the node disk,
+                # not the pod memory cgroup, so RAM stays free. sizeLimit is the graph DISK
+                # budget declared in the graph (dind_graph_bytes).
+                graph_block_dir: dict = {}
+                if res.dind_graph_bytes is not None:
+                    graph_block_dir["sizeLimit"] = str(res.dind_graph_bytes)
+                volumes.append({"name": "docker-graph", "emptyDir": graph_block_dir})
             else:
                 graph_empty_dir: dict = {"medium": "Memory"}
                 if res.dind_graph_bytes is not None:
@@ -272,7 +270,15 @@ class K8sSandboxRuntime(SandboxRuntime):
         """Build the default-deny egress NetworkPolicy manifest for a lane pod: store on store_port, public 443, DNS; IMDS excepted on the broad rules."""
         assert self._egress is not None
 
-        egress_rules = k8s_egress_rules(self._egress)
+        # The store connectivity (store_cidr/store_port) is THIS runtime's infra concern; the
+        # ALLOW policy (hosts + public-HTTPS) is graph-declared and travels on the spec. Merge:
+        # keep the store base, apply the spec's policy per step. The sandbox is the applier.
+        eff_egress = replace(
+            self._egress,
+            allow=tuple(spec.egress_allow),
+            public_https=spec.egress_public_https,
+        )
+        egress_rules = k8s_egress_rules(eff_egress)
 
         if owner_name and owner_uid:
             owner_ref = {
@@ -368,7 +374,7 @@ class K8sSandboxRuntime(SandboxRuntime):
 
     async def launch(self, spec: SandboxLaunchSpec) -> SandboxHandle:
         check_runtime_class_guard(self._runtime_class)
-        if spec.flavor == "dind" and self._graph_backend == "tmpfs":
+        if spec.flavor == "dind" and spec.resources.graph_backend == "tmpfs":
             await self._preflight_memory(spec)
         api = await self._client()
         rid = spec.labels.get("resoluto.run_id", "")
