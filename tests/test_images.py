@@ -1,5 +1,5 @@
 import pytest
-from resoluto_sandbox.images import build, image_tags, PROVIDERS
+from resoluto_sandbox.images import build, image_tags, PROVIDERS, SDK_PACKAGE, SDK_VERSION
 
 
 class FakeRunner:
@@ -13,7 +13,7 @@ class FakeRunner:
 def test_build_langchain_returns_correct_tag():
     fake = FakeRunner()
     tag = build("langchain", ver="9.9.9", runner=fake)
-    assert tag == "resoluto-sandbox:9.9.9-langchain"
+    assert tag == f"resoluto-sandbox:langchain-{SDK_VERSION['langchain']}"
 
 
 def test_build_records_base_then_overlay():
@@ -40,6 +40,13 @@ def test_build_passes_image_version_arg():
     assert "IMAGE_VERSION=9.9.9" in overlay_cmd
 
 
+def test_build_passes_sdk_version_arg():
+    fake = FakeRunner()
+    build("langchain", ver="9.9.9", runner=fake)
+    overlay_cmd = fake.calls[1]
+    assert f"SDK_VERSION={SDK_VERSION['langchain']}" in overlay_cmd
+
+
 def test_build_custom_base_tag():
     fake = FakeRunner()
     build("openai", ver="1.0.0", base_tag="my-base:latest", runner=fake)
@@ -56,7 +63,7 @@ def test_image_tags_shape():
     tags = image_tags("1.2")
     assert tags["base"] == "resoluto-sandbox-base:1.2"
     for p in PROVIDERS:
-        assert tags[p] == f"resoluto-sandbox:1.2-{p}"
+        assert tags[p] == f"resoluto-sandbox:{SDK_PACKAGE[p]}-{SDK_VERSION[p]}"
 
 
 def test_build_all_providers():
@@ -80,7 +87,7 @@ def test_cli_image_build_langchain(monkeypatch, capsys):
     rc = main(["image", "build", "--provider", "langchain", "--version", "9.9.9"])
     assert rc == 0
     out = capsys.readouterr().out
-    assert "resoluto-sandbox:9.9.9-langchain" in out
+    assert f"resoluto-sandbox:langchain-{SDK_VERSION['langchain']}" in out
     assert len(calls) == 2
 
 

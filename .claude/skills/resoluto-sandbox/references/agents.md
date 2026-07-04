@@ -97,13 +97,17 @@ run it like any other program. Use the prebuilt images (below) so the libs are p
 
 ## Prebuilt SDK images
 
-Layered on `resoluto-sandbox-base` (see `images/`). Each just `pip install`s a stack:
+Layered on `resoluto-sandbox-base` (see `images/`). Each pins one anchor SDK package/version
+(`images.py:SDK_VERSION`) and tags itself by that package + version — never a floating install:
 
-| Image (`images/*.Dockerfile`) | Bakes |
-|---|---|
-| `claude.Dockerfile` → `resoluto-sandbox:claude` | `@anthropic-ai/claude-code` (npm) + `claude-agent-sdk` (pip) |
-| `langchain.Dockerfile` | `langchain langgraph langchain-anthropic` |
-| `openai.Dockerfile` | `openai-agents` |
+| Image (`images/*.Dockerfile`) | Tag (`resoluto-sandbox image build --provider ...`) | Bakes |
+|---|---|---|
+| `claude.Dockerfile` | `resoluto-sandbox:claude-agent-sdk-0.2.110` | `@anthropic-ai/claude-code` (npm) + `claude-agent-sdk==0.2.110` (pip) |
+| `langchain.Dockerfile` | `resoluto-sandbox:langchain-1.3.11` | `langchain==1.3.11` + `langgraph langchain-anthropic` (resolver-picked) |
+| `openai.Dockerfile` | `resoluto-sandbox:openai-agents-0.17.7` | `openai-agents==0.17.7` |
+
+The wheel version (must match the running `resoluto-sandbox` package) travels as the
+`resoluto.wheel_version` OCI label plus the `RESOLUTO_IMAGE_VERSION` env guard — not in the tag.
 
 To extend: copy a Dockerfile, `FROM ${BASE_IMAGE}`, add your `pip install`/`npm install -g`,
 keep `USER 1000` last. On k8s, pass the image to `SubstrateBackend(image="your-image:tag")`.
@@ -145,7 +149,7 @@ export CLAUDE_CODE_OAUTH_TOKEN=... # the value from above
 
 docker run --rm -e CLAUDE_CODE_OAUTH_TOKEN \
   -v "$PWD/examples:/workspace" \
-  resoluto-sandbox:claude python claude_agent.py "Say hello in five words"
+  resoluto-sandbox:claude-agent-sdk-0.2.110 python claude_agent.py "Say hello in five words"
 ```
 
 Or mount just the subscription login file, read-only:
@@ -154,7 +158,7 @@ Or mount just the subscription login file, read-only:
 docker run --rm \
   -v "$HOME/.claude/.credentials.json:/root/.claude/.credentials.json:ro" \
   -v "$PWD/examples:/workspace" \
-  resoluto-sandbox:claude python claude_agent.py "Say hello in five words"
+  resoluto-sandbox:claude-agent-sdk-0.2.110 python claude_agent.py "Say hello in five words"
 ```
 
 Mount the single `.credentials.json` file, NOT the whole `~/.claude` dir — the CLI

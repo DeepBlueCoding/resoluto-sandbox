@@ -204,7 +204,7 @@ resoluto-sandbox doctor                                  # check backend readine
 | `Conduit` + `LocalConduit`, `StdoutConduit`, `S3Conduit` (minio/S3) | **works today** |
 | `GcsConduit` | **provided, unverified** — experimental |
 | Language-neutral wire spec | **published** — see `spec/PROTOCOL.md` |
-| Prebuilt image matrix + `image build` CLI | design / roadmap |
+| Prebuilt image matrix + `image build` CLI | **works today** — `resoluto-sandbox image build --provider claude\|langchain\|openai\|all` |
 
 ---
 

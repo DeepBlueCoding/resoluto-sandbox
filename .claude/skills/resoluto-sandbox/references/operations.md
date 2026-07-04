@@ -102,7 +102,7 @@ Flags:
 resoluto-sandbox run --workspace . -- python agent.py --task build
 
 # k8s (image REQUIRED)
-resoluto-sandbox run --backend k8s --image resoluto-sandbox:0.2.3-claude -- python agent.py
+resoluto-sandbox run --backend k8s --image resoluto-sandbox:claude-agent-sdk-0.2.110 -- python agent.py
 ```
 
 ### `doctor`
@@ -132,14 +132,17 @@ builds the base first if needed. Prints each built tag to stdout.
 
 ```
 PROVIDERS = ("claude", "langchain", "openai")
+SDK_PACKAGE = {"claude": "claude-agent-sdk", "langchain": "langchain", "openai": "openai-agents"}
+SDK_VERSION = {"claude": "0.2.110", "langchain": "1.3.11", "openai": "0.17.7"}  # bump to move to a newer SDK release
 ```
 
-`image_tags(ver)` → tag map:
+`image_tags(ver)` → tag map. The base tag is the wheel version; each provider tag is its pinned
+SDK package + version instead (so the tag itself says what's inside — never a floating install):
 ```
 base       -> resoluto-sandbox-base:<ver>
-claude     -> resoluto-sandbox:<ver>-claude
-langchain  -> resoluto-sandbox:<ver>-langchain
-openai     -> resoluto-sandbox:<ver>-openai
+claude     -> resoluto-sandbox:claude-agent-sdk-<sdk-version>
+langchain  -> resoluto-sandbox:langchain-<sdk-version>
+openai     -> resoluto-sandbox:openai-agents-<sdk-version>
 ```
 
 Build wiring:
@@ -147,10 +150,17 @@ Build wiring:
   `docker build -f Dockerfile.base -t resoluto-sandbox-base:<ver> <context>`
 - `build(provider, *, ver=None, context=".", base_tag=None, runner=subprocess.run) -> str`
   builds base first if `base_tag is None`, then
-  `docker build -f images/<provider>.Dockerfile --build-arg BASE_IMAGE=<base_tag> --build-arg IMAGE_VERSION=<ver> -t resoluto-sandbox:<ver>-<provider> <context>`.
+  `docker build -f images/<provider>.Dockerfile --build-arg BASE_IMAGE=<base_tag> --build-arg IMAGE_VERSION=<ver> --build-arg SDK_VERSION=<sdk-version> -t resoluto-sandbox:<sdk-package>-<sdk-version> <context>`.
   Unknown provider → `ValueError`.
 - `wheel_version() -> str` = `importlib.metadata.version("resoluto-sandbox")`. Default `ver`.
 - `runner` is injectable (tests pass a fake; default `subprocess.run(..., check=True)`).
+
+Each overlay Dockerfile pins its anchor package to `${SDK_VERSION}` (e.g.
+`pip install claude-agent-sdk==${SDK_VERSION}`) and carries the wheel version as both
+`LABEL resoluto.wheel_version=${IMAGE_VERSION}` (introspectable via `docker inspect`, no run needed)
+and `ENV RESOLUTO_IMAGE_VERSION=${IMAGE_VERSION}` (asserted against the installed wheel at container
+start by `version_guard.py` — fail loud on drift). Companion packages (e.g. `langgraph`,
+`langchain-anthropic`) are left to pip's resolver to pick versions compatible with the pinned anchor.
 
 Overlay Dockerfiles live in `images/{claude,langchain,openai}.Dockerfile`; base is `Dockerfile.base`.
 

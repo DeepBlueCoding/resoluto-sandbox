@@ -62,7 +62,7 @@ export CLAUDE_CODE_OAUTH_TOKEN=...        # the value from above
 
 docker run --rm -e CLAUDE_CODE_OAUTH_TOKEN \
   -v "$PWD/examples:/workspace" \
-  resoluto-sandbox:claude python claude_agent.py "Say hello in five words"
+  resoluto-sandbox:claude-agent-sdk-0.2.110 python claude_agent.py "Say hello in five words"
 ```
 
 **Or mount just your subscription login file (read-only):**
@@ -71,7 +71,7 @@ docker run --rm -e CLAUDE_CODE_OAUTH_TOKEN \
 docker run --rm \
   -v "$HOME/.claude/.credentials.json:/root/.claude/.credentials.json:ro" \
   -v "$PWD/examples:/workspace" \
-  resoluto-sandbox:claude python claude_agent.py "Say hello in five words"
+  resoluto-sandbox:claude-agent-sdk-0.2.110 python claude_agent.py "Say hello in five words"
 ```
 
 Mount the single `.credentials.json` file, not the whole `~/.claude` directory —

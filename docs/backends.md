@@ -274,8 +274,12 @@ the bucket policy to allow the credentials you export below.
 
 ### 5. Build and push a provider image
 
+`image build` tags by the pinned SDK package + version, e.g. `resoluto-sandbox:claude-agent-sdk-0.2.110`
+(see `images.py:SDK_VERSION`). Retag to your registry path before pushing:
+
 ```bash
-resoluto-sandbox image build --provider claude --context ..
+tag=$(resoluto-sandbox image build --provider claude --context ..)
+docker tag "$tag" <registry>/resoluto-lane:dev
 docker push <registry>/resoluto-lane:dev
 ```
 
