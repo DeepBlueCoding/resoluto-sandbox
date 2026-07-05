@@ -35,7 +35,7 @@ def main(argv: list[str] | None = None) -> int:
         "--context",
         default=".",
         metavar="PATH",
-        help="Docker build context path. Base image build needs the workspace root (e.g. --context ..) until the package is a standalone repo.",
+        help="Docker build context path — defaults to this repo's own root (standalone).",
     )
 
     args, rest = parser.parse_known_args(argv)

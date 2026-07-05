@@ -257,7 +257,7 @@ the bucket policy to allow the credentials you export below.
 (see `images.py:SDK_VERSION`). Retag to your registry path before pushing:
 
 ```bash
-tag=$(resoluto-sandbox image build --provider claude --context ..)
+tag=$(resoluto-sandbox image build --provider claude)
 docker tag "$tag" <registry>/resoluto-lane:dev
 docker push <registry>/resoluto-lane:dev
 ```

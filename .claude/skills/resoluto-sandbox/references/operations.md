@@ -123,10 +123,8 @@ resoluto-sandbox image build [--provider P] [--version VER] [--context PATH]
 | `--context` | `.` | docker build context PATH |
 
 `--provider all` builds the base ONCE, then each overlay reusing that base. Single provider
-builds the base first if needed. Prints each built tag to stdout.
-
-> FOOTGUN: the base image needs the workspace ROOT as context until this package is a
-> standalone repo. Build from one level up: `--context ..`.
+builds the base first if needed. Prints each built tag to stdout. The default `--context .`
+is this repo's own root — standalone, no parent/sibling directory needed.
 
 ---
 

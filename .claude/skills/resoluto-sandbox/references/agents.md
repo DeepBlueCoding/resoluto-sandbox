@@ -240,7 +240,7 @@ backends and asserts the full input→agent→output contract (argv + env in; st
 out). Run it from `resoluto-sandbox/`:
 
 ```bash
-set -a; source store.env; source ../local.env; set +a     # store + local-Kata config
+set -a; source store.env; source local.env; set +a     # store + local-Kata config
 uv run python examples/smoke_both_backends.py              # both  (--local-only / --k8s-only)
 ```
 

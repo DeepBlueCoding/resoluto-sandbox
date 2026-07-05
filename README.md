@@ -46,7 +46,7 @@ The result captures the output, the exit code, and any files you asked to collec
 `result.json`):
 
 ```bash
-set -a; source store.env; source ../local.env; set +a
+set -a; source store.env; source local.env; set +a
 uv run python examples/smoke_both_backends.py        # or --local-only / --k8s-only
 ```
 

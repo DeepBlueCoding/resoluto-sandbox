@@ -20,7 +20,7 @@ PROVISION time, so provision it with the LLM opened first:
     RESOLUTO_EGRESS_ALLOW=anthropic bash scripts/local-backend-up.sh    # (or RESOLUTO_EGRESS_PUBLIC_HTTPS=1)
 
 Run from resoluto-sandbox/ (lane image present; backends provisioned):
-    set -a; source store.env; source ../local.env; set +a
+    set -a; source store.env; source local.env; set +a
     uv run python examples/smoke_llm.py                       # local backend
     uv run python examples/smoke_llm.py --k8s-only            # k8s backend
     uv run python examples/smoke_llm.py "your own prompt"

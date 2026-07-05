@@ -14,17 +14,17 @@
 # No factory wheels (core/pipeline/worker/agent-claude).
 # No factory git identity (user.email / user.name).
 #
-# Build context: workspace root (so resoluto-sandbox/ is resolvable). Prefer
+# Build context: this repo's own root (standalone — no parent/sibling directory needed). Prefer
 # `resoluto-sandbox image build` (images.py) — it tags this automatically as
 # resoluto-sandbox-base:<installed wheel version>, never a floating tag. Building by hand:
-#   docker build -f resoluto-sandbox/Dockerfile.base \
+#   docker build -f Dockerfile.base \
 #     -t resoluto-sandbox-base:$(python3 -c "from importlib.metadata import version; print(version('resoluto-sandbox'))") .
 
 # ── Stage 1: build the resoluto-sandbox wheel only ──
 FROM python:3.12-slim AS builder
 COPY --from=ghcr.io/astral-sh/uv:0.11.26 /uv /usr/local/bin/uv
 WORKDIR /src
-COPY resoluto-sandbox/ resoluto-sandbox/
+COPY . resoluto-sandbox/
 RUN mkdir -p /wheels && uv build --wheel --out-dir /wheels resoluto-sandbox || exit 1
 
 # ── Stage 2: OSS runtime substrate ──
