@@ -6,7 +6,7 @@ import json
 import os
 import sys
 
-from resoluto_sandbox.conduit.factory import store_from_env  # noqa: F401
+from resoluto_sandbox.conduit.factory import store_from_env
 from resoluto_sandbox.runner import run_node_in_sandbox
 from resoluto_sandbox.secrets import secrets_from_env
 

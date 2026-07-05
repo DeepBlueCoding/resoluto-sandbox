@@ -106,9 +106,11 @@ resoluto-sandbox run --backend k8s --image resoluto-sandbox:claude-agent-sdk-0.2
 ```
 
 ### `doctor`
-Readiness report, always exit 0. Checks: `/dev/kvm`, the `nerdctl` client, and the dedicated
-containerd socket (all REQUIRED for the local Kata-microVM backend); `docker` (only needed to
-build images); `RESOLUTO_SANDBOX_KUBECONTEXT` (k8s). Prints `[OK]`/`[MISSING]` per check.
+Readiness report. Exit 0 if all critical checks pass, else 1. Checks: `/dev/kvm`, the `nerdctl`
+client, and the dedicated containerd socket (all REQUIRED for the local Kata-microVM backend,
+critical); `docker` (only needed to build images, non-critical); `RESOLUTO_SANDBOX_KUBECONTEXT`
+(k8s, non-critical). Prints `[OK]` per passing check, `[MISSING]` per failing critical check, and
+`[absent]` per failing non-critical check.
 
 ### `image build` (`images.py`)
 ```

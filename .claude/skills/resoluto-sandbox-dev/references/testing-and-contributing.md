@@ -60,9 +60,9 @@ sb = Sandbox(backend=SubstrateBackend(
 ))
 ```
 
-`EgressConfig` (a frozen dataclass, `runtime/k8s.py`) — exactly two fields (`store_cidr`, `store_port=443`). Default-deny NetworkPolicy allowing `store_cidr:store_port` (TCP) + ALL public 443 (any HTTPS — LLM/git need no per-host config) + DNS 53; IMDS always denied. To tighten/blacklist, edit `K8sSandboxRuntime._network_policy`. **`store_cidr` is CIDR notation only; no FQDNs** (resolve hostnames to IPs yourself):
+`EgressConfig` (a frozen dataclass, `egress.py`, re-exported from `runtime/k8s.py`) — five fields: `allow: Sequence[str] = ()`, `allow_port: int = 443`, `public_https: bool = False`, `store_cidr: str | None = None`, `store_port: int = 443`. SECURE BY DEFAULT: `EgressConfig()` denies all egress except DNS + the object store (`store_cidr:store_port`). Public HTTPS (any `:443`) is allowed ONLY when `public_https=True` (the "let it reach the internet" escape hatch); otherwise open specific destinations via `allow=[...]` (hostnames or CIDRs, least privilege). IMDS is always denied. To tighten/blacklist further, edit `K8sSandboxRuntime._network_policy`. **`store_cidr` is CIDR notation only; no FQDNs** (resolve hostnames to IPs yourself):
 ```python
-EgressConfig(store_cidr="10.0.0.5/32", store_port=443)
+EgressConfig(store_cidr="10.0.0.5/32", store_port=443, allow=["api.anthropic.com"])
 # non-CIDR store_cidr (missing "/") → ValueError at construction
 ```
 

@@ -37,8 +37,9 @@ class LocalConduit(Conduit):
         return ConduitError(f"local object store I/O failed (root={Path(exc.filename).parent if exc.filename else '?'}): {exc}")
 
     def _path(self, key: str) -> Path:
+        root = self._root.resolve()
         p = (self._root / key).resolve()
-        if not str(p).startswith(str(self._root.resolve())):
+        if p != root and root not in p.parents:
             raise ValueError(f"key escapes store root: {key!r}")
         return p
 
@@ -58,8 +59,11 @@ class LocalConduit(Conduit):
             raise self._wrap_os_error(exc) from exc
 
     async def get(self, key: str) -> bytes:
-        with open(self._path(key), "rb") as f:
-            return f.read()
+        try:
+            with open(self._path(key), "rb") as f:
+                return f.read()
+        except OSError as exc:
+            raise self._wrap_os_error(exc) from exc
 
     async def list_prefix(self, prefix: str) -> list[ObjectInfo]:
         base = self._path(prefix)

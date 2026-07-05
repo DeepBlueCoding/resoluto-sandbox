@@ -12,7 +12,7 @@ from resoluto_sandbox import Sandbox, RunResult
 result: RunResult = Sandbox(backend="local").run(
     argv,                   # list[str]: the program + its arguments
     *,
-    workspace=None,         # str | None: cwd for the program; default is os.getcwd()
+    workspace=None,         # str | None: dir staged into the sandbox at /workspace; None = nothing staged at all
     stdin=None,             # NOT SUPPORTED — raises NotImplementedError on both backends
     env=None,               # dict[str, str] | None: overlaid on sandbox env (not replaced)
     output_paths=None,      # Sequence[str] | None: glob patterns to collect as artifacts
@@ -72,7 +72,8 @@ CLAUDE_CODE_OAUTH_TOKEN=...` first, or use the `~/.claude/.credentials.json` mou
 use subscription billing.
 
 **`backend="k8s"` needs a `SubstrateBackend` injection or sets `RESOLUTO_LANE_IMAGE`.**
-`Sandbox(backend="k8s")` without an image raises `ValueError` at `run()`. Inject a configured
+`Sandbox(backend="k8s")` without an image raises `ValueError` immediately at construction (not
+at `run()`). Inject a configured
 `SubstrateBackend` or set `RESOLUTO_LANE_IMAGE`. Also requires a Kubernetes cluster (k3s, kind,
 EKS, or any distribution) with Kata Containers, `RESOLUTO_STORE_KIND` set, and
 `RESOLUTO_SANDBOX_KUBECONTEXT` pinned (fails closed otherwise). `stdin` raises
