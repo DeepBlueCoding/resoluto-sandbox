@@ -136,6 +136,9 @@ builds the base first if needed. Prints each built tag to stdout.
 PROVIDERS = ("claude", "langchain", "openai")
 SDK_PACKAGE = {"claude": "claude-agent-sdk", "langchain": "langchain", "openai": "openai-agents"}
 SDK_VERSION = {"claude": "0.2.110", "langchain": "1.3.11", "openai": "0.17.7"}  # bump to move to a newer SDK release
+# companion packages/binaries pinned alongside the anchor (NOT part of the tag, but still pinned —
+# an unpinned companion is the same reproducibility break, one line over)
+COMPANION_VERSIONS = {"claude": {"CLAUDE_CLI_VERSION": "2.1.201"}, "langchain": {"LANGGRAPH_VERSION": "1.2.7"}, "openai": {}}
 ```
 
 `image_tags(ver)` → tag map. The base tag is the wheel version; each provider tag is its pinned
@@ -152,7 +155,7 @@ Build wiring:
   `docker build -f Dockerfile.base -t resoluto-sandbox-base:<ver> <context>`
 - `build(provider, *, ver=None, context=".", base_tag=None, runner=subprocess.run) -> str`
   builds base first if `base_tag is None`, then
-  `docker build -f images/<provider>.Dockerfile --build-arg BASE_IMAGE=<base_tag> --build-arg IMAGE_VERSION=<ver> --build-arg SDK_VERSION=<sdk-version> -t resoluto-sandbox:<sdk-package>-<sdk-version> <context>`.
+  `docker build -f images/<provider>.Dockerfile --build-arg BASE_IMAGE=<base_tag> --build-arg IMAGE_VERSION=<ver> --build-arg SDK_VERSION=<sdk-version> [--build-arg <COMPANION_KEY>=<val> ...] -t resoluto-sandbox:<sdk-package>-<sdk-version> <context>`.
   Unknown provider → `ValueError`.
 - `wheel_version() -> str` = `importlib.metadata.version("resoluto-sandbox")`. Default `ver`.
 - `runner` is injectable (tests pass a fake; default `subprocess.run(..., check=True)`).

@@ -157,3 +157,24 @@ async def test_sweep_removes_by_label(monkeypatch):
     assert n == 2
     assert calls[0][0] == "ps" and "label=resoluto.run_id=r1" in calls[0]
     assert ["rm", "-f", "id1"] == calls[1] and ["rm", "-f", "id2"] == calls[2]
+
+
+@pytest.mark.asyncio
+async def test_sweep_raises_on_ps_failure_instead_of_reporting_zero(monkeypatch):
+    # A failed `ps -aq` (containerd unreachable, permission denied) must never look like a clean
+    # "0 matched" sweep — that would be a false-positive success for a leak backstop.
+    rt = _rt()
+    _stub_run(monkeypatch, rt, returns={"ps": (1, "", "permission denied")})
+    with pytest.raises(RuntimeError, match="permission denied"):
+        await rt.sweep({"resoluto.run_id": "r1"})
+
+
+@pytest.mark.asyncio
+async def test_status_inspect_failure_reason_carries_real_stderr(monkeypatch):
+    from resoluto_sandbox.contracts import SandboxHandle
+
+    rt = _rt()
+    _stub_run(monkeypatch, rt, returns={"inspect": (1, "", "containerd: connection refused")})
+    st = await rt.status(SandboxHandle(id="vm"))
+    assert st.phase == "unknown"
+    assert "containerd: connection refused" in st.reason

@@ -168,7 +168,9 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
             "inspect", "--format", "{{.State.Status}}|{{.State.ExitCode}}", handle.id
         )
         if rc != 0:
-            return SandboxStatus(phase="unknown", reason="container not found")
+            # The real stderr distinguishes "container genuinely gone" from an infra failure
+            # (containerd unreachable, permission denied) — don't collapse both into one fixed string.
+            return SandboxStatus(phase="unknown", reason=f"inspect failed (rc={rc}): {err.strip() or out.strip()}")
         raw_status, _, raw_code = out.strip().partition("|")
         mapped = _PHASE_MAP.get(raw_status, "unknown")
         if mapped == "exited":
@@ -197,9 +199,11 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
         argv = ["ps", "-aq"]
         for k, v in labels.items():
             argv += ["--filter", f"label={k}={v}"]
-        rc, out, _ = await self._run(*argv)
+        rc, out, err = await self._run(*argv)
         if rc != 0:
-            return 0
+            # A failure to even list containers (containerd unreachable, permission denied) must
+            # never look like "0 matched" — that's a false-positive clean sweep for a leak backstop.
+            raise RuntimeError(f"nerdctl ps failed (rc={rc}): {err.strip() or out.strip()}")
         ids = [line for line in out.split() if line]
         for cid in ids:
             await self._run("rm", "-f", cid)
