@@ -47,6 +47,6 @@ class GcsConduit(Conduit):
             await client.copy(self._bucket, o.key, self._bucket, new_name=f"{dst}/{rel}")
         return len(objs)
 
-    async def close(self) -> None:
+    async def aclose(self) -> None:
         if self._storage is not None:
             await self._storage.close()

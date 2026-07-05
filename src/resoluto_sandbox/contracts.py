@@ -144,6 +144,10 @@ class Conduit(ABC):
             await self.put(f"{dst}/{rel}", await self.get(o.key))
         return len(objs)
 
+    async def aclose(self) -> None:
+        """Release any cached client/session. Default no-op; override where there's something to
+        release (a cached HTTP session, connection pool, etc). One name across every Conduit."""
+
 
 class SandboxRuntime(ABC):
     """The platform-specific surface that launches, polls, and destroys a sandbox."""

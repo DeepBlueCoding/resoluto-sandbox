@@ -13,12 +13,31 @@ class _FakeStorage:
     def __init__(self, pages):
         self._pages = pages
         self.copies: list[tuple[str, str]] = []
+        self.closed = False
 
     async def list_objects(self, bucket, params=None):
         return self._pages[(params or {}).get("pageToken")]
 
     async def copy(self, bucket, name, dst_bucket, new_name=None):
         self.copies.append((name, new_name))
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+@pytest.mark.asyncio
+async def test_aclose_closes_the_cached_storage_client():
+    # aclose() (not close()) is the one name every Conduit uses (see contracts.py:Conduit.aclose).
+    storage = _FakeStorage({})
+    c = _conduit(storage)
+    await c.aclose()
+    assert storage.closed is True
+
+
+@pytest.mark.asyncio
+async def test_aclose_is_a_noop_when_never_used():
+    c = GcsConduit("my-bucket")  # never touched _client(), so self._storage is still None
+    await c.aclose()  # must not raise
 
 
 def _conduit(storage) -> GcsConduit:
