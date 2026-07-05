@@ -159,8 +159,10 @@ Each overlay Dockerfile pins its anchor package to `${SDK_VERSION}` (e.g.
 `pip install claude-agent-sdk==${SDK_VERSION}`) and carries the wheel version as both
 `LABEL resoluto.wheel_version=${IMAGE_VERSION}` (introspectable via `docker inspect`, no run needed)
 and `ENV RESOLUTO_IMAGE_VERSION=${IMAGE_VERSION}` (asserted against the installed wheel at container
-start by `version_guard.py` — fail loud on drift). Companion packages (e.g. `langgraph`,
-`langchain-anthropic`) are left to pip's resolver to pick versions compatible with the pinned anchor.
+start by `version_guard.py` — fail loud on drift). Companion packages (e.g. `langgraph`) are left
+to pip's resolver to pick versions compatible with the pinned anchor. **`langchain` bakes NO LLM
+integration** — LangChain itself is provider-agnostic; extend the image with `langchain-anthropic`,
+`langchain-openai`, etc. before it can call anything (see `references/agents.md`).
 
 Overlay Dockerfiles live in `images/{claude,langchain,openai}.Dockerfile`; base is `Dockerfile.base`.
 

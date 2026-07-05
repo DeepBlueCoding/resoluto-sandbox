@@ -283,11 +283,22 @@ resoluto-sandbox image build --provider openai      # -> resoluto-sandbox:openai
 resoluto-sandbox image build --provider all         # builds the base once, then all three overlays
 ```
 
-| Provider | Example agent | Auth | Model override |
+| Provider | Bakes | Example agent | Auth |
 |---|---|---|---|
-| `claude` | `examples/claude_agent.py` | Claude Max/Pro subscription (`claude setup-token`) or `ANTHROPIC_API_KEY` — see [`docs/auth.md`](docs/auth.md) | n/a (the `claude` CLI picks it) |
-| `langchain` | `examples/langchain_agent.py` | `ANTHROPIC_API_KEY` only — calls the Anthropic API directly, no subscription path | `ANTHROPIC_MODEL` |
-| `openai` | `examples/openai_agent.py` | `OPENAI_API_KEY` — pay-as-you-go API only | `OPENAI_MODEL` |
+| `claude` | `@anthropic-ai/claude-code` + `claude-agent-sdk` | `examples/claude_agent.py` | Claude Max/Pro subscription (`claude setup-token`) or `ANTHROPIC_API_KEY` — see [`docs/auth.md`](docs/auth.md) |
+| `langchain` | bare `langchain` + `langgraph` — **no LLM integration** | `examples/langchain_agent.py` | Depends which integration you add — see below |
+| `openai` | `openai-agents` | `examples/openai_agent.py` | `OPENAI_API_KEY` — pay-as-you-go API only, `OPENAI_MODEL` override |
+
+> **The `langchain` image is bare on purpose.** LangChain itself is provider-agnostic — it has no
+> built-in way to call an LLM. To actually use it, extend the image with the matching integration
+> package for whichever provider you want:
+> ```dockerfile
+> FROM resoluto-sandbox:langchain-1.3.11
+> RUN pip install --break-system-packages langchain-anthropic   # or langchain-openai, etc.
+> ```
+> `examples/langchain_agent.py` demonstrates the Anthropic integration specifically (needs
+> `langchain-anthropic` + `ANTHROPIC_API_KEY`, model override `ANTHROPIC_MODEL`) — it will
+> `ImportError` against the plain prebuilt `langchain` image until you extend it this way.
 
 > **`image build` uses Docker; the local backend reads a *different*, dedicated containerd.**
 > `resoluto-sandbox image build` shells out to `docker build`, landing the image in your regular
@@ -303,14 +314,15 @@ resoluto-sandbox image build --provider all         # builds the base once, then
 > denied` — it tried (and failed) to pull the tag from a registry instead of finding it locally.
 
 Verified end to end against the real Kata sandbox (all three: canary passes, workspace stages, the
-script runs and reaches its auth check):
+script runs and reaches its auth check). `claude` and `openai` run against the plain prebuilt image;
+`langchain` needs the one-line extended image from above (built as `my-langchain-anthropic:dev` here):
 
 ```python
 from resoluto_sandbox import Sandbox
 
 # workspace="examples" stages that DIRECTORY'S CONTENTS at /workspace — argv paths are relative
 # to that root, never prefixed with "examples/" again.
-r = Sandbox(backend="local", image="resoluto-sandbox:langchain-1.3.11").run(
+r = Sandbox(backend="local", image="my-langchain-anthropic:dev").run(
     ["python3", "langchain_agent.py", "Say hello in five words"],
     workspace="examples",
     env={"ANTHROPIC_API_KEY": "..."},
@@ -335,7 +347,7 @@ Or via the CLI (`--workspace` is REQUIRED to stage anything — without it `/wor
 your script won't be found; run from the repo root so `.` stages `examples/` alongside it):
 
 ```bash
-resoluto-sandbox run --workspace . --image resoluto-sandbox:langchain-1.3.11 -- python3 examples/langchain_agent.py "hi"
+resoluto-sandbox run --workspace . --image resoluto-sandbox:openai-agents-0.17.7 -- python3 examples/openai_agent.py "hi"
 ```
 
 On `k8s`, retag + push to your registry (`docs/backends.md`), then inject the same tag through

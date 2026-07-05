@@ -103,13 +103,18 @@ Layered on `resoluto-sandbox-base` (see `images/`). Each pins one anchor SDK pac
 | Image (`images/*.Dockerfile`) | Tag (`resoluto-sandbox image build --provider ...`) | Bakes |
 |---|---|---|
 | `claude.Dockerfile` | `resoluto-sandbox:claude-agent-sdk-0.2.110` | `@anthropic-ai/claude-code` (npm) + `claude-agent-sdk==0.2.110` (pip) |
-| `langchain.Dockerfile` | `resoluto-sandbox:langchain-1.3.11` | `langchain==1.3.11` + `langgraph langchain-anthropic` (resolver-picked) |
+| `langchain.Dockerfile` | `resoluto-sandbox:langchain-1.3.11` | `langchain==1.3.11` + `langgraph` — **bare, no LLM integration** (LangChain is provider-agnostic; see below) |
 | `openai.Dockerfile` | `resoluto-sandbox:openai-agents-0.17.7` | `openai-agents==0.17.7` |
 
 The wheel version (must match the running `resoluto-sandbox` package) travels as the
 `resoluto.wheel_version` OCI label plus the `RESOLUTO_IMAGE_VERSION` env guard — not in the tag.
 
-To extend: copy a Dockerfile, `FROM ${BASE_IMAGE}`, add your `pip install`/`npm install -g`,
+**`langchain` needs a provider integration added before it can call any LLM.** `FROM
+resoluto-sandbox:langchain-<ver>` and `RUN pip install langchain-anthropic` (or `langchain-openai`,
+etc.) — one line, no other changes. `examples/langchain_agent.py` demonstrates the Anthropic case
+and will `ImportError` against the plain image until extended this way.
+
+To extend any image: copy a Dockerfile, `FROM ${BASE_IMAGE}`, add your `pip install`/`npm install -g`,
 keep `USER 1000` last. On k8s, pass the image to `SubstrateBackend(image="your-image:tag")`.
 
 ## Claude Max/Pro subscription auth
