@@ -265,4 +265,4 @@ IMDS + RFC1918 private), immune to in-guest root. It is rendered from the SAME `
 `local_egress_iptables()` renderer — so the `RESOLUTO_EGRESS_ALLOW` / `_ALLOW_PORT` / `_PUBLIC_HTTPS`
 knobs apply here too (set them, re-run `scripts/local-backend-up.sh`). The egress canary RUNS
 (fail-closed). Suitable for untrusted code at VM-grade isolation. Needs `/dev/kvm` + nerdctl + the
-dedicated containerd + an image (default `resoluto-sandbox-base:dev`).
+dedicated containerd + an image (default `resoluto-sandbox-base:<installed wheel version>` (`default_local_image()`), never a floating tag).

@@ -3,13 +3,21 @@ from __future__ import annotations
 
 import os
 import tempfile
+from importlib.metadata import version as _pkg_version
 from typing import IO, Sequence
 
 from resoluto_sandbox.backends.base import Backend, RunResult
 from resoluto_sandbox.backends.substrate import SubstrateBackend, secrets_env_for_pod, store_env_for_pod
 from resoluto_sandbox.secrets import SecretKeyRef
 
-DEFAULT_LOCAL_IMAGE = "resoluto-sandbox-base:dev"
+
+def default_local_image() -> str:
+    """The image ``backend="local"`` uses when ``image=`` is omitted: the base substrate tagged to
+    the CURRENTLY INSTALLED ``resoluto-sandbox`` version — never a floating ``:dev``/``:latest`` tag.
+    Build it with ``resoluto-sandbox image build`` (tags ``resoluto-sandbox-base:<this version>``
+    automatically), or ``docker build -f Dockerfile.base -t resoluto-sandbox-base:<this version> ..``
+    directly, then load it into the local containerd (see README: Prebuilt provider images)."""
+    return f"resoluto-sandbox-base:{_pkg_version('resoluto-sandbox')}"
 
 
 def _local_conduit_base() -> str:
@@ -40,7 +48,7 @@ def _build_local_backend(image: str | None) -> SubstrateBackend:
         "RESOLUTO_STORE_ROOT": "/conduit",
     }
     return SubstrateBackend(
-        runtime=runtime, conduit=conduit, image=image or DEFAULT_LOCAL_IMAGE, store_env=store_env
+        runtime=runtime, conduit=conduit, image=image or default_local_image(), store_env=store_env
     )
 
 

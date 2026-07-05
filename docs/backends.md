@@ -65,8 +65,9 @@ trusted-local bypass.
 - A standalone containerd + nerdctl + Kata on this machine. Provision with
   `scripts/local-backend-up.sh` (ends with a green Kata-microVM canary).
 - An image with python + the resoluto-sandbox wheel + your program's deps. Default:
-  `resoluto-sandbox-base:dev` (`DEFAULT_LOCAL_IMAGE`) — a plain local tag held in this
-  host's containerd; the local backend never pulls from a registry. Override with
+  `resoluto-sandbox-base:<installed wheel version>` (`client.default_local_image()`) — computed
+  dynamically from the running `resoluto-sandbox` package version, never a hardcoded floating tag —
+  held in this host's containerd; the local backend never pulls from a registry. Override with
   `Sandbox(backend="local", image="your-image:tag")`.
 - If you built that image with plain `docker build` (including `resoluto-sandbox image build`), it
   landed in your regular Docker daemon — a **different** image store than the dedicated containerd

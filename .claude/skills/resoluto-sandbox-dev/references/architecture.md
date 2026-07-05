@@ -37,7 +37,7 @@ sb = Sandbox(backend=SubstrateBackend(
 
 `Sandbox.__init__(*, backend: Backend | str = "local", image: str | None = None)`:
 - a `Backend` instance → held as-is
-- `"local"` (default) → builds `SubstrateBackend(KataNerdctlSandboxRuntime + LocalConduit)`, image `resoluto-sandbox-base:dev`
+- `"local"` (default) → builds `SubstrateBackend(KataNerdctlSandboxRuntime + LocalConduit)`, image `default_local_image()` = `resoluto-sandbox-base:<installed wheel version>` (dynamic, never `:dev`)
 - `"k8s"` → builds `SubstrateBackend(K8sSandboxRuntime + store_from_env())` (needs `RESOLUTO_LANE_IMAGE`)
 - anything else (including `"docker"`) → `ValueError`
 
@@ -141,7 +141,7 @@ class SandboxRuntime(ABC):
 ```
 
 Implementations:
-- **`KataNerdctlSandboxRuntime`** (`runtime/kata_nerdctl.py`) — local backend; each sandbox is a Kata microVM launched via `nerdctl` against a dedicated, standalone containerd (own socket/root `/run/resoluto-local/containerd/`). Build it with `KataNerdctlSandboxRuntime.from_env(...)`; default image `DEFAULT_LOCAL_IMAGE = "resoluto-sandbox-base:dev"`.
+- **`KataNerdctlSandboxRuntime`** (`runtime/kata_nerdctl.py`) — local backend; each sandbox is a Kata microVM launched via `nerdctl` against a dedicated, standalone containerd (own socket/root `/run/resoluto-local/containerd/`). Build it with `KataNerdctlSandboxRuntime.from_env(...)`; default image via `client.default_local_image()` = `resoluto-sandbox-base:<installed wheel version>` (computed at call time, never a hardcoded `:dev`).
 - **`K8sSandboxRuntime(*, namespace="resoluto-sandboxes", kubeconfig=None, context=None, image_pull_policy="IfNotPresent", egress=None, node_allocatable_memory=None)`** — k8s backend; Kata pod. **Footgun:** `context` PINS the kube context — leave it `None` only knowingly (None follows the ambient current-context, which can wander to another cluster).
 
 `SubstrateBackend` drives the runtime for you. Reach for `SandboxRuntime` directly only when building a new placement substrate.

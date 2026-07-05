@@ -55,8 +55,11 @@ def test_local_spec_carries_workload_and_localfs_store_env(monkeypatch):
 
 def test_local_default_image_and_override(monkeypatch):
     _patch_local_substrate(monkeypatch)
-    from resoluto_sandbox.client import DEFAULT_LOCAL_IMAGE
-    assert Sandbox(backend="local")._backend._image == DEFAULT_LOCAL_IMAGE
+    from importlib.metadata import version as pkg_version
+
+    from resoluto_sandbox.client import default_local_image
+    assert default_local_image() == f"resoluto-sandbox-base:{pkg_version('resoluto-sandbox')}"
+    assert Sandbox(backend="local")._backend._image == default_local_image()
     assert Sandbox(backend="local", image="my:img")._backend._image == "my:img"
 
 

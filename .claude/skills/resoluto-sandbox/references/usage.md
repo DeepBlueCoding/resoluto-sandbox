@@ -29,7 +29,7 @@ delegates to it. Everything else is a backend implementation detail.
 def __init__(self, *, backend: Backend | str = "local", image: str | None = None) -> None
 ```
 
-- `backend="local"` → builds `SubstrateBackend(runtime=KataNerdctlSandboxRuntime, conduit=LocalConduit, image="resoluto-sandbox-base:dev", ...)` (default).
+- `backend="local"` → builds `SubstrateBackend(runtime=KataNerdctlSandboxRuntime, conduit=LocalConduit, image=default_local_image(), ...)` (default) — `image` defaults to `resoluto-sandbox-base:<installed wheel version>`, computed dynamically, never a hardcoded floating tag.
 - `backend="k8s"`   → builds `SubstrateBackend(runtime=K8sSandboxRuntime, conduit=store_from_env(), ...)` (needs `RESOLUTO_LANE_IMAGE` and `RESOLUTO_STORE_KIND`).
 - `backend=<Backend instance>` → injected as-is (the supported way to configure k8s with egress, custom conduit, etc.).
 - anything else → `ValueError("unknown backend ...")`.

@@ -52,7 +52,7 @@ configured k8s backend (image, conduit, egress) MUST be injected as an instance.
   (own socket/root `/run/resoluto-local/containerd/`) on this host — VM-grade isolation at parity with
   k8s, single host, no cluster. The egress canary RUNS (fail-closed); local egress is enforced HOST-SIDE
   on the lane CNI bridge (default-deny). Needs `/dev/kvm`, `nerdctl`, the dedicated containerd up
-  (`scripts/local-backend-up.sh`) + an image (default `resoluto-sandbox-base:dev`).
+  (`scripts/local-backend-up.sh`) + an image (default `resoluto-sandbox-base:<installed wheel version>` (`default_local_image()`), never a floating tag).
   `stdin` raises `NotImplementedError`. `RunResult.errors` is always `""`.
 - **`k8s`** — `SubstrateBackend(K8sSandboxRuntime + store_from_env())`: **fully implemented**:
   launches a real Kata pod via `drive_node`, stages the workspace in, fetches `output_paths`

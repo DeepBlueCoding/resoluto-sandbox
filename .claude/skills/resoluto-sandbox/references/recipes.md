@@ -245,7 +245,7 @@ Both backends merge stdout→`output` (errors stays `""`).
   lane CNI bridge (default-deny: store + DNS only until you opt in via `RESOLUTO_EGRESS_ALLOW` /
   `_PUBLIC_HTTPS`; REJECT IMDS + RFC1918 private),
   immune to in-guest root. Suitable for untrusted code, same as k8s. Needs `/dev/kvm` + nerdctl +
-  the dedicated containerd + an image (default `resoluto-sandbox-base:dev`; override with `image=`).
+  the dedicated containerd + an image (default `resoluto-sandbox-base:<installed wheel version>` (`default_local_image()`), never a floating tag; override with `image=`).
   The image must contain python + the resoluto-sandbox wheel + your program's deps.
 
 - **k8s `egress=None` is the opt-OUT.** `egress=None` (the runtime default) creates NO

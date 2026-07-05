@@ -55,7 +55,7 @@ command exits with code 2.
 microVM (hardware-virtualized) via `nerdctl` against a dedicated, standalone containerd (own
 socket/root at `/run/resoluto-local/containerd/`). It requires `/dev/kvm`, the `nerdctl` client, and
 that dedicated containerd up (run `scripts/local-backend-up.sh`), plus an image that contains python
-+ the resoluto-sandbox wheel + your program's deps (default `resoluto-sandbox-base:dev`; override
++ the resoluto-sandbox wheel + your program's deps (default `resoluto-sandbox-base:<installed wheel version>` (`default_local_image()`), never a floating tag; override
 with `image=`). The egress canary RUNS fail-closed; local egress is enforced host-side on the lane
 CNI bridge (default-deny; allow DNS + HTTPS-443-public; REJECT IMDS + RFC1918 private) — immune to
 in-guest root. `backend="k8s"` enforces the same egress as a default-deny `NetworkPolicy` at the CNI.

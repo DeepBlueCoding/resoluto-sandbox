@@ -37,7 +37,8 @@ The result captures the output, the exit code, and any files you asked to collec
 > The local backend runs in a Kata microVM and needs a lane image present in its **dedicated**
 > containerd (not your regular Docker daemon — see [Prebuilt provider
 > images](#prebuilt-provider-images) for the transfer step) — pass `Sandbox(backend="local",
-> image="…")` (default `resoluto-sandbox-base:dev`; build it from `Dockerfile.base`). Run argv with
+> image="…")` (default `resoluto-sandbox-base:<installed wheel version>` — `default_local_image()`,
+> never a floating tag; build it from `Dockerfile.base` or `resoluto-sandbox image build`). Run argv with
 > the **guest's** `python` and paths relative to `workspace`, not host absolute paths.
 
 **Verify both backends end to end** with the smoke test — it runs a minimal agent through `local`
