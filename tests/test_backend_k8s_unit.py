@@ -45,6 +45,7 @@ def _patch_drive(monkeypatch, *, on_event_payload=None, captured=None, node_resu
     async def fake_drive_node(runtime, store, spec, *, on_event=None, **kw):
         if captured is not None:
             captured["spec"] = spec
+            captured["kw"] = kw
         if on_event is not None and on_event_payload is not None:
             on_event(on_event_payload)
         return node_result or NodeResult(status="success", exit_code=0)
@@ -181,6 +182,36 @@ def test_secrets_key_ref_routes_to_k8s_secret_refs(monkeypatch):
     assert spec.k8s_secret_refs == {"ANTHROPIC_API_KEY": ("anthropic-key", "api_key")}
     assert "RESOLUTO_SECRET_REFS" not in spec.env
     assert "ANTHROPIC_API_KEY" not in spec.env  # never a plaintext literal in the neutral env dict
+
+
+def test_default_resources_and_dead_after_s(monkeypatch):
+    captured: dict = {}
+    _patch_drive(monkeypatch, captured=captured)
+    _backend().run(["true"])
+    spec: SandboxLaunchSpec = captured["spec"]
+    assert spec.resources.memory_bytes == 4 * 1024**3
+    assert spec.resources.cpu_cores == 2.0
+    assert captured["kw"]["dead_after_s"] == 600.0
+
+
+def test_resources_and_dead_after_s_are_overridable(monkeypatch):
+    from resoluto_sandbox.contracts import Resources
+
+    captured: dict = {}
+    _patch_drive(monkeypatch, captured=captured)
+    backend = SubstrateBackend(
+        runtime=_FakeRuntime(),
+        conduit=_FakeConduit(),
+        image="img:dev",
+        store_env={"RESOLUTO_STORE_KIND": "s3", "RESOLUTO_STORE_BUCKET": "b"},
+        resources=Resources.from_quantities(memory="8Gi", cpu="4"),
+        dead_after_s=120.0,
+    )
+    backend.run(["true"])
+    spec: SandboxLaunchSpec = captured["spec"]
+    assert spec.resources.memory_bytes == 8 * 1024**3
+    assert spec.resources.cpu_cores == 4.0
+    assert captured["kw"]["dead_after_s"] == 120.0
 
 
 def test_secrets_mixed_ref_types_split_correctly(monkeypatch):

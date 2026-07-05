@@ -36,6 +36,8 @@ class SubstrateBackend(Backend):
         conduit: Conduit,
         image: str,
         store_env: dict[str, str],
+        resources: Resources | None = None,
+        dead_after_s: float = 600.0,
     ) -> None:
         if not image:
             raise ValueError("SubstrateBackend requires image=...")
@@ -43,6 +45,8 @@ class SubstrateBackend(Backend):
         self._conduit = conduit
         self._image = image
         self._store_env = store_env
+        self._resources = resources or Resources.from_quantities(memory="4Gi", cpu="2")
+        self._dead_after_s = dead_after_s
 
     def run(
         self,
@@ -137,7 +141,7 @@ class SubstrateBackend(Backend):
             flavor="plain",
             env=pod_env,
             args=["python", "-m", "resoluto_sandbox.runner_main"],
-            resources=Resources.from_quantities(memory="4Gi", cpu="2"),
+            resources=self._resources,
             store_prefix=prefix,
             labels={"resoluto.run_id": run_id, "resoluto.node_id": node_id},
             k8s_secret_refs=k8s_refs,
@@ -149,7 +153,7 @@ class SubstrateBackend(Backend):
         result = await drive_node(
             self._runtime, self._conduit, spec,
             on_event=lambda ev: _append_log_event(ev, out_lines, sink),
-            dead_after_s=600.0,
+            dead_after_s=self._dead_after_s,
         )
 
         artifacts: list[str] = []
