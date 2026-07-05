@@ -7,6 +7,7 @@ FROM ${BASE_IMAGE}
 
 ARG IMAGE_VERSION
 ARG SDK_VERSION
+ARG LANGGRAPH_VERSION
 LABEL resoluto.wheel_version=${IMAGE_VERSION}
 ENV RESOLUTO_IMAGE_VERSION=${IMAGE_VERSION}
 
@@ -16,5 +17,5 @@ USER root
 # (langchain-anthropic, langchain-openai, langchain-google-genai, ...), which is NOT included here.
 # Extend this Dockerfile with `RUN pip install langchain-<provider>==<version>` — see
 # examples/langchain_agent.py and the "Extending the langchain image" recipe in docs/backends.md.
-RUN pip install --no-cache-dir --break-system-packages langchain==${SDK_VERSION} langgraph
+RUN pip install --no-cache-dir --break-system-packages langchain==${SDK_VERSION} langgraph==${LANGGRAPH_VERSION}
 USER 1000

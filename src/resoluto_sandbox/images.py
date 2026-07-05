@@ -14,6 +14,15 @@ PROVIDERS = ("claude", "langchain", "openai")
 SDK_PACKAGE = {"claude": "claude-agent-sdk", "langchain": "langchain", "openai": "openai-agents"}
 SDK_VERSION = {"claude": "0.2.110", "langchain": "1.3.11", "openai": "0.17.7"}
 
+# Companion packages/binaries installed alongside a provider's anchor SDK — NOT part of the tag
+# (the anchor alone identifies the image), but pinned all the same: an unpinned companion next to
+# a pinned anchor is the same reproducibility break, just one line over. Empty dict = no companion.
+COMPANION_VERSIONS: dict[str, dict[str, str]] = {
+    "claude": {"CLAUDE_CLI_VERSION": "2.1.201"},   # @anthropic-ai/claude-code (npm)
+    "langchain": {"LANGGRAPH_VERSION": "1.2.7"},   # langgraph (pip)
+    "openai": {},
+}
+
 
 def wheel_version() -> str:
     """The installed resoluto-sandbox version (base image tag + overlay wheel-version label)."""
@@ -46,16 +55,15 @@ def build(provider: str, *, ver: str | None = None, context: str = ".", base_tag
     if base_tag is None:
         base_tag = build_base(ver=ver, context=context, runner=runner)
     tag = tags[provider]
+    build_args = [
+        "--build-arg", f"BASE_IMAGE={base_tag}",
+        "--build-arg", f"IMAGE_VERSION={ver}",
+        "--build-arg", f"SDK_VERSION={SDK_VERSION[provider]}",
+    ]
+    for name, val in COMPANION_VERSIONS[provider].items():
+        build_args += ["--build-arg", f"{name}={val}"]
     runner(
-        [
-            "docker", "build",
-            "-f", f"images/{provider}.Dockerfile",
-            "--build-arg", f"BASE_IMAGE={base_tag}",
-            "--build-arg", f"IMAGE_VERSION={ver}",
-            "--build-arg", f"SDK_VERSION={SDK_VERSION[provider]}",
-            "-t", tag,
-            context,
-        ],
+        ["docker", "build", "-f", f"images/{provider}.Dockerfile", *build_args, "-t", tag, context],
         check=True,
     )
     return tag
