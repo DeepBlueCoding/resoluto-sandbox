@@ -388,18 +388,28 @@ class K8sSandboxRuntime(SandboxRuntime):
         if rid:
             owner_name, owner_uid = await self.ensure_run_owner(rid)
 
+        # NetworkPolicy BEFORE the pod — egress must be in place when the pod's network is programmed,
+        # so the in-guest egress readiness gate never races kube-router. The policy selects the pod by
+        # LABELS (no pod UID needed) and is owned by the run-owner ConfigMap (cascade-GC'd with the run).
+        # Only when we have a run-owner to attach it to; otherwise fall back to pod-owned (created after).
+        pre_pod_netpol = self._egress is not None and bool(owner_name and owner_uid)
+        if pre_pod_netpol:
+            net_api = await self._networking_client()
+            await net_api.create_namespaced_network_policy(
+                namespace=self._ns,
+                body=self._network_policy(spec, name, "", owner_name=owner_name, owner_uid=owner_uid),
+            )
+
         pod = await api.create_namespaced_pod(
             namespace=self._ns,
             body=self._manifest(spec, name, owner_name=owner_name, owner_uid=owner_uid),
         )
-        if self._egress is not None:
+
+        if self._egress is not None and not pre_pod_netpol:
             net_api = await self._networking_client()
             await net_api.create_namespaced_network_policy(
                 namespace=self._ns,
-                body=self._network_policy(
-                    spec, name, pod.metadata.uid,
-                    owner_name=owner_name, owner_uid=owner_uid,
-                ),
+                body=self._network_policy(spec, name, pod.metadata.uid),
             )
         return SandboxHandle(id=f"{self._ns}/{name}", labels=spec.labels)
 

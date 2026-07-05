@@ -92,3 +92,40 @@ async def run_egress_canary(
     )
 
     return evaluate_verdict([p_external, p_imds, p_store])
+
+
+async def wait_for_egress_enforced(
+    store: Conduit,
+    prefix: str,
+    *,
+    on_tick=None,
+    max_attempts: int = 60,
+    poll_s: float = 0.5,
+    probe_host: str = "1.1.1.1",
+    probe_port: int = 80,
+) -> CanaryVerdict:
+    """Egress READINESS gate — poll the canary until egress is CONFIRMED enforced, then pass.
+
+    The NetworkPolicy is created at sandbox spin-up (before the pod), but kube-router programs the
+    iptables a beat AFTER the pod's veth appears, so the workload WAITS for enforcement instead of
+    racing it — nothing untrusted runs until the sandbox is egress-READY. It keeps waiting ONLY while
+    the sole failure is 'external/IMDS still reachable' (the netpol still landing) AND the store is
+    reachable; a store failure, or external still reachable after `max_attempts`, is a genuine
+    fail-closed egress error. Bounded by ATTEMPTS (heartbeated via `on_tick`), never a wall clock.
+    """
+    verdict = await run_egress_canary(store, prefix, probe_host, probe_port)
+    attempt = 1
+    while not verdict.passed and attempt < max_attempts:
+        by_target = {r.target: r for r in verdict.results}
+        store_probe = by_target.get("store")
+        if store_probe is not None and not store_probe.passed:
+            break  # store unreachable = real failure, not a landing netpol — don't spin
+        if on_tick is not None:
+            try:
+                on_tick()
+            except Exception:
+                pass
+        await asyncio.sleep(poll_s)
+        verdict = await run_egress_canary(store, prefix, probe_host, probe_port)
+        attempt += 1
+    return verdict
