@@ -47,7 +47,7 @@ sb = Sandbox(backend=SubstrateBackend(
 RunResult = sb.run(
     argv,                              # Sequence[str], the program + args
     *,
-    workspace: str | None = None,      # program cwd (a directory); staged into sandbox
+    workspace: str | None = None,      # a directory staged into the sandbox at /workspace; None = nothing staged (not cwd)
     stdin: str | bytes | None = None,  # NOT SUPPORTED — NotImplementedError on both backends
     env: dict[str, str] | None = None, # overlays sandbox env
     output_paths: Sequence[str] | None = None,  # globs → RunResult.artifacts

@@ -182,6 +182,8 @@ class K8sSandboxRuntime(SandboxRuntime):
         owner_uid: str | None = None,
     ) -> dict:
         env = [{"name": k, "value": v} for k, v in spec.env.items()]
+        for var_name, (secret_name, secret_key) in spec.k8s_secret_refs.items():
+            env.append({"name": var_name, "valueFrom": {"secretKeyRef": {"name": secret_name, "key": secret_key}}})
         env.append({"name": "RESOLUTO_STORE_PREFIX", "value": spec.store_prefix})
         if spec.store_write_token:
             env.append({"name": "RESOLUTO_STORE_WRITE_TOKEN", "value": spec.store_write_token})

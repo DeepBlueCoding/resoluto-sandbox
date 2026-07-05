@@ -44,6 +44,8 @@ def run(
     workspace: str | None = None,
     stdin: str | bytes | None = None,
     env: dict[str, str] | None = None,
+    env_file: str | None = None,
+    secrets: "dict[str, str | SecretKeyRef] | None" = None,
     output_paths: Sequence[str] | None = None,
     stream: IO[str] | None = None,
     egress: Sequence[str] | None = None,
@@ -53,9 +55,11 @@ def run(
 | kwarg | meaning | local | k8s |
 |---|---|---|---|
 | `argv` | program + args | yes | yes |
-| `workspace` | program cwd (must be an existing dir; staged into sandbox). `None` → `Path.cwd()` | yes | yes (staged in + mutated in place by `output_paths`) |
+| `workspace` | a dir staged into the sandbox at `/workspace`, argv paths relative to IT (not the host cwd). `None`/`""` → **nothing is staged at all** (`substrate.py`'s `if workspace:` skips `put_dir`) — NOT a cwd fallback | yes | yes (staged in + mutated in place by `output_paths`) |
 | `stdin` | `str`/`bytes` fed on stdin | **NotImplementedError** | **NotImplementedError** |
-| `env` | overlay on top of sandbox env (`{**store_env, **env}`) | yes | yes (overlaid on the curated sandbox env) |
+| `env` | overlay on top of sandbox env (`{**store_env, **file_env, **env}`) — wins over `env_file` | yes | yes (overlaid on the curated sandbox env) |
+| `env_file` | dotenv file parsed HOST-SIDE, merged under `env` (`env` wins on key conflict). Convenience, NOT a security mechanism — same plaintext exposure as `env` | yes | yes |
+| `secrets` | `dict[str, str \| SecretKeyRef]`. `str` value → provider ref, resolved GUEST-SIDE by `secrets_from_env()` (see `secrets.py`) via `RESOLUTO_SECRET_REFS`; host only ever holds a scoped `RESOLUTO_SECRETS_*` credential. `SecretKeyRef(name, key)` → k8s-native `valueFrom.secretKeyRef`, zero fetch code | provider refs only (no k8s Secret concept) | both |
 | `output_paths` | globs collected into `RunResult.artifacts` after the run | yes | yes |
 | `stream` | live output sink; `None` → `sys.stdout` | yes | yes |
 | `egress` | domains allowed for THIS run's outbound TLS (`None`/`[]` → deny all but DNS + store); set on the fly per step via the SNI proxy, cleared after | yes | (use `EgressConfig` per-runtime) |

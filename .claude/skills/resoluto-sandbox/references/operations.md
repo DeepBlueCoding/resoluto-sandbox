@@ -51,7 +51,7 @@ from resoluto_sandbox.client import Sandbox  # the ONLY entrypoint
 sb = Sandbox(backend="local")             # or "k8s", or a Backend instance (see §5)
 result = sb.run(
     argv,                                 # Sequence[str], the program + args
-    workspace=None,                       # str dir = program cwd; outputs land here in place
+    workspace=None,                       # str dir staged at /workspace, outputs land here in place; None = nothing staged
     stdin=None,                           # NOT SUPPORTED — NotImplementedError on both backends
     env=None,                             # dict[str,str] overlaid on sandbox env
     output_paths=None,                    # Sequence[str] globs collected into artifacts
@@ -94,7 +94,7 @@ Flags:
 | flag | default | values |
 |---|---|---|
 | `--backend` | `local` | `local`, `k8s` |
-| `--workspace` | `None` | dir (program cwd) |
+| `--workspace` | `None` | dir staged at `/workspace`; `None` = **nothing staged** (not cwd) |
 | `--image` | `None` | image tag (REQUIRED for `--backend k8s`) |
 
 ```bash

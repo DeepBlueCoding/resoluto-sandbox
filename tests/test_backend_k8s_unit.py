@@ -5,9 +5,11 @@ the runner emits (`data["line"]`), the pod_env the spec carries, the store-env
 selection (`store_env_for_pod`), and the fail-fast/NotImplemented contract. They
 MUST NOT touch a cluster.
 """
+import json
+
 import pytest
 
-from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto_sandbox.backends.substrate import SubstrateBackend, secrets_env_for_pod, store_env_for_pod
 from resoluto_sandbox.contracts import (
     Conduit,
     NodeResult,
@@ -17,6 +19,7 @@ from resoluto_sandbox.contracts import (
     SandboxStatus,
     SpanEvent,
 )
+from resoluto_sandbox.secrets import SecretKeyRef
 
 
 class _FakeConduit(Conduit):
@@ -126,3 +129,70 @@ def test_store_env_with_scoped_token_ignores_aws():
     selected = store_env_for_pod(env)
     assert selected["RESOLUTO_STORE_WRITE_TOKEN"] == "t"
     assert not any(k.startswith("AWS_") for k in selected)
+
+
+# ── secrets_env_for_pod (mirrors store_env_for_pod) ──────────────────────────
+
+
+def test_secrets_env_forwards_only_resoluto_secrets_prefixed_vars():
+    env = {
+        "RESOLUTO_SECRETS_KIND": "vault",
+        "RESOLUTO_SECRETS_ADDR": "https://vault.internal:8200",
+        "VAULT_TOKEN": "ambient-unrelated-token",  # never auto-forwarded
+        "RESOLUTO_STORE_KIND": "s3",
+    }
+    selected = secrets_env_for_pod(env)
+    assert selected == {
+        "RESOLUTO_SECRETS_KIND": "vault",
+        "RESOLUTO_SECRETS_ADDR": "https://vault.internal:8200",
+    }
+
+
+# ── env_file / secrets threading through _launch_and_collect ────────────────
+
+
+def test_env_file_merges_but_explicit_env_wins(monkeypatch, tmp_path):
+    f = tmp_path / ".env"
+    f.write_text("SHARED=from-file\nONLY_FILE=file-value\n")
+    captured: dict = {}
+    _patch_drive(monkeypatch, captured=captured)
+    _backend().run(["true"], env_file=str(f), env={"SHARED": "from-explicit-env"})
+    spec: SandboxLaunchSpec = captured["spec"]
+    assert spec.env["SHARED"] == "from-explicit-env"
+    assert spec.env["ONLY_FILE"] == "file-value"
+
+
+def test_secrets_str_ref_becomes_resoluto_secret_refs_json(monkeypatch):
+    captured: dict = {}
+    _patch_drive(monkeypatch, captured=captured)
+    _backend().run(["true"], secrets={"ANTHROPIC_API_KEY": "secret/data/anthropic#api_key"})
+    spec: SandboxLaunchSpec = captured["spec"]
+    assert json.loads(spec.env["RESOLUTO_SECRET_REFS"]) == {
+        "ANTHROPIC_API_KEY": "secret/data/anthropic#api_key"
+    }
+    assert spec.k8s_secret_refs == {}
+
+
+def test_secrets_key_ref_routes_to_k8s_secret_refs(monkeypatch):
+    captured: dict = {}
+    _patch_drive(monkeypatch, captured=captured)
+    _backend().run(["true"], secrets={"ANTHROPIC_API_KEY": SecretKeyRef("anthropic-key", "api_key")})
+    spec: SandboxLaunchSpec = captured["spec"]
+    assert spec.k8s_secret_refs == {"ANTHROPIC_API_KEY": ("anthropic-key", "api_key")}
+    assert "RESOLUTO_SECRET_REFS" not in spec.env
+    assert "ANTHROPIC_API_KEY" not in spec.env  # never a plaintext literal in the neutral env dict
+
+
+def test_secrets_mixed_ref_types_split_correctly(monkeypatch):
+    captured: dict = {}
+    _patch_drive(monkeypatch, captured=captured)
+    _backend().run(
+        ["true"],
+        secrets={
+            "K8S_VAR": SecretKeyRef("some-secret", "some-key"),
+            "PROVIDER_VAR": "vault:secret/data/x#key",
+        },
+    )
+    spec: SandboxLaunchSpec = captured["spec"]
+    assert spec.k8s_secret_refs == {"K8S_VAR": ("some-secret", "some-key")}
+    assert json.loads(spec.env["RESOLUTO_SECRET_REFS"]) == {"PROVIDER_VAR": "vault:secret/data/x#key"}

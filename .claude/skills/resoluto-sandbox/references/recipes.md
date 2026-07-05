@@ -15,7 +15,7 @@ Sandbox(backend="local" | "k8s" | <Backend instance>)    # default "local"
 sb.run(
     argv,                       # Sequence[str] — the program, e.g. ["uv","run","agent.py","prompt"]
     *,
-    workspace=None,             # str dir → program cwd; staged in (k8s) / bind-mounted (local Kata microVM)
+    workspace=None,             # str dir staged at /workspace, argv paths relative to IT; None = nothing staged
     stdin=None,                 # NOT SUPPORTED — NotImplementedError on both backends
     env=None,                   # dict[str,str] — overlays sandbox env
     output_paths=None,          # Sequence[str] globs → collected into RunResult.artifacts
@@ -54,7 +54,7 @@ the dedicated containerd + an image with `claude` CLI baked in.
 from resoluto_sandbox import Sandbox
 
 r = Sandbox(backend="local").run(
-    ["uv", "run", "examples/claude_agent.py", "Say hello in five words"],
+    ["uv", "run", "claude_agent.py", "Say hello in five words"],   # relative to workspace, NOT "examples/..."
     workspace="examples",
     env={"CLAUDE_CODE_OAUTH_TOKEN": "..."},  # or bake credentials into the image
 )
@@ -185,7 +185,41 @@ sb = Sandbox(backend=SubstrateBackend(
 For local, `Sandbox(backend="local", image="myregistry/my-base:tag")` runs your image
 in a Kata microVM via nerdctl on this host.
 
-### 6. Stream vs capture output
+### 6. Secrets: env_file, SecretKeyRef, SecretProvider
+
+Three mechanisms, not interchangeable — see `resoluto_sandbox/secrets.py` + `envfile.py`.
+
+**`env_file` — host-side convenience, NOT security** (same plaintext exposure as `env=`):
+
+```python
+sb.run(["uv", "run", "agent.py", "prompt"], env_file=".env")   # dotenv parsed host-side, merged under env=
+```
+
+**`SecretKeyRef` — k8s-native, zero fetch code.** References an existing `Secret` object (created by
+`kubectl`, [External Secrets Operator](https://github.com/external-secrets/external-secrets), or
+anything else) — kubelet materializes it via `valueFrom.secretKeyRef`; ignored on `local` (no k8s
+Secret concept there):
+
+```python
+from resoluto_sandbox.secrets import SecretKeyRef
+
+sb.run(argv, secrets={"ANTHROPIC_API_KEY": SecretKeyRef(name="anthropic-key", key="api_key")})
+```
+
+**`SecretProvider` ref — guest resolves it itself**, portable across `local`/`k8s`. The host never
+sees the plaintext — it only holds an already-scoped credential (`RESOLUTO_SECRETS_KIND` +
+`RESOLUTO_SECRETS_*`, same posture as `RESOLUTO_STORE_WRITE_TOKEN`: resoluto-sandbox never mints
+credentials, you mint a short-lived scoped one yourself — a Vault token, an AWS STS `AssumeRole`
+triple, a GCP impersonation-minted OAuth2 token, never a static key file):
+
+```python
+sb.run(argv, secrets={"ANTHROPIC_API_KEY": "vault:secret/data/anthropic#api_key"})
+```
+
+`secrets_from_env()` ships as an ABC + factory only — no concrete provider yet. Add one (e.g.
+`VaultSecretProvider`) and dispatch it in `secrets_from_env()`; nothing else changes.
+
+### 7. Stream vs capture output
 
 `stream=None` (default) ECHOES live to `sys.stdout` AND captures into
 `RunResult.output`. To capture without polluting your console, pass any `IO[str]`:

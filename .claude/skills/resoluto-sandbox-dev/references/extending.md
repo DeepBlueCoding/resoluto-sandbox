@@ -20,7 +20,7 @@ from resoluto_sandbox.client import Sandbox
 Sandbox(backend="local" | "k8s" | <Backend instance>).run(   # default "local"
     argv,                       # Sequence[str] — the program + args
     *,
-    workspace=None,             # str | None — program cwd (a directory)
+    workspace=None,             # str | None — a directory staged at /workspace; None = nothing staged (not cwd)
     stdin=None,                 # NOT SUPPORTED — NotImplementedError on both backends
     env=None,                   # dict[str, str] | None — overlays sandbox env
     output_paths=None,          # Sequence[str] | None — globs, collected into artifacts

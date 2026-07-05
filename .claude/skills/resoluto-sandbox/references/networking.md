@@ -31,7 +31,7 @@ from resoluto_sandbox.egress import EgressConfig                                
 RunResult = Sandbox.run(
     argv,                       # Sequence[str], the program to run (plain — never imports resoluto_sandbox)
     *,
-    workspace=None,             # str | None — program cwd; outputs extracted here in place
+    workspace=None,             # str | None — dir staged at /workspace, outputs extracted back here; None = nothing staged
     stdin=None,                 # NOT SUPPORTED — NotImplementedError on both backends
     env=None,                   # dict[str,str] | None — overlays sandbox env
     output_paths=None,          # Sequence[str] | None — globs collected into RunResult.artifacts

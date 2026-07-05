@@ -55,7 +55,7 @@ Sandbox(*, backend: Backend | str = "local")    # "local" | "k8s" | injected Bac
 .run(
     argv: Sequence[str],
     *,
-    workspace: str | None = None,       # program cwd; staged in, artifacts extracted back in place
+    workspace: str | None = None,       # dir staged at /workspace, artifacts extracted back in place; None = nothing staged
     stdin: str | bytes | None = None,   # NOT SUPPORTED — NotImplementedError on both backends
     env: dict[str, str] | None = None,  # overlays sandbox env
     output_paths: Sequence[str] | None = None,  # globs collected into RunResult.artifacts

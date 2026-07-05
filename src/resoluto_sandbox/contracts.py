@@ -76,6 +76,9 @@ class SandboxLaunchSpec(BaseModel):
     scheduling_gates: list[str] = Field(default_factory=list)
     store_prefix: str
     store_write_token: str = ""
+    # k8s-only: var name -> (Secret name, Secret key), rendered as valueFrom.secretKeyRef by
+    # K8sSandboxRuntime. The local backend never reads this field — ignored, not an error.
+    k8s_secret_refs: dict[str, tuple[str, str]] = Field(default_factory=dict)
     deadline_seconds: int | None = None
     # Egress POLICY the sandbox applies for THIS step (the graph declares it; the runtime applies
     # it — k8s NetworkPolicy, local SNI proxy). Store connectivity is the runtime's own infra

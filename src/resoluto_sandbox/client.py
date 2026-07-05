@@ -6,7 +6,8 @@ import tempfile
 from typing import IO, Sequence
 
 from resoluto_sandbox.backends.base import Backend, RunResult
-from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto_sandbox.backends.substrate import SubstrateBackend, secrets_env_for_pod, store_env_for_pod
+from resoluto_sandbox.secrets import SecretKeyRef
 
 DEFAULT_LOCAL_IMAGE = "resoluto-sandbox-base:dev"
 
@@ -58,7 +59,7 @@ def _build_k8s_backend(image: str | None) -> SubstrateBackend:
         context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT") or None,
         image_pull_policy=os.environ.get("RESOLUTO_LANE_IMAGE_PULL_POLICY", "IfNotPresent"),
     )
-    store_env = store_env_for_pod(os.environ)
+    store_env = {**store_env_for_pod(os.environ), **secrets_env_for_pod(os.environ)}
     return SubstrateBackend(runtime=runtime, conduit=conduit, image=image, store_env=store_env)
 
 
@@ -82,6 +83,8 @@ class Sandbox:
         workspace: str | None = None,
         stdin: str | bytes | None = None,
         env: dict[str, str] | None = None,
+        env_file: str | None = None,
+        secrets: "dict[str, str | SecretKeyRef] | None" = None,
         output_paths: Sequence[str] | None = None,
         stream: IO[str] | None = None,
         egress: Sequence[str] | None = None,
@@ -89,9 +92,19 @@ class Sandbox:
         """Run ``argv`` in the sandbox with ``workspace`` cwd, ``env`` overlay, ``output_paths`` globs
         collected into ``RunResult.artifacts``, and live output to ``stream``; returns a ``RunResult``.
 
+        ``env_file`` parses a dotenv-format file host-side and merges it under ``env`` (``env`` wins
+        on conflict) — a convenience for literal config, NOT a security mechanism: values still land
+        as literal env entries, same as ``env``.
+
+        ``secrets`` maps an env var name to either a ``SecretKeyRef`` (k8s-native — references an
+        existing Kubernetes Secret's key via ``valueFrom.secretKeyRef``, zero guest-side code; ignored
+        on the ``local`` backend) or a plain ``str`` (a provider-specific ref resolved GUEST-SIDE by
+        the configured ``SecretProvider`` — see ``secrets.py`` — so the plaintext value never touches
+        the host, the pod spec, or any log).
+
         ``egress`` is THIS run's allowed-domain list (e.g. ``["api.anthropic.com"]``) — per-step
         networking set up on the fly and torn down after, with no re-provisioning. ``None``/``[]`` =
         deny all outbound (secure default). Currently applied by the ``local`` backend's SNI proxy.
         """
-        return self._backend.run(argv, workspace=workspace, stdin=stdin, env=env,
-                                 output_paths=output_paths, stream=stream, egress=egress)
+        return self._backend.run(argv, workspace=workspace, stdin=stdin, env=env, env_file=env_file,
+                                 secrets=secrets, output_paths=output_paths, stream=stream, egress=egress)

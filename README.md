@@ -34,10 +34,11 @@ print(result.ok)       # True
 The result captures the output, the exit code, and any files you asked to collect (`output_paths`).
 `stdin` is not supported — pass inputs via argv, env, or workspace files.
 
-> The local backend runs in a Kata microVM and needs a lane image present in its containerd — pass
-> `Sandbox(backend="local", image="…")` (default `resoluto-sandbox-base:dev`; build it from
-> `Dockerfile.base`). Run argv with the **guest's** `python` and workspace-relative paths, not host
-> absolute paths.
+> The local backend runs in a Kata microVM and needs a lane image present in its **dedicated**
+> containerd (not your regular Docker daemon — see [Prebuilt provider
+> images](#prebuilt-provider-images) for the transfer step) — pass `Sandbox(backend="local",
+> image="…")` (default `resoluto-sandbox-base:dev`; build it from `Dockerfile.base`). Run argv with
+> the **guest's** `python` and paths relative to `workspace`, not host absolute paths.
 
 **Verify both backends end to end** with the smoke test — it runs a minimal agent through `local`
 (Kata via nerdctl) and `k8s` (Kata pod) and asserts input (argv + env) → output (stdout +
@@ -71,68 +72,107 @@ runners, LLM agents, and shell scripts all qualify. Dependencies are your progra
 ## How it works
 
 The host and the sandbox never hold a live connection. They rendezvous through a durable key/value
-store (the Conduit): the sandbox is passive — it writes append-only JSONL chunks and a final
+store (the **Conduit**): the sandbox is passive — it writes append-only JSONL chunks and a final
 `result.json`; the host launches it, tails the chunks, and reaps it. The same flow works whether the
 sandbox is a microVM next to you or a pod in a cluster, and a network blip can't wedge a run.
 
+### Components
+
+| Component | What it is | What it does |
+|---|---|---|
+| **Your program** | Any script/binary — plain | Reads `argv`/env, writes `stdout`/files, exits. Never imports `resoluto_sandbox`. |
+| **`Sandbox`** | Thin Python facade | `Sandbox(backend=...).run(argv, ...)` — one call, identical for every backend. |
+| **`SubstrateBackend`** | The one orchestration impl | Drives the 3-phase flow (stage → run → collect). Holds one `SandboxRuntime` + one `Conduit`. |
+| **`SandboxRuntime`** (ABC) | The isolation/placement seam | Launches, checks status, destroys the isolated sandbox. Impls: `KataNerdctlSandboxRuntime` (local), `K8sSandboxRuntime` (k8s). |
+| **`Conduit`** (ABC) | The durable exchange seam | `put` / `get` / `list_prefix` on a key/value store — the ONLY channel between host and sandbox. Impls: `LocalConduit` (bind-mounted dir), `S3Conduit` (minio/S3), `StdoutConduit`, `GcsConduit` (unverified). |
+| **`runner_main`** | The in-guest entrypoint | Runs inside the sandbox only — your program never sees it. Verifies the egress canary, stages inputs from the Conduit, execs your `argv`, ships spans/heartbeat/result back to the Conduit. |
+| **lane image** | The OCI image the sandbox boots | Must contain your program's runtime + the `resoluto-sandbox` wheel. Prebuilt overlays: `resoluto-sandbox:claude-agent-sdk-<ver>`, `:langchain-<ver>`, `:openai-agents-<ver>` (see [Images](#prebuilt-provider-images) below). |
+
+### Architecture — local vs. k8s
+
+Same isolation model on both backends — a Kata microVM with its own guest kernel, default-deny
+egress until you open exactly what you need, and a fail-closed canary that verifies isolation
+*before* your program runs. Only the placement and the Conduit implementation differ:
+
 ```
-stage → run (isolated) → collect
+LOCAL BACKEND  (single host, no cluster)
+────────────────────────────────────────
+┌────────────────────────────────────────────────┐
+│ Host process (your code)                       │
+│   Sandbox(backend="local")                     │
+└────────────────────────────────────────────────┘
+                    nerdctl
+                    (dedicated containerd)
+                     │
+                     ▼
+┌────────────────────────────────────────────────┐
+│ ISOLATED: Kata microVM                         │
+│ (own guest kernel)                             │
+│ runner_main -> your argv                       │
+│ egress: host CNI bridge, default-deny          │
+│ (DNS + store only, until opened)               │
+└────────────────────────────────────────────────┘
+                    bind mount
+                     │
+                     ▼
+LocalConduit (host dir)
 ```
 
-1. **Stage** — the host writes your workspace into the Conduit as an input archive.
-2. **Run** — the runtime launches an isolated sandbox over the lane image. Inside it, the generic
-   `runner_main` (your program never sees it) verifies egress isolation with a fail-closed canary,
-   stages your inputs into `/workspace`, runs your `argv`, and streams spans, heartbeats, the result,
-   and an output archive back to the Conduit. Output streams live to `stream` (default `sys.stdout`).
-3. **Collect** — when the program exits, the host fetches the outputs and assembles a `RunResult`
-   (output, exit code, `output_paths` artifacts, and a parsed `result.json` if your program wrote one),
-   then reaps the sandbox.
-
-Two seams carry everything; one `SubstrateBackend` drives both:
-
-- **`SandboxRuntime`** — where and how the program is isolated (launch / status / destroy).
-- **`Conduit`** — the durable host ↔ sandbox exchange (`put` / `get` / `list_prefix`).
-
-```mermaid
-flowchart TD
-    P["Your program — plain: argv/stdin in, stdout/files/exit out; never imports resoluto_sandbox"]
-    S["Sandbox(backend=…) — thin facade"]
-    SB["SubstrateBackend — one impl: stage → drive_node → collect"]
-    RT["SandboxRuntime (ABC) — isolation / placement seam"]
-    CD["Conduit (ABC) — durable host ↔ sandbox rendezvous"]
-    P --> S --> SB
-    SB --> RT
-    SB --> CD
+```
+K8S BACKEND  (Kubernetes cluster)
+─────────────────────────────────
+┌────────────────────────────────────────────────┐
+│ Host process (your code)                       │
+│   Sandbox(backend=SubstrateBackend(            │
+│     K8sSandboxRuntime(...)))                   │
+└────────────────────────────────────────────────┘
+                    kube API
+                    (pinned context)
+                     │
+                     ▼
+┌────────────────────────────────────────────────┐
+│ ISOLATED: Kata microVM pod                     │
+│ (own guest kernel)                             │
+│ runner_main -> your argv                       │
+│ egress: k8s NetworkPolicy, default-deny        │
+│ (DNS + store only, until opened)               │
+└────────────────────────────────────────────────┘
+                    HTTPS (S3 API)
+                     │
+                     ▼
+S3Conduit (minio / S3 bucket)
 ```
 
-```mermaid
-sequenceDiagram
-    participant H as Host (your process)
-    participant C as Conduit (durable store)
-    participant W as Sandbox (isolated)
-    H->>C: put_dir(workspace) — inbox
-    H->>W: SandboxRuntime.launch
-    W->>W: egress canary (fail-closed) → stage inputs → run your argv
-    W->>C: ship spans + heartbeat + result.json + outbox
-    C-->>H: tail chunks (silence watchdog, no wall-clock timeout) + fetch outputs
-    H->>H: reap sandbox → RunResult(output, exit_code, artifacts)
-```
-
----
-
-## Backends
-
-Pick by where it runs; the program, the flow, and the `RunResult` are identical. Each program runs in
-a Kata microVM (separate guest kernel) in both. What differs is the Conduit and how egress is enforced:
-
-| backend | where it runs | Conduit | egress isolation | needs |
-|---------|---------------|---------|------------------|-------|
-| `local` | a single host (microVM via `nerdctl` on a dedicated containerd) | bind-mounted `LocalConduit` | host-side default-deny firewall on the lane bridge + a host-side SNI proxy for per-run domain allowlists (`run(egress=[...])`) | `scripts/local-backend-up.sh` (Kata + nerdctl + a dedicated containerd) |
-| `k8s`   | a Kubernetes cluster (microVM pod) | object store (`S3Conduit`, minio/S3) | default-deny `NetworkPolicy` (per-runtime `EgressConfig`) | a cluster with Kata + an S3 store + a pinned kube context |
-
-For the `local` backend, run `scripts/local-backend-up.sh` until its canary is GREEN. For `k8s`,
-inject a configured `SubstrateBackend` (or use `Sandbox(backend="k8s", image=…)`). Full setup —
+`local` needs `/dev/kvm` + `nerdctl` + a dedicated containerd, provisioned by
+`scripts/local-backend-up.sh` (ends in a green Kata-microVM canary). `k8s` needs a cluster with Kata
+Containers installed, an S3-compatible store, and a pinned kube context. Full setup —
 including the vendor-neutral k8s stack — is in [`docs/backends.md`](docs/backends.md).
+
+### Data flow — the Conduit
+
+The host and the sandbox **never talk to each other directly** — every arrow below touches the
+Conduit, never the other side. That's what makes a network blip harmless: nothing is waiting on a
+live connection.
+
+| Phase | Host does | Conduit holds | Sandbox does |
+|---|---|---|---|
+| **1. Stage** | `put_dir(workspace)` — writes the input archive | the input archive, keyed to this run | *(not launched yet)* |
+| **2. Run** | launches the sandbox, then only tails the Conduit | spans + heartbeat + `result.json` + output archive, as `runner_main` writes them | canary → stages inputs *from* the Conduit → execs your `argv` → ships output *to* the Conduit |
+| **3. Collect** | `list_prefix` + `get` → assembles `RunResult`, reaps the sandbox | the final chunks, until reaped | destroyed |
+
+Live output still streams to `stream` (default `sys.stdout`) as it happens during **2. Run** — the
+table above is what's durable, not the only thing you see.
+
+### Security model — layers of defense
+
+A sandbox for untrusted code is locked down at every layer, outside-in:
+
+| Layer | What it does |
+|---|---|
+| **1. Network** | Default-deny egress — host CNI bridge (`local`) or `NetworkPolicy` (`k8s`). A fresh lane reaches only DNS + its own Conduit; you open exactly the domains a step needs, per `run()`. |
+| **2. Isolation** | The program runs in a Kata microVM — a real, separate guest kernel, not a namespace/cgroup container. In-guest root cannot escape it or see the host's devices. |
+| **3. Verification** | An in-guest egress canary runs fail-closed before your program does — if isolation can't be proven, the run refuses to start rather than silently running unprotected. |
+| **4. Blocked destinations** | Cloud IMDS (`169.254.169.254`) and RFC1918 private ranges are rejected even on an allowlist match — an opened domain can never pivot into the host's private network. |
 
 ### Egress — DENY by default (secure)
 
@@ -169,9 +209,11 @@ Verified end-to-end, back-to-back with **no re-provision**: `pnpm add is-odd` in
 Sandbox(backend="local").run(
     argv,                 # program + arguments
     *,
-    workspace=None,       # working directory staged into the sandbox (default: cwd)
+    workspace=None,       # dir staged into the sandbox at /workspace; None = nothing staged at all
     stdin=None,           # unsupported — raises NotImplementedError
     env=None,             # dict overlaid on the sandbox environment
+    env_file=None,        # dotenv file merged UNDER env (env wins) — convenience, not security (see below)
+    secrets=None,         # dict[str, str | SecretKeyRef] — see "Secrets" below
     output_paths=None,    # glob patterns collected back as artifacts
     stream=None,          # live output sink; None echoes to sys.stdout
     egress=None,          # domains allowed for THIS run (local); None/[] = deny all but DNS + store
@@ -183,15 +225,121 @@ Sandbox(backend="local").run(
 
 ---
 
+## Secrets
+
+Three mechanisms, for three different jobs — none is a drop-in replacement for another:
+
+| Mechanism | Where the plaintext lands | Use for |
+|---|---|---|
+| `env_file="path/to/.env"` | Literal env entry (pod spec / nerdctl `-e`) — same exposure as `env=` | Local dev config/secrets; pure convenience, not a security boundary |
+| `secrets={"VAR": SecretKeyRef("my-secret", "key")}` | Never touches resoluto-sandbox at all — kubelet materializes it | k8s only. References a `Secret` object that already exists (created by `kubectl`, [External Secrets Operator](https://github.com/external-secrets/external-secrets), or anything else) |
+| `secrets={"VAR": "vault:secret/data/x#key"}` | Resolved **inside the guest** by a `SecretProvider` — the host never sees the value | Portable across `local`/`k8s`. Ships as an ABC only today — see `secrets.py`; implement a concrete provider (Vault, AWS Secrets Manager, GCP Secret Manager, ...) and dispatch it in `secrets_from_env()` |
+
+```python
+from resoluto_sandbox import Sandbox
+from resoluto_sandbox.secrets import SecretKeyRef
+
+# env_file — host reads a dotenv file, merges it into the env (env= wins on conflict)
+Sandbox(backend="local").run(argv, env_file=".env")
+
+# SecretKeyRef — k8s-native, zero fetch code, ignored on the local backend
+Sandbox(backend="k8s", image=...).run(argv, secrets={"ANTHROPIC_API_KEY": SecretKeyRef("anthropic-key", "api_key")})
+
+# SecretProvider ref — guest resolves it itself; host only holds a scoped RESOLUTO_SECRETS_* credential
+Sandbox(backend="local").run(argv, secrets={"ANTHROPIC_API_KEY": "vault:secret/data/anthropic#api_key"})
+```
+
+The host **never mints credentials** for the `SecretProvider` path — same posture as the Conduit's
+`RESOLUTO_STORE_WRITE_TOKEN` today: you mint an already-scoped, short-lived credential yourself
+(a Vault token, an AWS STS `AssumeRole` triple, a GCP impersonation-minted OAuth2 token — never a
+static key file) and pass it via `RESOLUTO_SECRETS_KIND`/`RESOLUTO_SECRETS_*` env vars; resoluto-sandbox
+only plumbs it to the guest and calls `.get(ref)` right before your program execs.
+
+---
+
 ## CLI
 
 ```bash
 resoluto-sandbox run -- echo hi                          # local backend (default)
 resoluto-sandbox run --backend k8s --image <img> -- python agent.py
+resoluto-sandbox run --env-file .env -- python3 agent.py  # dotenv merged into the sandbox env
 resoluto-sandbox doctor                                  # check backend readiness
 ```
 
-`--` separates sandbox options from the program argv.
+`--` separates sandbox options from the program argv. `--env-file` is CLI-only for now — `secrets=`
+(`SecretKeyRef`/`SecretProvider`) is a Python API construct (needs a typed value, not just a string)
+and has no CLI flag yet.
+
+---
+
+## Prebuilt provider images
+
+Each overlay pins one SDK version and tags itself by it — the tag says exactly what's inside:
+
+```bash
+resoluto-sandbox image build --provider claude      # -> resoluto-sandbox:claude-agent-sdk-0.2.110
+resoluto-sandbox image build --provider langchain   # -> resoluto-sandbox:langchain-1.3.11
+resoluto-sandbox image build --provider openai      # -> resoluto-sandbox:openai-agents-0.17.7
+resoluto-sandbox image build --provider all         # builds the base once, then all three overlays
+```
+
+| Provider | Example agent | Auth | Model override |
+|---|---|---|---|
+| `claude` | `examples/claude_agent.py` | Claude Max/Pro subscription (`claude setup-token`) or `ANTHROPIC_API_KEY` — see [`docs/auth.md`](docs/auth.md) | n/a (the `claude` CLI picks it) |
+| `langchain` | `examples/langchain_agent.py` | `ANTHROPIC_API_KEY` only — calls the Anthropic API directly, no subscription path | `ANTHROPIC_MODEL` |
+| `openai` | `examples/openai_agent.py` | `OPENAI_API_KEY` — pay-as-you-go API only | `OPENAI_MODEL` |
+
+> **`image build` uses Docker; the local backend reads a *different*, dedicated containerd.**
+> `resoluto-sandbox image build` shells out to `docker build`, landing the image in your regular
+> Docker daemon. `Sandbox(backend="local")` launches via `nerdctl` against its OWN dedicated
+> containerd (`scripts/local-backend-up.sh`'s namespace) — a **separate image store** that never
+> sees what plain `docker build`/`docker images` produced. Transfer a built image into it once:
+> ```bash
+> docker save resoluto-sandbox:langchain-1.3.11 \
+>   | sudo "$RESOLUTO_LOCAL_NERDCTL" --address /run/resoluto-local/containerd/containerd.sock \
+>       --namespace resoluto-local load
+> ```
+> Skip this and `Sandbox(backend="local").run(...)` fails with `nerdctl run failed ... pull access
+> denied` — it tried (and failed) to pull the tag from a registry instead of finding it locally.
+
+Verified end to end against the real Kata sandbox (all three: canary passes, workspace stages, the
+script runs and reaches its auth check):
+
+```python
+from resoluto_sandbox import Sandbox
+
+# workspace="examples" stages that DIRECTORY'S CONTENTS at /workspace — argv paths are relative
+# to that root, never prefixed with "examples/" again.
+r = Sandbox(backend="local", image="resoluto-sandbox:langchain-1.3.11").run(
+    ["python3", "langchain_agent.py", "Say hello in five words"],
+    workspace="examples",
+    env={"ANTHROPIC_API_KEY": "..."},
+)
+print(r.output)
+```
+
+Swap the `image=` tag + example script + env var to switch providers — everything else is identical:
+
+```python
+Sandbox(backend="local", image="resoluto-sandbox:claude-agent-sdk-0.2.110").run(
+    ["python3", "claude_agent.py", "Say hello in five words"], workspace="examples",
+    env={"CLAUDE_CODE_OAUTH_TOKEN": "..."},   # never set ANTHROPIC_API_KEY alongside this
+)
+Sandbox(backend="local", image="resoluto-sandbox:openai-agents-0.17.7").run(
+    ["python3", "openai_agent.py", "Say hello in five words"], workspace="examples",
+    env={"OPENAI_API_KEY": "..."},
+)
+```
+
+Or via the CLI (`--workspace` is REQUIRED to stage anything — without it `/workspace` is empty and
+your script won't be found; run from the repo root so `.` stages `examples/` alongside it):
+
+```bash
+resoluto-sandbox run --workspace . --image resoluto-sandbox:langchain-1.3.11 -- python3 examples/langchain_agent.py "hi"
+```
+
+On `k8s`, retag + push to your registry (`docs/backends.md`), then inject the same tag through
+`SubstrateBackend(image=...)` — see [`docs/concepts.md`](docs/concepts.md#k8s) for the full wiring.
 
 ---
 
@@ -216,4 +364,5 @@ resoluto-sandbox doctor                                  # check backend readine
 - `docs/auth.md` — Claude Max/Pro subscription auth (no API key needed)
 - `spec/PROTOCOL.md` — the language-neutral host ↔ sandbox wire protocol
 - `examples/` — `01_local_hello.py` (no sandbox) → `02_run_via_sandbox.py` (same program, sandboxed)
-  → `claude_agent.py` (a plain Claude agent)
+  → `claude_agent.py` / `langchain_agent.py` / `openai_agent.py` (one plain agent per prebuilt
+  provider image — see [Prebuilt provider images](#prebuilt-provider-images))

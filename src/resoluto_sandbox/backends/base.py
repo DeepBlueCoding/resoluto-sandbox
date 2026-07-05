@@ -6,6 +6,8 @@ from typing import IO, Sequence
 
 from pydantic import BaseModel
 
+from resoluto_sandbox.secrets import SecretKeyRef
+
 
 class RunResult(BaseModel):
     """Outcome of one ``run()``: exit code, output/errors, collected ``artifacts`` paths, parsed ``result``, and a substrate ``reason``."""
@@ -33,6 +35,8 @@ class Backend(ABC):
         workspace: str | None = None,
         stdin: str | bytes | None = None,
         env: dict[str, str] | None = None,
+        env_file: str | None = None,
+        secrets: "dict[str, str | SecretKeyRef] | None" = None,
         output_paths: Sequence[str] | None = None,
         stream: IO[str] | None = None,
         egress: Sequence[str] | None = None,

@@ -436,3 +436,31 @@ def test_manifest_no_gates_by_default_normal_scheduling():
         SandboxLaunchSpec(image="x", store_prefix="run/x/nodes/n/lane-0"), "sbx-test")
     assert "schedulingGates" not in m["spec"]
     assert "annotations" not in m["metadata"]
+
+
+# ── k8s_secret_refs → valueFrom.secretKeyRef ─────────────────────────────────
+
+
+def test_manifest_renders_k8s_secret_refs_as_valuefrom():
+    rt = K8sSandboxRuntime()
+    spec = SandboxLaunchSpec(
+        image="img:dev", store_prefix="run/r/nodes/n",
+        env={"PLAIN": "value"},
+        k8s_secret_refs={"ANTHROPIC_API_KEY": ("anthropic-key", "api_key")},
+    )
+    env = rt._manifest(spec, "sbx-test")["spec"]["containers"][0]["env"]
+    plain = next(e for e in env if e["name"] == "PLAIN")
+    assert plain == {"name": "PLAIN", "value": "value"}
+    secret = next(e for e in env if e["name"] == "ANTHROPIC_API_KEY")
+    assert secret == {
+        "name": "ANTHROPIC_API_KEY",
+        "valueFrom": {"secretKeyRef": {"name": "anthropic-key", "key": "api_key"}},
+    }
+    assert "value" not in secret  # never a literal alongside the ref
+
+
+def test_manifest_omits_secret_refs_when_none_declared():
+    rt = K8sSandboxRuntime()
+    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
+    env = rt._manifest(spec, "sbx-test")["spec"]["containers"][0]["env"]
+    assert all("valueFrom" not in e for e in env)

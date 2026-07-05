@@ -18,7 +18,7 @@ Sandbox(*, backend: "Backend | str" = "local")          # "local" | "k8s" | Back
   .run(
       argv: Sequence[str],
       *,
-      workspace: str | None = None,        # program cwd; staged into the sandbox at /workspace
+      workspace: str | None = None,        # a directory staged into the sandbox at /workspace; None = nothing staged (not cwd)
       stdin: str | bytes | None = None,    # NOT supported on the substrate backend — raises NotImplementedError
       env: dict[str, str] | None = None,   # overlays the sandbox environment
       output_paths: Sequence[str] | None = None,  # globs collected into RunResult.artifacts

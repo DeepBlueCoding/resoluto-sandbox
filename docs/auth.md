@@ -12,6 +12,11 @@ that the Claude Agent SDK forks resolves auth on its own, from any of these
 > To bill your Max/Pro subscription, use option 1 or 2 and make sure `ANTHROPIC_API_KEY` is not set.
 > If an API key is present the CLI uses it and bills the API instead of your subscription.
 
+> This page is specifically about the `claude` CLI's own auth resolution. For getting an API key
+> into the sandbox for the `langchain`/`openai` provider images (which have no subscription path —
+> see [README: Prebuilt provider images](../README.md#prebuilt-provider-images)), or for avoiding
+> plaintext secrets in a k8s pod spec generally, see [README: Secrets](../README.md#secrets).
+
 ## Local backend
 
 `Sandbox(backend="local")` runs your program in a Kata microVM via `nerdctl`. The microVM does not

@@ -16,6 +16,9 @@ def main(argv: list[str] | None = None) -> int:
     run_p.add_argument("--backend", default="local", choices=["local", "k8s"])
     run_p.add_argument("--workspace", default=None)
     run_p.add_argument("--image", default=None)
+    run_p.add_argument("--env-file", default=None, metavar="PATH",
+                       help="dotenv-format file merged into the sandbox env (host-side convenience, "
+                            "not a security mechanism — see docs/auth.md for secrets)")
 
     sub.add_parser("doctor", help="Check local backend readiness")
 
@@ -66,7 +69,7 @@ def _cmd_run(args: argparse.Namespace, rest: list[str]) -> int:
     from resoluto_sandbox.client import Sandbox
 
     sb = Sandbox(backend=args.backend, image=args.image)
-    result = sb.run(program_argv, workspace=args.workspace, stream=sys.stdout)
+    result = sb.run(program_argv, workspace=args.workspace, env_file=args.env_file, stream=sys.stdout)
     return result.exit_code
 
 

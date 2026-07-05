@@ -14,43 +14,16 @@ Both backends share one substrate: `SubstrateBackend` drives a run through a
 `SandboxRuntime` (the isolation/placement seam) and a `Conduit` (the host/sandbox
 exchange). The backends differ only in which runtime and conduit are wired in.
 
-```mermaid
-flowchart TD
-    P["Your program — argv in, stdout/files/exit out; never imports resoluto_sandbox"]
-    S["Sandbox(backend='local' | 'k8s' | injected Backend)"]
-    SB["SubstrateBackend (drive_node + Conduit + runner_main)"]
-    RT{"SandboxRuntime (ABC) — isolation / placement seam"}
-    D["KataNerdctlSandboxRuntime — Kata microVM via nerdctl, single host"]
-    K["K8sSandboxRuntime — Kata microVM pod, a cluster"]
-    CD["Conduit (ABC) — LocalConduit (bind mount) or S3Conduit (cluster)"]
-    P --> S --> SB
-    SB --> RT
-    RT --> D
-    RT --> K
-    SB --> CD
-```
+> For the components glossary, the layered local-vs-k8s architecture diagram, the Conduit
+> data-flow table, and the security-layers table, see the [README's "How it works"
+> section](../README.md#how-it-works) — this page picks up from there with per-backend
+> setup detail.
 
 ## Run lifecycle
 
-One flow for both backends; only the runtime and conduit differ.
-
-```mermaid
-sequenceDiagram
-    participant H as Host (your process)
-    participant C as Conduit (LocalConduit bind-mount, or S3)
-    participant W as Sandbox (Kata microVM via nerdctl, or Kata pod)
-    H->>C: put_dir(workspace) - inbox
-    H->>W: SandboxRuntime.launch (nerdctl Kata microVM / k8s pod)
-    C->>W: runner_main stages inputs into /workspace
-    W->>W: run your argv
-    W->>C: ship spans + heartbeat + result.json + outbox
-    C-->>H: tail ChunkReader (silence watchdog, no wall-clock timeout) + fetch_outputs
-    H->>H: destroy sandbox, RunResult(output, exit_code, artifacts)
-```
-
-Liveness is a silence watchdog: if no chunk arrives for 600 seconds the sandbox is
-considered dead. There is no wall-clock timeout on the work itself — a live sandbox
-runs as long as it keeps emitting.
+One flow for both backends; only the runtime and conduit differ. Liveness is a silence
+watchdog: if no chunk arrives for 600 seconds the sandbox is considered dead. There is no
+wall-clock timeout on the work itself — a live sandbox runs as long as it keeps emitting.
 
 `stdin` is not supported on either backend — `NotImplementedError` if you pass
 `stdin=`. Pass inputs via argv, env, or workspace files.
@@ -95,6 +68,11 @@ trusted-local bypass.
   `resoluto-sandbox-base:dev` (`DEFAULT_LOCAL_IMAGE`) — a plain local tag held in this
   host's containerd; the local backend never pulls from a registry. Override with
   `Sandbox(backend="local", image="your-image:tag")`.
+- If you built that image with plain `docker build` (including `resoluto-sandbox image build`), it
+  landed in your regular Docker daemon — a **different** image store than the dedicated containerd
+  this backend reads from. Transfer it once with `docker save <tag> | sudo "$RESOLUTO_LOCAL_NERDCTL"
+  --address /run/resoluto-local/containerd/containerd.sock --namespace resoluto-local load` (see the
+  README's [Prebuilt provider images](../README.md#prebuilt-provider-images) section).
 
 ## k8s
 
@@ -370,8 +348,8 @@ For a completely new run approach (not store-mediated), implement the `Backend` 
 from resoluto_sandbox.backends.base import Backend, RunResult
 
 class MyBackend(Backend):
-    def run(self, argv, *, workspace=None, stdin=None, env=None,
-            output_paths=None, stream=None, egress=None) -> RunResult:
+    def run(self, argv, *, workspace=None, stdin=None, env=None, env_file=None,
+            secrets=None, output_paths=None, stream=None, egress=None) -> RunResult:
         ...
 
 Sandbox(backend=MyBackend(...)).run(argv, ...)

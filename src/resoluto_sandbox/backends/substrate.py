@@ -11,6 +11,8 @@ from uuid import uuid4
 from resoluto_sandbox.backends.artifacts import _collect, read_result_json
 from resoluto_sandbox.backends.base import Backend, RunResult
 from resoluto_sandbox.contracts import Conduit, Resources, SandboxRuntime
+from resoluto_sandbox.envfile import parse_env_file
+from resoluto_sandbox.secrets import SecretKeyRef
 
 
 def _append_log_event(ev, out_lines: list[str], sink) -> None:
@@ -49,14 +51,17 @@ class SubstrateBackend(Backend):
         workspace: str | None = None,
         stdin: str | bytes | None = None,
         env: dict[str, str] | None = None,
+        env_file: str | None = None,
+        secrets: "dict[str, str | SecretKeyRef] | None" = None,
         output_paths: Sequence[str] | None = None,
         stream: IO[str] | None = None,
         egress: Sequence[str] | None = None,
     ) -> RunResult:
         if stdin is not None:
             raise NotImplementedError("stdin is not supported on the substrate backend")
-        return asyncio.run(self._run_async(argv, workspace=workspace, env=env,
-                                           output_paths=output_paths, stream=stream, egress=egress))
+        return asyncio.run(self._run_async(argv, workspace=workspace, env=env, env_file=env_file,
+                                           secrets=secrets, output_paths=output_paths, stream=stream,
+                                           egress=egress))
 
     async def _run_async(
         self,
@@ -64,6 +69,8 @@ class SubstrateBackend(Backend):
         *,
         workspace: str | None,
         env: dict[str, str] | None,
+        env_file: str | None = None,
+        secrets: "dict[str, str | SecretKeyRef] | None" = None,
         output_paths: Sequence[str] | None,
         stream: IO[str] | None,
         egress: Sequence[str] | None = None,
@@ -78,8 +85,8 @@ class SubstrateBackend(Backend):
         if apply_egress is not None:
             await apply_egress(list(egress) if egress is not None else [])
         try:
-            return await self._launch_and_collect(argv, workspace=workspace, env=env,
-                                                   output_paths=output_paths, stream=stream)
+            return await self._launch_and_collect(argv, workspace=workspace, env=env, env_file=env_file,
+                                                   secrets=secrets, output_paths=output_paths, stream=stream)
         finally:
             if clear_egress is not None:
                 await clear_egress()
@@ -90,6 +97,8 @@ class SubstrateBackend(Backend):
         *,
         workspace: str | None,
         env: dict[str, str] | None,
+        env_file: str | None = None,
+        secrets: "dict[str, str | SecretKeyRef] | None" = None,
         output_paths: Sequence[str] | None,
         stream: IO[str] | None,
     ) -> RunResult:
@@ -104,8 +113,15 @@ class SubstrateBackend(Backend):
         if workspace:
             await put_dir(self._conduit, prefix, workspace)
 
+        # env_file is a host-side convenience, NOT a security mechanism — its values land as
+        # literal env entries exactly like env= does. Explicit env= wins on key conflict.
+        file_env = parse_env_file(env_file) if env_file else {}
+        provider_refs = {k: v for k, v in (secrets or {}).items() if isinstance(v, str)}
+        k8s_refs = {k: (v.name, v.key) for k, v in (secrets or {}).items() if isinstance(v, SecretKeyRef)}
+
         pod_env: dict[str, str] = {
             **self._store_env,
+            **file_env,
             **(env or {}),
             "RESOLUTO_STORE_PREFIX": prefix,
             "RESOLUTO_RUN_ID": run_id,
@@ -113,6 +129,7 @@ class SubstrateBackend(Backend):
             "RESOLUTO_WORKLOAD_ARGV": json.dumps(list(argv)),
             "RESOLUTO_WORKSPACE_DIR": "/workspace",
             **({"RESOLUTO_OUTPUT_PATHS": json.dumps(list(output_paths))} if output_paths else {}),
+            **({"RESOLUTO_SECRET_REFS": json.dumps(provider_refs)} if provider_refs else {}),
         }
 
         spec = SandboxLaunchSpec(
@@ -123,6 +140,7 @@ class SubstrateBackend(Backend):
             resources=Resources.from_quantities(memory="4Gi", cpu="2"),
             store_prefix=prefix,
             labels={"resoluto.run_id": run_id, "resoluto.node_id": node_id},
+            k8s_secret_refs=k8s_refs,
         )
 
         out_lines: list[str] = []
@@ -163,3 +181,10 @@ def store_env_for_pod(environ: "os._Environ[str] | dict[str, str]") -> dict[str,
             "host AWS creds are never forwarded (no trusted-local bypass)."
         )
     return selected
+
+
+def secrets_env_for_pod(environ: "os._Environ[str] | dict[str, str]") -> dict[str, str]:
+    """Select the RESOLUTO_SECRETS_* env the sandbox may inherit for guest-side SecretProvider
+    resolution. Only explicit RESOLUTO_SECRETS_*-prefixed vars pass through — an ambient credential
+    the host holds for unrelated purposes (e.g. VAULT_TOKEN) is never auto-forwarded."""
+    return {k: v for k, v in environ.items() if k.startswith("RESOLUTO_SECRETS_")}
