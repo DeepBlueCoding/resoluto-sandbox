@@ -1,7 +1,7 @@
 """GCS-backed Conduit via gcloud-aio-storage (lazy import behind the [gcs] extra)."""
 from __future__ import annotations
 
-from resoluto_sandbox.contracts import Conduit, ObjectInfo
+from resoluto.sandbox.contracts import Conduit, ObjectInfo
 
 
 class GcsConduit(Conduit):

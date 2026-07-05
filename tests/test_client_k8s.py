@@ -1,7 +1,7 @@
 """Integration test: Sandbox(backend='k8s').run() round-trips through a real Kata pod."""
 import pytest
 
-from resoluto_sandbox import Sandbox
+from resoluto.sandbox import Sandbox
 
 
 @pytest.mark.integration

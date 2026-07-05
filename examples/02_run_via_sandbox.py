@@ -16,7 +16,7 @@ import os
 import sys
 from pathlib import Path
 
-from resoluto_sandbox import Sandbox
+from resoluto.sandbox import Sandbox
 
 examples = Path(__file__).resolve().parent
 # the local backend needs an image present in its dedicated containerd; override if yours differs

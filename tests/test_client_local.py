@@ -4,15 +4,15 @@ NO real microVM launches. Asserts the SubstrateBackend the local backend builds:
 NodeResult→RunResult mapping."""
 import pytest
 
-from resoluto_sandbox import RunResult, Sandbox
-from resoluto_sandbox.contracts import NodeResult, SpanEvent
+from resoluto.sandbox import RunResult, Sandbox
+from resoluto.sandbox.contracts import NodeResult, SpanEvent
 
 
 def _patch_local_substrate(monkeypatch, *, on_event_payload=None, captured=None, node_result=None):
     """Stub KataNerdctlSandboxRuntime + drive_node + staging so run() never touches a VM."""
-    import resoluto_sandbox.driver as driver
-    import resoluto_sandbox.runtime.kata_nerdctl as rt
-    import resoluto_sandbox.staging as staging
+    import resoluto.sandbox.driver as driver
+    import resoluto.sandbox.runtime.kata_nerdctl as rt
+    import resoluto.sandbox.staging as staging
 
     async def fake_drive_node(runtime, store, spec, *, on_event=None, **kw):
         if captured is not None:
@@ -50,14 +50,14 @@ def test_local_spec_carries_workload_and_localfs_store_env(monkeypatch):
     # NO trusted-local relaxation — the local backend is VM-isolated, egress enforced in-guest.
     assert "RESOLUTO_TRUSTED_LOCAL" not in spec.env
     assert spec.env["RESOLUTO_WORKSPACE_DIR"] == "/workspace"
-    assert spec.args == ["python", "-m", "resoluto_sandbox.runner_main"]
+    assert spec.args == ["python", "-m", "resoluto.sandbox.runner_main"]
 
 
 def test_local_default_image_and_override(monkeypatch):
     _patch_local_substrate(monkeypatch)
     from importlib.metadata import version as pkg_version
 
-    from resoluto_sandbox.client import default_local_image
+    from resoluto.sandbox.client import default_local_image
     assert default_local_image() == f"resoluto-sandbox-base:{pkg_version('resoluto-sandbox')}"
     assert Sandbox(backend="local")._backend._image == default_local_image()
     assert Sandbox(backend="local", image="my:img")._backend._image == "my:img"
@@ -94,7 +94,7 @@ def test_local_conduit_base_is_user_private_0700():
     import os
     import stat
 
-    from resoluto_sandbox.client import _local_conduit_base
+    from resoluto.sandbox.client import _local_conduit_base
 
     base = _local_conduit_base()
     st = os.stat(base)

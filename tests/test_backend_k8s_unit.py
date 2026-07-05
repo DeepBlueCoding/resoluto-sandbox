@@ -9,8 +9,8 @@ import json
 
 import pytest
 
-from resoluto_sandbox.backends.substrate import SubstrateBackend, secrets_env_for_pod, store_env_for_pod
-from resoluto_sandbox.contracts import (
+from resoluto.sandbox.backends.substrate import SubstrateBackend, secrets_env_for_pod, store_env_for_pod
+from resoluto.sandbox.contracts import (
     Conduit,
     NodeResult,
     SandboxHandle,
@@ -19,7 +19,7 @@ from resoluto_sandbox.contracts import (
     SandboxStatus,
     SpanEvent,
 )
-from resoluto_sandbox.secrets import SecretKeyRef
+from resoluto.sandbox.secrets import SecretKeyRef
 
 
 class _FakeConduit(Conduit):
@@ -39,8 +39,8 @@ class _FakeRuntime(SandboxRuntime):
 
 def _patch_drive(monkeypatch, *, on_event_payload=None, captured=None, node_result=None):
     """Stub drive_node + staging so run() never launches anything."""
-    import resoluto_sandbox.driver as driver
-    import resoluto_sandbox.staging as staging
+    import resoluto.sandbox.driver as driver
+    import resoluto.sandbox.staging as staging
 
     async def fake_drive_node(runtime, store, spec, *, on_event=None, **kw):
         if captured is not None:
@@ -195,7 +195,7 @@ def test_default_resources_and_dead_after_s(monkeypatch):
 
 
 def test_resources_and_dead_after_s_are_overridable(monkeypatch):
-    from resoluto_sandbox.contracts import Resources
+    from resoluto.sandbox.contracts import Resources
 
     captured: dict = {}
     _patch_drive(monkeypatch, captured=captured)

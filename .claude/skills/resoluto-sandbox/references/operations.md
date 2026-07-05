@@ -1,7 +1,7 @@
 # OPERATIONS: CLI, images, storage, version-lock
 
 Action-first reference for running/extending this sandbox. Verified against source:
-`src/resoluto_sandbox/{cli,images,version_guard}.py`, `conduit/factory.py`,
+`src/resoluto.sandbox/{cli,images,version_guard}.py`, `conduit/factory.py`,
 `backends/{base,substrate}.py`, `runtime/k8s.py`, `client.py`.
 
 Cross-links (don't duplicate): protocol/event/chunk semantics → `../../../../spec/PROTOCOL.md`.
@@ -12,7 +12,7 @@ Substrate images are `Dockerfile.base` + `images/{claude,langchain,openai}.Docke
 ## Backends
 
 ```
-your program  (plain: reads argv -> writes stdout/files/exit; never imports resoluto_sandbox)
+your program  (plain: reads argv -> writes stdout/files/exit; never imports resoluto.sandbox)
       |  argv / workspace                         ^  output / errors / artifacts
       v                                           |
 ┌─────────────────────────────────────────────────────────────┐
@@ -46,7 +46,7 @@ Kubernetes distribution): [`../../../../docs/backends.md`](../../../../docs/back
 ## 1. Public API (use this, not the CLI internals)
 
 ```python
-from resoluto_sandbox.client import Sandbox  # the ONLY entrypoint
+from resoluto.sandbox.client import Sandbox  # the ONLY entrypoint
 
 sb = Sandbox(backend="local")             # or "k8s", or a Backend instance (see §5)
 result = sb.run(
@@ -72,7 +72,7 @@ ok -> bool             # property: exit_code == 0
 ```
 
 The program you run is plain — reads argv, writes stdout/files, NEVER imports
-`resoluto_sandbox`. A program that works as `uv run agent.py` locally works
+`resoluto.sandbox`. A program that works as `uv run agent.py` locally works
 unchanged under `run()` — in a Kata microVM via nerdctl (local) or a Kata pod (k8s).
 
 Dependencies are your program's concern — put `uv run`/`pip install` in your argv, or use a prebuilt image.
@@ -183,7 +183,7 @@ image tag in lockstep — rebuild the image after any wheel bump that changes ma
 ## 4. Storage / conduit selection (`conduit/factory.py`)
 
 ```python
-from resoluto_sandbox.conduit.factory import store_from_env
+from resoluto.sandbox.conduit.factory import store_from_env
 conduit = store_from_env(env=None)   # defaults to os.environ
 ```
 Switches on `RESOLUTO_STORE_KIND` (KeyError if unset; unknown value → RuntimeError):
@@ -232,11 +232,11 @@ configured `SubstrateBackend` rather than passing `backend="k8s"` when you need 
 
 ```python
 import os
-from resoluto_sandbox.client import Sandbox
-from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
-from resoluto_sandbox.conduit.factory import store_from_env
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
-from resoluto_sandbox.egress import EgressConfig   # backend-neutral; re-exported from runtime.k8s
+from resoluto.sandbox.client import Sandbox
+from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto.sandbox.conduit.factory import store_from_env
+from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
+from resoluto.sandbox.egress import EgressConfig   # backend-neutral; re-exported from runtime.k8s
 
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
@@ -254,7 +254,7 @@ result = sb.run(["python", "agent.py"], workspace="/path/to/ws", output_paths=["
 
 `SubstrateBackend(*, runtime, conduit, image, store_env)`. `run()` launches a Kata pod
 (`flavor="plain"`, `runtime_class="kata"`, non-privileged), stages `workspace` into the store
-prefix, runs `python -m resoluto_sandbox.runner_main`, fetches `output_paths` back into
+prefix, runs `python -m resoluto.sandbox.runner_main`, fetches `output_paths` back into
 `workspace` in place, reads `result.json`. Liveness = substrate silence watchdog
 (`dead_after_s=600`), NO wall-clock timeout.
 
@@ -269,7 +269,7 @@ MERGED stream and `RunResult.errors == ""`. This is by design, not a dropped fie
 ```python
 EgressConfig(allow=(), allow_port=443, public_https=False, store_cidr=None, store_port=443)
 ```
-Canonical home `resoluto_sandbox.egress` (re-exported from `runtime.k8s` for back-compat). It is
+Canonical home `resoluto.sandbox.egress` (re-exported from `runtime.k8s` for back-compat). It is
 **backend-neutral**: two pure renderers — `k8s_egress_rules()` (NetworkPolicy) and
 `local_egress_iptables()` (host iptables) — drive the SAME config on BOTH backends. SECURE BY DEFAULT:
 `EgressConfig()` ALWAYS allows only the object store at `store_cidr:store_port` (k8s only — local store

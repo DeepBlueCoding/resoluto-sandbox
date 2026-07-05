@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import os
 
-from resoluto_sandbox.contracts import Conduit
+from resoluto.sandbox.contracts import Conduit
 
 
 def store_from_env(env: dict[str, str] | None = None) -> Conduit:
@@ -13,15 +13,15 @@ def store_from_env(env: dict[str, str] | None = None) -> Conduit:
     env = env if env is not None else os.environ
     kind = env["RESOLUTO_STORE_KIND"]
     if kind == "stdout":
-        from resoluto_sandbox.conduit.stdout import StdoutConduit
+        from resoluto.sandbox.conduit.stdout import StdoutConduit
 
         return StdoutConduit()
     if kind == "localfs":
-        from resoluto_sandbox.conduit import LocalConduit
+        from resoluto.sandbox.conduit import LocalConduit
 
         return LocalConduit(env["RESOLUTO_STORE_ROOT"])
     if kind == "s3":
-        from resoluto_sandbox.conduit.s3 import S3Conduit
+        from resoluto.sandbox.conduit.s3 import S3Conduit
 
         write_token = env.get("RESOLUTO_STORE_WRITE_TOKEN")
         if write_token:
@@ -42,7 +42,7 @@ def store_from_env(env: dict[str, str] | None = None) -> Conduit:
             aws_secret_access_key=env.get("AWS_SECRET_ACCESS_KEY"),
         )
     if kind == "gcs":
-        from resoluto_sandbox.conduit.gcs import GcsConduit
+        from resoluto.sandbox.conduit.gcs import GcsConduit
 
         return GcsConduit(
             env["RESOLUTO_STORE_BUCKET"],

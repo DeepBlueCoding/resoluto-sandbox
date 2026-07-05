@@ -7,7 +7,7 @@
 
 Reads a prompt from argv, asks Claude (via claude-agent-sdk -> the `claude` CLI), prints the
 answer to stdout, and writes result.json {prompt, answer, status} so the host can show a clean
-input/output pair. It is a plain program — it never imports resoluto_sandbox.
+input/output pair. It is a plain program — it never imports resoluto.sandbox.
 
 Auth is the `claude` CLI's job (see docs/auth.md): with a Max/Pro subscription, point
 CLAUDE_CONFIG_DIR at a dir holding .credentials.json and do NOT set ANTHROPIC_API_KEY (so usage

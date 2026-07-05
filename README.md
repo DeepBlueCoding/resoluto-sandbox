@@ -1,7 +1,7 @@
 # resoluto-sandbox
 
 Run a program in isolation and exchange data through a durable store. Your program stays plain — it
-reads `argv`, writes `stdout`/files, exits, and never imports `resoluto_sandbox`. A script that runs
+reads `argv`, writes `stdout`/files, exits, and never imports `resoluto.sandbox`. A script that runs
 with `uv run agent.py` on your machine runs unchanged inside the sandbox.
 
 <p align="left">
@@ -22,7 +22,7 @@ pip install resoluto-sandbox   # published wheel coming; for now: pip install -e
 ## Quickstart
 
 ```python
-from resoluto_sandbox import Sandbox
+from resoluto.sandbox import Sandbox
 
 result = Sandbox(backend="local").run(
     ["python", "-c", "print('hello from the sandbox')"]
@@ -64,7 +64,7 @@ uv run python examples/smoke_llm.py "In five words, why do sandboxes matter?"
 ## The program contract
 
 A sandbox program reads `argv`, writes to `stdout` / files, exits with a code, and never imports
-`resoluto_sandbox`. A script that works as `uv run agent.py` works unchanged inside the sandbox; test
+`resoluto.sandbox`. A script that works as `uv run agent.py` works unchanged inside the sandbox; test
 runners, LLM agents, and shell scripts all qualify. Dependencies are your program's concern — put
 `uv run` / `pip install` in your argv, or bake them into the image.
 
@@ -81,7 +81,7 @@ sandbox is a microVM next to you or a pod in a cluster, and a network blip can't
 
 | Component | What it is | What it does |
 |---|---|---|
-| **Your program** | Any script/binary — plain | Reads `argv`/env, writes `stdout`/files, exits. Never imports `resoluto_sandbox`. |
+| **Your program** | Any script/binary — plain | Reads `argv`/env, writes `stdout`/files, exits. Never imports `resoluto.sandbox`. |
 | **`Sandbox`** | Thin Python facade | `Sandbox(backend=...).run(argv, ...)` — one call, identical for every backend. |
 | **`SubstrateBackend`** | The one orchestration impl | Drives the 3-phase flow (stage → run → collect). Holds one `SandboxRuntime` + one `Conduit`. |
 | **`SandboxRuntime`** (ABC) | The isolation/placement seam | Launches, checks status, destroys the isolated sandbox. Impls: `KataNerdctlSandboxRuntime` (local), `K8sSandboxRuntime` (k8s). |
@@ -237,8 +237,8 @@ Three mechanisms, for three different jobs — none is a drop-in replacement for
 | `secrets={"VAR": "vault:secret/data/x#key"}` | Resolved **inside the guest** by a `SecretProvider` — the host never sees the value | Portable across `local`/`k8s`. Ships as an ABC only today — see `secrets.py`; implement a concrete provider (Vault, AWS Secrets Manager, GCP Secret Manager, ...) and dispatch it in `secrets_from_env()` |
 
 ```python
-from resoluto_sandbox import Sandbox
-from resoluto_sandbox.secrets import SecretKeyRef
+from resoluto.sandbox import Sandbox
+from resoluto.sandbox.secrets import SecretKeyRef
 
 # env_file — host reads a dotenv file, merges it into the env (env= wins on conflict)
 Sandbox(backend="local").run(argv, env_file=".env")
@@ -319,7 +319,7 @@ script runs and reaches its auth check). `claude` and `openai` run against the p
 `langchain` needs the one-line extended image from above (built as `my-langchain-anthropic:dev` here):
 
 ```python
-from resoluto_sandbox import Sandbox
+from resoluto.sandbox import Sandbox
 
 # workspace="examples" stages that DIRECTORY'S CONTENTS at /workspace — argv paths are relative
 # to that root, never prefixed with "examples/" again.

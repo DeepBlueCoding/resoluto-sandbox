@@ -3,7 +3,7 @@
 ## The program contract
 
 A sandbox program reads `argv`, writes to `stdout` / files, and exits with a code. It never imports
-`resoluto_sandbox`. A script that works as `uv run agent.py` on your machine works unchanged inside
+`resoluto.sandbox`. A script that works as `uv run agent.py` on your machine works unchanged inside
 the sandbox; test runners, LLM agents, and shell scripts all qualify.
 
 Dependencies are your program's concern — put `uv run`/`pip install` in your argv, or use a prebuilt image.
@@ -56,10 +56,10 @@ Inject a configured `SubstrateBackend` — the image is not a `Sandbox` construc
 
 ```python
 import os
-from resoluto_sandbox import Sandbox
-from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
-from resoluto_sandbox.conduit.factory import store_from_env
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
+from resoluto.sandbox import Sandbox
+from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto.sandbox.conduit.factory import store_from_env
+from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
 
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",

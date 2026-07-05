@@ -1,6 +1,6 @@
 import pytest
 
-from resoluto_sandbox import LocalConduit
+from resoluto.sandbox import LocalConduit
 
 
 @pytest.mark.asyncio

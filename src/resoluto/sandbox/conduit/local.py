@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from resoluto_sandbox.contracts import Conduit, ConduitError, ObjectInfo
+from resoluto.sandbox.contracts import Conduit, ConduitError, ObjectInfo
 
 _TMP_SUFFIX = ".tmp-partial"
 

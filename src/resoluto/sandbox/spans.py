@@ -6,9 +6,9 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Callable
 
-from resoluto_sandbox.contracts import SpanEvent
-from resoluto_sandbox.redact import redact_data, redact_text
-from resoluto_sandbox.telemetry import ChunkShipper
+from resoluto.sandbox.contracts import SpanEvent
+from resoluto.sandbox.redact import redact_data, redact_text
+from resoluto.sandbox.telemetry import ChunkShipper
 
 
 def new_span_id() -> str:

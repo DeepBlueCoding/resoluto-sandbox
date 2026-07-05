@@ -10,8 +10,8 @@ import platform
 
 import pytest
 
-from resoluto_sandbox import SandboxLaunchSpec
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
+from resoluto.sandbox import SandboxLaunchSpec
+from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
 
 IMAGE = "docker.io/library/docker:27-dind"
 NS = "resoluto-itest"

@@ -3,8 +3,8 @@ typed ConduitError so the engine can fail the run fast with the real cause —
 while ordinary application errors pass through unreclassified."""
 import pytest
 
-from resoluto_sandbox.contracts import ConduitError
-from resoluto_sandbox.conduit.s3 import S3Conduit
+from resoluto.sandbox.contracts import ConduitError
+from resoluto.sandbox.conduit.s3 import S3Conduit
 
 
 class _FakeClient:

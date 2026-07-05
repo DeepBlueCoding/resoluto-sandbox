@@ -2,7 +2,7 @@
 from __future__ import annotations
 import sys
 from typing import IO
-from resoluto_sandbox.contracts import Conduit, ObjectInfo
+from resoluto.sandbox.contracts import Conduit, ObjectInfo
 
 
 class StdoutConduit(Conduit):

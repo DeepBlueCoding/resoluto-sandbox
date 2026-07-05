@@ -1,6 +1,6 @@
 import pytest
 
-from resoluto_sandbox.version_guard import assert_image_matches_wheel
+from resoluto.sandbox.version_guard import assert_image_matches_wheel
 
 
 @pytest.mark.parametrize(

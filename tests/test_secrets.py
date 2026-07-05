@@ -1,6 +1,6 @@
 import pytest
 
-from resoluto_sandbox.secrets import SecretKeyRef, SecretProvider, secrets_from_env
+from resoluto.sandbox.secrets import SecretKeyRef, SecretProvider, secrets_from_env
 
 
 def test_secrets_from_env_returns_none_when_kind_unset():

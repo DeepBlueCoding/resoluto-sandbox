@@ -5,7 +5,7 @@ import asyncio
 
 import os
 
-from resoluto_sandbox.contracts import (
+from resoluto.sandbox.contracts import (
     SandboxHandle,
     SandboxLaunchSpec,
     SandboxRuntime,

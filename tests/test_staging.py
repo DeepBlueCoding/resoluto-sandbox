@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from resoluto_sandbox.conduit import LocalConduit
-from resoluto_sandbox.staging import (
+from resoluto.sandbox.conduit import LocalConduit
+from resoluto.sandbox.staging import (
     collect_outputs,
     fetch_outputs,
     put_dir,

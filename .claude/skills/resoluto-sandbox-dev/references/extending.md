@@ -15,7 +15,7 @@ Cross-links: store-mediated wire protocol → `../../../../spec/PROTOCOL.md`. La
 ## The public surface (verbatim)
 
 ```python
-from resoluto_sandbox.client import Sandbox
+from resoluto.sandbox.client import Sandbox
 
 Sandbox(backend="local" | "k8s" | <Backend instance>).run(   # default "local"
     argv,                       # Sequence[str] — the program + args
@@ -93,8 +93,8 @@ string (`"pending"` / `"running"` / `"succeeded"` / `"failed"` / `"unknown"`), o
 1. Implement the four abstract methods.
 2. Wire it into `SubstrateBackend`:
    ```python
-   from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
-   from resoluto_sandbox.conduit.factory import store_from_env
+   from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+   from resoluto.sandbox.conduit.factory import store_from_env
 
    backend = SubstrateBackend(
        runtime=MyRuntime(...),
@@ -114,7 +114,7 @@ illustrative for understanding the seam, but lacks the telemetry wire — it won
 `result.json` or span events:
 
 ```python
-# resoluto_sandbox/backends/docker_simple.py  — ILLUSTRATIVE ONLY
+# resoluto.sandbox/backends/docker_simple.py  — ILLUSTRATIVE ONLY
 from __future__ import annotations
 
 import subprocess
@@ -122,8 +122,8 @@ import sys
 from pathlib import Path
 from typing import IO, Sequence
 
-from resoluto_sandbox.backends.artifacts import _collect, read_result_json
-from resoluto_sandbox.backends.base import Backend, RunResult
+from resoluto.sandbox.backends.artifacts import _collect, read_result_json
+from resoluto.sandbox.backends.base import Backend, RunResult
 
 
 class SimpleDockerBackend(Backend):
@@ -179,7 +179,7 @@ For ECS/Fly/Temporal that go through the store-mediated path, mirror `SubstrateB
 For a completely new run approach that does NOT use the store-mediated wire, subclass `Backend` directly.
 
 ### Contract
-Subclass `resoluto_sandbox.backends.base.Backend` and implement the single
+Subclass `resoluto.sandbox.backends.base.Backend` and implement the single
 `run(...)` method with the EXACT signature above, returning a `RunResult`.
 
 ### Steps
@@ -251,7 +251,7 @@ fs root is the store root; keys are full keys (no per-call root prefix).
    overrides with path-level `shutil.copy2` to avoid buffering large objects into
    RAM; `S3Conduit` overrides with `CopyObject`.
 3. Keep the cloud SDK import LAZY — inside `__init__`/methods, never at module
-   top — so importing `resoluto_sandbox` never pulls boto3/google-cloud.
+   top — so importing `resoluto.sandbox` never pulls boto3/google-cloud.
 4. Register a `kind` in `conduit/factory.py::store_from_env`, reading your config
    from `RESOLUTO_STORE_*` env vars. The factory is BOTH the host-side and in-sandbox
    entry point — the sandbox builds the same conduit from env, so config must travel
@@ -274,10 +274,10 @@ fs root is the store root; keys are full keys (no per-call root prefix).
 ### Worked minimal Conduit (Redis)
 
 ```python
-# resoluto_sandbox/conduit/redis.py
+# resoluto.sandbox/conduit/redis.py
 from __future__ import annotations
 
-from resoluto_sandbox.contracts import Conduit, ConduitError, ObjectInfo
+from resoluto.sandbox.contracts import Conduit, ConduitError, ObjectInfo
 
 
 class RedisConduit(Conduit):
@@ -313,7 +313,7 @@ Register the kind (`conduit/factory.py::store_from_env`):
 
 ```python
     if kind == "redis":
-        from resoluto_sandbox.conduit.redis import RedisConduit
+        from resoluto.sandbox.conduit.redis import RedisConduit
         return RedisConduit(env["RESOLUTO_STORE_URL"])
 ```
 
@@ -327,9 +327,9 @@ both host and sandbox, or inject directly:
 
 ```python
 import os
-from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
-from resoluto_sandbox.conduit.factory import store_from_env
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
+from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto.sandbox.conduit.factory import store_from_env
+from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
 
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",

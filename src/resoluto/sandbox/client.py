@@ -6,9 +6,9 @@ import tempfile
 from importlib.metadata import version as _pkg_version
 from typing import IO, Sequence
 
-from resoluto_sandbox.backends.base import Backend, RunResult
-from resoluto_sandbox.backends.substrate import SubstrateBackend, secrets_env_for_pod, store_env_for_pod
-from resoluto_sandbox.secrets import SecretKeyRef
+from resoluto.sandbox.backends.base import Backend, RunResult
+from resoluto.sandbox.backends.substrate import SubstrateBackend, secrets_env_for_pod, store_env_for_pod
+from resoluto.sandbox.secrets import SecretKeyRef
 
 
 def default_local_image() -> str:
@@ -37,8 +37,8 @@ def _local_conduit_base() -> str:
 
 def _build_local_backend(image: str | None) -> SubstrateBackend:
     """Build the local backend, wiring a fresh temp LocalConduit to a KataNerdctlSandboxRuntime. Inputs: optional image override. Output: a SubstrateBackend."""
-    from resoluto_sandbox.conduit import LocalConduit
-    from resoluto_sandbox.runtime.kata_nerdctl import KataNerdctlSandboxRuntime
+    from resoluto.sandbox.conduit import LocalConduit
+    from resoluto.sandbox.runtime.kata_nerdctl import KataNerdctlSandboxRuntime
 
     conduit_dir = tempfile.mkdtemp(prefix="sbx-", dir=_local_conduit_base())
     conduit = LocalConduit(conduit_dir, world_writable=True)
@@ -54,8 +54,8 @@ def _build_local_backend(image: str | None) -> SubstrateBackend:
 
 def _build_k8s_backend(image: str | None) -> SubstrateBackend:
     """Build the k8s backend, wiring a conduit from env to a K8sSandboxRuntime. Inputs: optional image override (falls back to RESOLUTO_LANE_IMAGE). Output: a SubstrateBackend."""
-    from resoluto_sandbox.conduit.factory import store_from_env
-    from resoluto_sandbox.runtime.k8s import EgressConfig, K8sSandboxRuntime
+    from resoluto.sandbox.conduit.factory import store_from_env
+    from resoluto.sandbox.runtime.k8s import EgressConfig, K8sSandboxRuntime
 
     image = image or os.environ.get("RESOLUTO_LANE_IMAGE")
     if not image:

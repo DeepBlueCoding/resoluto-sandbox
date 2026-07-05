@@ -168,7 +168,7 @@ def _main(argv: "list[str] | None" = None) -> int:
     import argparse
     import os
 
-    p = argparse.ArgumentParser(prog="resoluto_sandbox.egress_proxy")
+    p = argparse.ArgumentParser(prog="resoluto.sandbox.egress_proxy")
     p.add_argument("--host", default="0.0.0.0")
     p.add_argument("--port", type=int, default=3129)
     p.add_argument("--domains-file", default=os.environ.get("RESOLUTO_EGRESS_DOMAINS_FILE"),

@@ -5,8 +5,8 @@ The egress policy is the fixed 3-rule model: (1) the object store on store_port,
 IMDS (169.254.169.254/32) is excepted on every ipBlock."""
 import pytest
 
-from resoluto_sandbox.contracts import SandboxLaunchSpec
-from resoluto_sandbox.runtime.k8s import EgressConfig, K8sSandboxRuntime
+from resoluto.sandbox.contracts import SandboxLaunchSpec
+from resoluto.sandbox.runtime.k8s import EgressConfig, K8sSandboxRuntime
 
 
 _STORE_CIDR = "10.0.0.1/32"
@@ -149,7 +149,7 @@ def test_allow_hostnames_resolve_to_cidrs(monkeypatch):
 
 def test_resolve_cidrs_passes_cidrs_through_and_dedupes(monkeypatch):
     import socket
-    from resoluto_sandbox.egress import resolve_cidrs
+    from resoluto.sandbox.egress import resolve_cidrs
     monkeypatch.setattr(socket, "getaddrinfo", lambda host, *a, **k: [
         (2, 1, 6, "", ("1.2.3.4", 0)), (2, 1, 6, "", ("1.2.3.4", 0)),  # dup A records
     ])
@@ -158,6 +158,6 @@ def test_resolve_cidrs_passes_cidrs_through_and_dedupes(monkeypatch):
 
 def test_allow_unresolvable_host_raises():
     import pytest
-    from resoluto_sandbox.egress import resolve_cidrs
+    from resoluto.sandbox.egress import resolve_cidrs
     with pytest.raises(ValueError, match="cannot resolve host"):
         resolve_cidrs(["definitely-not-a-real-host.invalid"])

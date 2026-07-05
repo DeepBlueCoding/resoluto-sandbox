@@ -5,7 +5,7 @@ import types
 
 import pytest
 
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
+from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
 
 
 def test_constructor_stores_pinned_context():

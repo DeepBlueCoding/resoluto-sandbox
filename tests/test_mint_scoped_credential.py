@@ -7,7 +7,7 @@ so inspecting Statement[0] alone would silently miss a granted privilege.
 """
 import json
 
-from resoluto_sandbox.conduit.s3 import _build_scoped_policy
+from resoluto.sandbox.conduit.s3 import _build_scoped_policy
 
 
 def _actions(policy: dict) -> set[str]:

@@ -1,4 +1,4 @@
-from resoluto_sandbox.envfile import parse_env_file
+from resoluto.sandbox.envfile import parse_env_file
 
 
 def test_parse_basic_key_value(tmp_path):

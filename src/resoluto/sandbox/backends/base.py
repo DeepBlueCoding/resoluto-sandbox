@@ -6,7 +6,7 @@ from typing import IO, Sequence
 
 from pydantic import BaseModel
 
-from resoluto_sandbox.secrets import SecretKeyRef
+from resoluto.sandbox.secrets import SecretKeyRef
 
 
 class RunResult(BaseModel):

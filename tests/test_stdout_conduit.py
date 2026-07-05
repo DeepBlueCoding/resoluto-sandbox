@@ -1,5 +1,5 @@
 import io, json
-from resoluto_sandbox.conduit.stdout import StdoutConduit
+from resoluto.sandbox.conduit.stdout import StdoutConduit
 
 def test_put_event_writes_a_line():
     import asyncio

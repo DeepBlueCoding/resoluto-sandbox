@@ -4,10 +4,10 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from canary_stub import pass_canary
-from resoluto_sandbox.contracts import NodeResult
-from resoluto_sandbox.conduit import LocalConduit
-from resoluto_sandbox.runner import run_node_in_sandbox
-from resoluto_sandbox.telemetry import ChunkReader, result_key
+from resoluto.sandbox.contracts import NodeResult
+from resoluto.sandbox.conduit import LocalConduit
+from resoluto.sandbox.runner import run_node_in_sandbox
+from resoluto.sandbox.telemetry import ChunkReader, result_key
 
 
 @pytest.fixture
@@ -98,8 +98,8 @@ async def test_runner_nonzero_exit_marks_failure_but_still_reports(store):
 async def test_canary_pass_proceeds_to_workload_and_emits_canary_span(store):
     prefix = "run/r2/nodes/canary-pass"
     with (
-        patch("resoluto_sandbox.egress_canary.probe_tcp", new=AsyncMock(return_value=False)),
-        patch("resoluto_sandbox.egress_canary.probe_store", new=AsyncMock(return_value=True)),
+        patch("resoluto.sandbox.egress_canary.probe_tcp", new=AsyncMock(return_value=False)),
+        patch("resoluto.sandbox.egress_canary.probe_store", new=AsyncMock(return_value=True)),
     ):
         result = await run_node_in_sandbox(
             store=store, prefix=prefix, run_id="r2", node_id="canary-pass",
@@ -120,8 +120,8 @@ async def test_canary_fail_aborts_workload_and_sets_reason(store, tmp_path):
     ran = tmp_path / "workload_ran"
     # external probe returns True (reachable) → egress not blocked → canary fails
     with (
-        patch("resoluto_sandbox.egress_canary.probe_tcp", new=AsyncMock(return_value=True)),
-        patch("resoluto_sandbox.egress_canary.probe_store", new=AsyncMock(return_value=True)),
+        patch("resoluto.sandbox.egress_canary.probe_tcp", new=AsyncMock(return_value=True)),
+        patch("resoluto.sandbox.egress_canary.probe_store", new=AsyncMock(return_value=True)),
     ):
         result = await run_node_in_sandbox(
             store=store, prefix=prefix, run_id="r2", node_id="canary-fail",

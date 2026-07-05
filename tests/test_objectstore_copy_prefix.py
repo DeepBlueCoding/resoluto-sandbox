@@ -1,6 +1,6 @@
 """copy_prefix — carries a run's lane substrate forward on resume (one worker-owned
 resume covering the stepped lanes). Verified on LocalConduit (the default + the dev backend)."""
-from resoluto_sandbox.conduit import LocalConduit
+from resoluto.sandbox.conduit import LocalConduit
 
 
 async def _seed(store):

@@ -1,7 +1,7 @@
 # Host ↔ Sandbox Wire Protocol
 
 This document describes the protocol between an orchestrator (host) and a sandbox (guest) in
-language-neutral terms. A Python reference implementation lives in `src/resoluto_sandbox/`.
+language-neutral terms. A Python reference implementation lives in `src/resoluto.sandbox/`.
 Any language that can read/write JSON and gzip-tar archives can implement a client.
 
 ## Transport: Conduit

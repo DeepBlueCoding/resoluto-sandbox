@@ -1,6 +1,6 @@
 import json, jsonschema, pytest
 from pathlib import Path
-from resoluto_sandbox.contracts import SpanEvent, NodeResult
+from resoluto.sandbox.contracts import SpanEvent, NodeResult
 
 SPEC = Path(__file__).resolve().parents[1] / "spec"
 

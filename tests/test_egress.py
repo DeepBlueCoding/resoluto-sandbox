@@ -1,7 +1,7 @@
 """The backend-neutral egress allowlist + its per-provider renderers (k8s + local)."""
 import pytest
 
-from resoluto_sandbox.egress import (
+from resoluto.sandbox.egress import (
     EgressConfig,
     k8s_egress_rules,
     local_egress_iptables,
@@ -109,7 +109,7 @@ def test_egressconfig_rejects_non_cidr_store():
 
 def test_allow_accepts_plain_domain_and_full_url(monkeypatch):
     import socket
-    from resoluto_sandbox.egress import _host_or_cidr, resolve_cidrs
+    from resoluto.sandbox.egress import _host_or_cidr, resolve_cidrs
     # host extraction from URL / host+path / CIDR passthrough
     assert _host_or_cidr("https://api.anthropic.com/v1/messages") == "api.anthropic.com"
     assert _host_or_cidr("api.anthropic.com/v1") == "api.anthropic.com"

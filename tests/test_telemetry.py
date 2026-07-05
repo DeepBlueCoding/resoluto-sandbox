@@ -1,6 +1,6 @@
 import pytest
 
-from resoluto_sandbox import (
+from resoluto.sandbox import (
     ChunkReader,
     ChunkShipper,
     LocalConduit,

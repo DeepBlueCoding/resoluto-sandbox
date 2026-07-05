@@ -5,7 +5,7 @@ import asyncio
 
 import pytest
 
-from resoluto_sandbox.resource_semaphore import ResourceSemaphore
+from resoluto.sandbox.resource_semaphore import ResourceSemaphore
 
 GiB = 1024 ** 3
 

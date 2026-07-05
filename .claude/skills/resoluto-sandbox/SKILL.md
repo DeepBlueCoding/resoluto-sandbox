@@ -5,10 +5,10 @@ description: Use when running a program or AI agent inside the resoluto-sandbox 
 
 # resoluto-sandbox (power user)
 
-Run any program — script, CLI, or AI agent in any language — in an isolated sandbox. **Mental model:** your program is *plain* — reads argv, writes stdout/files, NEVER imports `resoluto_sandbox`. What runs as `uv run agent.py` on your host runs unchanged under `run()`; the backend changes only *where* (Kata microVM via nerdctl locally, Kata pod on k8s).
+Run any program — script, CLI, or AI agent in any language — in an isolated sandbox. **Mental model:** your program is *plain* — reads argv, writes stdout/files, NEVER imports `resoluto.sandbox`. What runs as `uv run agent.py` on your host runs unchanged under `run()`; the backend changes only *where* (Kata microVM via nerdctl locally, Kata pod on k8s).
 
 ```python
-from resoluto_sandbox import Sandbox
+from resoluto.sandbox import Sandbox
 r = Sandbox(backend="local").run(["python", "agent.py"], workspace="./work",
                                  output_paths=["out/*.json"])
 # RunResult(pydantic): exit_code:int output/errors:str artifacts:list[str] result:dict|None reason:str ok(prop ==exit0)
@@ -32,7 +32,7 @@ Both backends merge stdout+stderr into `output` (`errors` empty by design). `std
 | Build SDK image | `resoluto-sandbox image build --provider claude` (tag = pinned SDK package+version, e.g. `resoluto-sandbox:claude-agent-sdk-0.2.110`; wheel version travels as an OCI label + `RESOLUTO_IMAGE_VERSION` runtime guard) |
 | Claude Max auth | local: log in once (`claude` / `claude setup-token`), do NOT set `ANTHROPIC_API_KEY` |
 
-Imports: `from resoluto_sandbox import Sandbox, RunResult`; `from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod`; `from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime`; `from resoluto_sandbox.egress import EgressConfig` (canonical home; still re-exported from `resoluto_sandbox.runtime.k8s` for back-compat); `from resoluto_sandbox.conduit.factory import store_from_env`.
+Imports: `from resoluto.sandbox import Sandbox, RunResult`; `from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod`; `from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime`; `from resoluto.sandbox.egress import EgressConfig` (canonical home; still re-exported from `resoluto.sandbox.runtime.k8s` for back-compat); `from resoluto.sandbox.conduit.factory import store_from_env`.
 
 **Limits on both backends:** no `stdin` (raises `NotImplementedError`). Dependencies must be baked into the image (or passed via argv for local). `RunResult.errors` is always empty; the in-sandbox runner merges both streams into output.
 
@@ -43,7 +43,7 @@ Imports: `from resoluto_sandbox import Sandbox, RunResult`; `from resoluto_sandb
   after) — no re-provision between steps. `egress=None`/`[]` → the secure default (DNS + object store
   only). This is the per-step knob; `EgressConfig` below is the per-runtime (k8s) / provision-time (local)
   knob. `run(egress=...)` is applied by `local` today; on `k8s` use `EgressConfig`.
-- **`egress=None` is the k8s opt-OUT** — NO NetworkPolicy, unrestricted egress (Kata kernel isolation only); DIFFERENT from `EgressConfig()`, which is SECURE BY DEFAULT (store + DNS only). Pass an `EgressConfig` and open what you need. `EgressConfig` is **backend-neutral** (same config → k8s NetworkPolicy OR local iptables, via the two renderers in `resoluto_sandbox.egress`); knobs `allow` / `allow_port` (least privilege) / `public_https` (escape hatch, default False) — env `RESOLUTO_EGRESS_ALLOW` / `_ALLOW_PORT` / `_PUBLIC_HTTPS` (default 0/deny), honored by both backends.
+- **`egress=None` is the k8s opt-OUT** — NO NetworkPolicy, unrestricted egress (Kata kernel isolation only); DIFFERENT from `EgressConfig()`, which is SECURE BY DEFAULT (store + DNS only). Pass an `EgressConfig` and open what you need. `EgressConfig` is **backend-neutral** (same config → k8s NetworkPolicy OR local iptables, via the two renderers in `resoluto.sandbox.egress`); knobs `allow` / `allow_port` (least privilege) / `public_https` (escape hatch, default False) — env `RESOLUTO_EGRESS_ALLOW` / `_ALLOW_PORT` / `_PUBLIC_HTTPS` (default 0/deny), honored by both backends.
 - **`local` = Kata microVM via nerdctl (hardware-virtualized, NOT a plain namespace/cgroup container).** Each sandbox runs as a Kata microVM via `nerdctl` against a dedicated, standalone containerd (own socket/root at `/run/resoluto-local/containerd/`) — VM-grade isolation at parity with k8s, on a single host, no cluster. The egress canary RUNS (fail-closed); local egress is enforced HOST-SIDE on the lane CNI bridge (default-deny: store + DNS only until you opt in via `RESOLUTO_EGRESS_ALLOW` / `_PUBLIC_HTTPS`; REJECT IMDS + RFC1918 private) — immune to in-guest root. Suitable for untrusted code at VM-grade isolation, same as k8s. NOT a bare host subprocess.
 - **Local backend needs an image.** Default `resoluto-sandbox-base:<installed wheel version>` (`client.default_local_image()`, computed dynamically — never a hardcoded `:dev`/`:latest` tag); override with `Sandbox(backend="local", image="...")`. The image must contain python + the resoluto-sandbox wheel + your program's deps. Needs `/dev/kvm`, the `nerdctl` client, and the dedicated containerd up (`scripts/local-backend-up.sh`).
 - **A `docker build`-produced image (incl. `resoluto-sandbox image build`) is NOT visible to the local backend until transferred.** `docker build`/`docker images` use the regular Docker daemon; `Sandbox(backend="local")` launches via `nerdctl` against its OWN dedicated containerd namespace — a separate image store. Symptom: `nerdctl run failed ... pull access denied` (it tried to pull from a registry instead of finding the tag locally). Fix once per build: `docker save <tag> | sudo "$RESOLUTO_LOCAL_NERDCTL" --address /run/resoluto-local/containerd/containerd.sock --namespace resoluto-local load`.

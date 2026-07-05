@@ -6,13 +6,13 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Awaitable, Callable
 
-from resoluto_sandbox.contracts import Conduit, NodeResult
-from resoluto_sandbox.spans import SpanEmitter
-from resoluto_sandbox.staging import collect_outputs, stage_inputs
-from resoluto_sandbox.telemetry import ChunkShipper, result_key
+from resoluto.sandbox.contracts import Conduit, NodeResult
+from resoluto.sandbox.spans import SpanEmitter
+from resoluto.sandbox.staging import collect_outputs, stage_inputs
+from resoluto.sandbox.telemetry import ChunkShipper, result_key
 
 if TYPE_CHECKING:
-    from resoluto_sandbox.egress_canary import CanaryVerdict
+    from resoluto.sandbox.egress_canary import CanaryVerdict
 
 CanaryRunner = Callable[[Conduit, str], Awaitable["CanaryVerdict"]]
 
@@ -20,7 +20,7 @@ CanaryRunner = Callable[[Conduit, str], Awaitable["CanaryVerdict"]]
 def _default_canary(probe_host: str, probe_port: int) -> CanaryRunner:
     """Bind the real egress canary to its probe target as a (store, prefix) -> CanaryVerdict callable."""
     async def _run(store: Conduit, prefix: str) -> "CanaryVerdict":
-        from resoluto_sandbox.egress_canary import run_egress_canary
+        from resoluto.sandbox.egress_canary import run_egress_canary
         return await run_egress_canary(store, prefix, probe_host=probe_host, probe_port=probe_port)
     return _run
 

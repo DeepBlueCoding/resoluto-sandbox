@@ -5,7 +5,7 @@ import io
 import tarfile
 from pathlib import Path
 
-from resoluto_sandbox.contracts import Conduit
+from resoluto.sandbox.contracts import Conduit
 
 INBOX = "inbox"
 OUTBOX = "outbox"

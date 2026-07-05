@@ -6,7 +6,7 @@ import os
 import uuid
 from dataclasses import dataclass, field, replace
 
-from resoluto_sandbox.contracts import (
+from resoluto.sandbox.contracts import (
     SandboxHandle,
     SandboxLaunchSpec,
     SandboxRuntime,
@@ -16,7 +16,7 @@ from resoluto_sandbox.contracts import (
 )
 # Egress allowlist + rendering live in the backend-neutral `egress` module so every provider shares
 # ONE config and renders it its own way. Re-exported here for back-compat (existing imports work).
-from resoluto_sandbox.egress import EgressConfig, k8s_egress_rules
+from resoluto.sandbox.egress import EgressConfig, k8s_egress_rules
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +112,7 @@ class K8sSandboxRuntime(SandboxRuntime):
 
         try:
             await self._api.create_namespace(
-                body={"metadata": {"name": self._ns, "labels": {"resoluto.sandbox": "true"}}}
+                body={"metadata": {"name": self._ns, "labels": {"resoluto_sandbox": "true"}}}
             )
         except ApiException as exc:
             if exc.status != 409:
@@ -240,7 +240,7 @@ class K8sSandboxRuntime(SandboxRuntime):
         if spec.scheduling_gates:
             pod_spec["schedulingGates"] = [{"name": g} for g in spec.scheduling_gates]
 
-        pod_labels = {"resoluto.sandbox": "true", **dict(spec.labels)}
+        pod_labels = {"resoluto_sandbox": "true", **dict(spec.labels)}
         metadata: dict = {"name": name, "namespace": self._ns, "labels": pod_labels}
         if spec.annotations:
             metadata["annotations"] = dict(spec.annotations)
@@ -519,7 +519,7 @@ class K8sSandboxRuntime(SandboxRuntime):
     async def count_active_pods(self, kind: str | None = None) -> int:
         """Count non-terminal sandbox pods in the namespace, optionally filtered by resoluto.kind."""
         api = await self._client()
-        label_selector = "resoluto.sandbox=true"
+        label_selector = "resoluto_sandbox=true"
         if kind is not None:
             label_selector += f",resoluto.kind={kind}"
         pods = await api.list_namespaced_pod(

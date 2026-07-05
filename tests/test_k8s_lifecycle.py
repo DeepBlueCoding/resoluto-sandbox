@@ -10,8 +10,8 @@ from types import SimpleNamespace
 import pytest
 from kubernetes_asyncio.client.exceptions import ApiException
 
-from resoluto_sandbox.contracts import SandboxHandle
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, _dns_safe
+from resoluto.sandbox.contracts import SandboxHandle
+from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime, _dns_safe
 
 
 def _stub_client(rt: K8sSandboxRuntime, api, monkeypatch) -> None:
@@ -306,7 +306,7 @@ async def test_count_active_pods_excludes_terminal(monkeypatch):
 
     class _Api:
         async def list_namespaced_pod(self, namespace, label_selector):
-            assert label_selector == "resoluto.sandbox=true"
+            assert label_selector == "resoluto_sandbox=true"
             return pods
 
     _stub_client(rt, _Api(), monkeypatch)
@@ -327,4 +327,4 @@ async def test_count_active_pods_kind_filter_adds_label(monkeypatch):
     _stub_client(rt, _Api(), monkeypatch)
     n = await rt.count_active_pods(kind="lane")
     assert n == 1
-    assert seen["selector"] == "resoluto.sandbox=true,resoluto.kind=lane"
+    assert seen["selector"] == "resoluto_sandbox=true,resoluto.kind=lane"

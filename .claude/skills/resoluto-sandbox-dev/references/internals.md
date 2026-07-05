@@ -3,7 +3,7 @@
 Action-first reference for an agent that USES or EXTENDS this sandbox. The wire is a
 language-neutral JSON-on-KV protocol; the full spec is `../../../../spec/PROTOCOL.md` (relative to
 this repo: `spec/PROTOCOL.md`). This doc covers the Python reference impl. Source of truth is the
-code in `src/resoluto_sandbox/` — every signature below is verified against it.
+code in `src/resoluto.sandbox/` — every signature below is verified against it.
 
 There is NO long-lived connection between host and pod. They rendezvous **only** through a durable
 key/value store (`Conduit`). The pod is passive: it self-reports JSONL chunks + a `result.json`; the
@@ -14,7 +14,7 @@ host tails + reaps. Liveness = monotonic chunk-arrival + heartbeats. **No wall-c
 ## 1. Public API (the one entrypoint)
 
 ```python
-from resoluto_sandbox import Sandbox, RunResult
+from resoluto.sandbox import Sandbox, RunResult
 
 sb = Sandbox(backend="local")             # default: Kata microVM (via nerdctl + a dedicated containerd) on this host
 res = sb.run(["python", "agent.py", "--x"],
@@ -33,7 +33,7 @@ res.reason      # str  substrate forensics (evicted/OOMKilled/observed_phase)
 
 `Sandbox(backend=...)` accepts `"local"`, `"k8s"`, or a `Backend` instance.
 `RunResult` is a pydantic `BaseModel` (`backends/base.py`). The program you run is **plain** — it
-never imports `resoluto_sandbox`; it reads argv, writes stdout/files. `stdin` is NOT supported on
+never imports `resoluto.sandbox`; it reads argv, writes stdout/files. `stdin` is NOT supported on
 either backend (the substrate runner has no interactive stdin) — pass inputs via argv, env, or
 workspace files.
 
@@ -48,7 +48,7 @@ the resulting `NodeResult` to a `RunResult`. Isolation/placement is the injected
 | `local` | `KataNerdctlSandboxRuntime` (nerdctl) | `LocalConduit` | Kata microVM (VM-grade) | ✅ | ❌ | `""` |
 | `k8s` | `K8sSandboxRuntime` (Kata pod) | `S3Conduit` | Kata microVM (VM-grade) + optional egress | ✅ | ❌ | `""` |
 
-Both runtimes run the SAME image entrypoint `args=["python","-m","resoluto_sandbox.runner_main"]`; the
+Both runtimes run the SAME image entrypoint `args=["python","-m","resoluto.sandbox.runner_main"]`; the
 container/pod stages inputs, runs the workload, ships span events, writes result.json. The backend
 fails loud:
 
@@ -61,11 +61,11 @@ if self._image is None: raise ValueError("SubstrateBackend requires image=")
 
 ```python
 import os
-from resoluto_sandbox import Sandbox
-from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
-from resoluto_sandbox.conduit.factory import store_from_env
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
-from resoluto_sandbox.egress import EgressConfig   # canonical home (pure stdlib); re-exported from runtime.k8s
+from resoluto.sandbox import Sandbox
+from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto.sandbox.conduit.factory import store_from_env
+from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
+from resoluto.sandbox.egress import EgressConfig   # canonical home (pure stdlib); re-exported from runtime.k8s
 
 runtime = K8sSandboxRuntime(
     namespace=os.environ.get("RESOLUTO_SANDBOX_NAMESPACE", "resoluto-sandboxes"),
@@ -102,7 +102,7 @@ Footgun: prefer the scoped write token over any attempt to forward ambient AWS c
 `driver.py`. The ONE launch → tail → reap loop. Two layers:
 
 ```python
-from resoluto_sandbox import drive_node, drive_node_raw, NodeOutcome
+from resoluto.sandbox import drive_node, drive_node_raw, NodeOutcome
 # NodeResult-returning wrapper:
 async def drive_node(runtime, store, spec, *, admit=None, on_event=None,
                      poll_interval_s=2.0, dead_after_s=120.0, clock=time.monotonic) -> NodeResult
@@ -355,7 +355,7 @@ substrate never constructs/names/removes a gate). GC anchor = per-run owner Conf
 cascade-delete even if the dispatcher is long dead. `reap_stale_run_owners(keep_run_id, max_age_s=7200)`
 backstops kill-9'd runs.
 
-**`EgressConfig`** (`from resoluto_sandbox.egress import EgressConfig`; re-exported from `runtime.k8s`):
+**`EgressConfig`** (`from resoluto.sandbox.egress import EgressConfig`; re-exported from `runtime.k8s`):
 backend-neutral frozen dataclass — fields `allow=()`, `allow_port=443`, `public_https=False`,
 `store_cidr=None`, `store_port=443`. Two pure renderers in `egress.py` drive the SAME config on both
 backends: `k8s_egress_rules()` (NetworkPolicy) and `local_egress_iptables()` (host iptables). SECURE
@@ -369,7 +369,7 @@ them** — use `allow=[...]` (least privilege) or `public_https=True` (escape ha
 `from_store_env()` derives `store_cidr`/`store_port` from `RESOLUTO_STORE_ENDPOINT` (honoring
 `RESOLUTO_STORE_EGRESS_CIDR`/`RESOLUTO_STORE_EGRESS_PORT`) AND the `RESOLUTO_EGRESS_ALLOW` /
 `_ALLOW_PORT` / `_PUBLIC_HTTPS` (default 0/deny) knobs (both backends; local via
-`scripts/local-backend-up.sh`'s `python -m resoluto_sandbox.egress local-iptables`). A NEW backend =
+`scripts/local-backend-up.sh`'s `python -m resoluto.sandbox.egress local-iptables`). A NEW backend =
 one new renderer in `egress.py`. `egress=None` → opt OUT of isolation (no NetworkPolicy, unrestricted
 egress) — DIFFERENT from `EgressConfig()`, which denies by default.
 

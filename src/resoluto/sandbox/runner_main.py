@@ -6,9 +6,9 @@ import json
 import os
 import sys
 
-from resoluto_sandbox.conduit.factory import store_from_env
-from resoluto_sandbox.runner import run_node_in_sandbox
-from resoluto_sandbox.secrets import secrets_from_env
+from resoluto.sandbox.conduit.factory import store_from_env
+from resoluto.sandbox.runner import run_node_in_sandbox
+from resoluto.sandbox.secrets import secrets_from_env
 
 
 def _argv_env(name: str) -> list[str] | None:
@@ -34,7 +34,7 @@ async def _main() -> int:
     image_ver = os.environ.get("RESOLUTO_IMAGE_VERSION")
     if image_ver:
         from importlib.metadata import version as _pkg_version
-        from resoluto_sandbox.version_guard import assert_image_matches_wheel
+        from resoluto.sandbox.version_guard import assert_image_matches_wheel
         assert_image_matches_wheel(image_ver, _pkg_version("resoluto-sandbox"))
     await _resolve_secrets()
     store = store_from_env()

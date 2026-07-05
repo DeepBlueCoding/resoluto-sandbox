@@ -11,14 +11,14 @@ import asyncio
 
 import pytest
 
-from resoluto_sandbox.contracts import (
+from resoluto.sandbox.contracts import (
     Resources,
     SandboxHandle,
     SandboxLaunchSpec,
     SandboxRuntime,
     SandboxStatus,
 )
-from resoluto_sandbox.pool import SandboxPool
+from resoluto.sandbox.pool import SandboxPool
 
 GiB = 1024 ** 3
 

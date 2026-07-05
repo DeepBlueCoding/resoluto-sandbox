@@ -195,7 +195,7 @@ def local_egress_iptables(cfg: EgressConfig, *, chain: str) -> list[list[str]]:
 def _main(argv: "list[str] | None" = None) -> int:
     """CLI: emit local iptables rule-arg lines from env config, for the local-backend provisioner.
 
-    Usage: python -m resoluto_sandbox.egress local-iptables --chain <name>
+    Usage: python -m resoluto.sandbox.egress local-iptables --chain <name>
     Reads RESOLUTO_EGRESS_ALLOW (comma list of host/CIDR), RESOLUTO_EGRESS_ALLOW_PORT,
     RESOLUTO_EGRESS_PUBLIC_HTTPS. Prints one rule per line (args after `iptables`), for the
     provisioner to apply with `sudo iptables $line`.
@@ -203,7 +203,7 @@ def _main(argv: "list[str] | None" = None) -> int:
     import argparse
     import os
 
-    p = argparse.ArgumentParser(prog="resoluto_sandbox.egress")
+    p = argparse.ArgumentParser(prog="resoluto.sandbox.egress")
     sub = p.add_subparsers(dest="cmd")
     lp = sub.add_parser("local-iptables")
     lp.add_argument("--chain", required=True)

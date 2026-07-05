@@ -1,8 +1,8 @@
 """Unit tests for KataNerdctlSandboxRuntime — nerdctl is stubbed (no real VM)."""
 import pytest
 
-from resoluto_sandbox.contracts import SandboxLaunchSpec
-from resoluto_sandbox.runtime.kata_nerdctl import KataNerdctlSandboxRuntime
+from resoluto.sandbox.contracts import SandboxLaunchSpec
+from resoluto.sandbox.runtime.kata_nerdctl import KataNerdctlSandboxRuntime
 
 _ADDR = "/run/resoluto-local/containerd/containerd.sock"
 _NS = "resoluto-local"
@@ -12,7 +12,7 @@ def _spec(**kw) -> SandboxLaunchSpec:
     base = dict(
         image="img:dev",
         env={"RESOLUTO_STORE_KIND": "localfs", "K": "V"},
-        args=["python", "-m", "resoluto_sandbox.runner_main"],
+        args=["python", "-m", "resoluto.sandbox.runner_main"],
         labels={"resoluto.run_id": "r1", "resoluto.node_id": "n1"},
         store_prefix="run/r1/nodes/n1/lane-0",
     )
@@ -53,7 +53,7 @@ def test_sudo_prefixes_nerdctl_calls():
 
 
 def test_resolve_sudo_env_override(monkeypatch):
-    from resoluto_sandbox.runtime.kata_nerdctl import _resolve_sudo
+    from resoluto.sandbox.runtime.kata_nerdctl import _resolve_sudo
     monkeypatch.setenv("RESOLUTO_LOCAL_NERDCTL_SUDO", "1")
     assert _resolve_sudo() is True
     monkeypatch.setenv("RESOLUTO_LOCAL_NERDCTL_SUDO", "0")
@@ -84,7 +84,7 @@ async def test_launch_builds_kata_run_argv(monkeypatch):
     assert "-e" in argv and "RESOLUTO_STORE_KIND=localfs" in argv and "K=V" in argv
     assert argv[argv.index("-v") + 1] == "/host/store:/conduit"
     img_idx = argv.index("img:dev")
-    assert argv[img_idx + 1:] == ["python", "-m", "resoluto_sandbox.runner_main"]
+    assert argv[img_idx + 1:] == ["python", "-m", "resoluto.sandbox.runner_main"]
     # plain step: no inner dockerd, default uid, no dind graph
     assert "--privileged" not in argv and "--user" not in argv and "--tmpfs" not in argv
     # neutral Resources rendered privately — raw bytes/cores, no k8s notation
@@ -95,7 +95,7 @@ async def test_launch_builds_kata_run_argv(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_launch_dind_is_privileged_with_tmpfs_graph(monkeypatch):
-    from resoluto_sandbox.contracts import Resources
+    from resoluto.sandbox.contracts import Resources
     rt = _rt()
     calls = _stub_run(monkeypatch, rt, returns={"run": (0, "vm\n", "")})
     res = Resources(memory_bytes=12 * 1024**3, cpu_cores=4.0, dind_graph_bytes=10 * 1024**3)
@@ -134,7 +134,7 @@ def _stub_run_seq_none(monkeypatch, rt):
 
 @pytest.mark.asyncio
 async def test_status_maps_exit_code(monkeypatch):
-    from resoluto_sandbox.contracts import SandboxHandle
+    from resoluto.sandbox.contracts import SandboxHandle
     rt = _rt()
     _stub_run(monkeypatch, rt, returns={"inspect": (0, "exited|0\n", "")})
     st = await rt.status(SandboxHandle(id="vm"))
@@ -171,7 +171,7 @@ async def test_sweep_raises_on_ps_failure_instead_of_reporting_zero(monkeypatch)
 
 @pytest.mark.asyncio
 async def test_status_inspect_failure_reason_carries_real_stderr(monkeypatch):
-    from resoluto_sandbox.contracts import SandboxHandle
+    from resoluto.sandbox.contracts import SandboxHandle
 
     rt = _rt()
     _stub_run(monkeypatch, rt, returns={"inspect": (1, "", "containerd: connection refused")})

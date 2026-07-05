@@ -7,7 +7,7 @@ Power-user reference for an LLM coding agent working in this repo.
 ## `Sandbox.run()` contract
 
 ```python
-from resoluto_sandbox import Sandbox, RunResult
+from resoluto.sandbox import Sandbox, RunResult
 
 result: RunResult = Sandbox(backend="local").run(
     argv,                   # list[str]: the program + its arguments
@@ -28,7 +28,7 @@ result: RunResult = Sandbox(backend="local").run(
 ## Program contract (the isolation guarantee)
 
 The program you run is **plain** — it reads `argv`, writes to `stdout` / files, and
-exits. It NEVER imports `resoluto_sandbox`. A script that works as `uv run agent.py` on your
+exits. It NEVER imports `resoluto.sandbox`. A script that works as `uv run agent.py` on your
 machine works inside the sandbox too; `backend="local"` (the default) runs it in a Kata microVM
 (hardware-virtualized) via `nerdctl` + a dedicated containerd, `backend="k8s"` runs it in a Kata
 microVM pod. The backend changes only where it runs, not what runs.

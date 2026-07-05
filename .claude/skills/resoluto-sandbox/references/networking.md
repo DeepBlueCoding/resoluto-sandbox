@@ -13,23 +13,23 @@ For the run protocol and backend contracts see `../../../../spec/PROTOCOL.md`; f
 
 Footgun: `egress=None` is an explicit opt-OUT of isolation — no NetworkPolicy, so the pod can phone home anywhere (Kata isolates the kernel, not the network). That is DIFFERENT from `EgressConfig()`, which is deny-by-default. For untrusted code pass an `EgressConfig`. (The `local` backend is always enforced host-side on the CNI bridge — immune to in-guest root.)
 
-`EgressConfig` is **one backend-neutral config** (`resoluto_sandbox.egress`). SECURE BY DEFAULT: `EgressConfig()` denies all egress except store + DNS — github/api.anthropic.com/registries do NOT work until you open them. `allow=[hostnames/CIDRs]` + `allow_port` open specific destinations (least privilege, e.g. git-over-SSH `:22`); `public_https=True` is the escape hatch that allows ALL `:443` for trusted code. Same knobs on `k8s` and `local`. On the `local` backend the preferred path is per-run `Sandbox.run(egress=["api.anthropic.com"])` (enforced by DOMAIN via the built-in SNI proxy). See "Modifying the egress allowlist".
+`EgressConfig` is **one backend-neutral config** (`resoluto.sandbox.egress`). SECURE BY DEFAULT: `EgressConfig()` denies all egress except store + DNS — github/api.anthropic.com/registries do NOT work until you open them. `allow=[hostnames/CIDRs]` + `allow_port` open specific destinations (least privilege, e.g. git-over-SSH `:22`); `public_https=True` is the escape hatch that allows ALL `:443` for trusted code. Same knobs on `k8s` and `local`. On the `local` backend the preferred path is per-run `Sandbox.run(egress=["api.anthropic.com"])` (enforced by DOMAIN via the built-in SNI proxy). See "Modifying the egress allowlist".
 
 ## API surface (verbatim)
 
 ```python
-from resoluto_sandbox import Sandbox                                              # facade
-from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod  # ONE backend impl
-from resoluto_sandbox.conduit.factory import store_from_env                      # conduit from env
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime                       # k8s runtime
-from resoluto_sandbox.egress import EgressConfig                                 # backend-neutral allowlist (also re-exported from runtime.k8s)
+from resoluto.sandbox import Sandbox                                              # facade
+from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod  # ONE backend impl
+from resoluto.sandbox.conduit.factory import store_from_env                      # conduit from env
+from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime                       # k8s runtime
+from resoluto.sandbox.egress import EgressConfig                                 # backend-neutral allowlist (also re-exported from runtime.k8s)
 ```
 
 `Sandbox(backend="local" | "k8s" | <Backend instance>)` then:
 
 ```python
 RunResult = Sandbox.run(
-    argv,                       # Sequence[str], the program to run (plain — never imports resoluto_sandbox)
+    argv,                       # Sequence[str], the program to run (plain — never imports resoluto.sandbox)
     *,
     workspace=None,             # str | None — dir staged at /workspace, outputs extracted back here; None = nothing staged
     stdin=None,                 # NOT SUPPORTED — NotImplementedError on both backends
@@ -73,8 +73,8 @@ SubstrateBackend(
 ```
 - `image` REQUIRED — `ValueError` if missing.
 - `conduit` — a `Conduit`. Use `store_from_env()` (needs `RESOLUTO_STORE_KIND`), or inject directly.
-- `egress` — `EgressConfig` (canonical home `resoluto_sandbox.egress`, re-exported from
-  `resoluto_sandbox.runtime.k8s`). **Backend-neutral**: the SAME config renders to a k8s NetworkPolicy
+- `egress` — `EgressConfig` (canonical home `resoluto.sandbox.egress`, re-exported from
+  `resoluto.sandbox.runtime.k8s`). **Backend-neutral**: the SAME config renders to a k8s NetworkPolicy
   OR local iptables. `store_cidr` MUST be CIDR (`x.x.x.x/32`); `allow` entries may be hostnames OR
   CIDRs (resolved when rendered). `None` → opt OUT of isolation (no NetworkPolicy, unrestricted
   egress) — distinct from `EgressConfig()`, which denies by default.
@@ -93,8 +93,8 @@ Conduits: `local`/`StdoutConduit` (local backend bind-mount) and S3-against-mini
 
 ## `EgressConfig` — the backend-neutral allowlist (the REAL fields)
 
-`@dataclass(frozen=True)`. Canonical home is now `resoluto_sandbox.egress` (still re-exported from
-`resoluto_sandbox.runtime.k8s` for back-compat). It is **backend-neutral**: `egress.py` carries two
+`@dataclass(frozen=True)`. Canonical home is now `resoluto.sandbox.egress` (still re-exported from
+`resoluto.sandbox.runtime.k8s` for back-compat). It is **backend-neutral**: `egress.py` carries two
 pure renderers — `k8s_egress_rules()` (NetworkPolicy) and `local_egress_iptables()` (host iptables) —
 so the SAME config drives BOTH `k8s` and `local`. A new provider = one new renderer; callers don't
 change. There is NO `llm_cidr`/`git_cidrs` — you open HTTPS via `allow=[...]` (specific) or
@@ -126,8 +126,8 @@ missing `/`. Build it from the env with `EgressConfig.from_store_env()`, which r
 `RESOLUTO_STORE_ENDPOINT` (+ `RESOLUTO_STORE_EGRESS_CIDR`/`RESOLUTO_STORE_EGRESS_PORT` overrides for a
 DNAT'd store — NetworkPolicy is evaluated POST-DNAT) AND the simple `RESOLUTO_EGRESS_*` knobs below.
 
-Footgun: import `EgressConfig` from `resoluto_sandbox.egress` (pure stdlib, no platform deps) — NOT via
-the top-level `resoluto_sandbox` import, which pulls `kubernetes_asyncio` in eagerly.
+Footgun: import `EgressConfig` from `resoluto.sandbox.egress` (pure stdlib, no platform deps) — NOT via
+the top-level `resoluto.sandbox` import, which pulls `kubernetes_asyncio` in eagerly.
 
 ## What the generated policy allows (both backends)
 
@@ -160,7 +160,7 @@ The env knobs are honored by BOTH backends (k8s via `from_store_env()`; local vi
 
 **In code (k8s):**
 ```python
-from resoluto_sandbox.egress import EgressConfig
+from resoluto.sandbox.egress import EgressConfig
 EgressConfig(store_cidr="10.0.0.5/32", store_port=9100,
              allow=["api.anthropic.com", "registry.npmjs.org", "pypi.org"])   # least privilege: LLM + these registries
 EgressConfig(store_cidr="10.0.0.5/32", public_https=True)    # escape hatch: all outbound :443 (trusted)
@@ -174,7 +174,7 @@ export RESOLUTO_EGRESS_PUBLIC_HTTPS=1                       # opt IN to all :443
 ```
 
 - **local**: `scripts/local-backend-up.sh` renders the firewall from these env knobs via the SAME
-  renderer (`python -m resoluto_sandbox.egress local-iptables --chain <name>`). Set them, re-run the
+  renderer (`python -m resoluto.sandbox.egress local-iptables --chain <name>`). Set them, re-run the
   script; the Kata canary re-verifies enforcement.
 - **k8s**: pass an `EgressConfig` to `K8sSandboxRuntime(egress=...)`, or `EgressConfig.from_store_env()`
   (reads the same env). `egress=None` = opt OUT of isolation (no NetworkPolicy) — distinct from
@@ -183,7 +183,7 @@ export RESOLUTO_EGRESS_PUBLIC_HTTPS=1                       # opt IN to all :443
 There is no per-rule *blacklist* primitive (the model is default-deny; IMDS/RFC1918 are hardcoded
 denies). "Blacklist a host" = enumerate the hosts you DO want in `allow=[...]` and leave
 `public_https=False`. To add a NEW backend,
-write a renderer that maps `EgressConfig` to its mechanism — see `src/resoluto_sandbox/egress.py`.
+write a renderer that maps `EgressConfig` to its mechanism — see `src/resoluto.sandbox/egress.py`.
 
 ## CNI requirement
 
@@ -215,11 +215,11 @@ host `AWS_*` creds are never forwarded — the pod auths via the prefix-scoped, 
 
 ```python
 import os
-from resoluto_sandbox import Sandbox
-from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
-from resoluto_sandbox.conduit.factory import store_from_env
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
-from resoluto_sandbox.egress import EgressConfig
+from resoluto.sandbox import Sandbox
+from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto.sandbox.conduit.factory import store_from_env
+from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
+from resoluto.sandbox.egress import EgressConfig
 
 egress = EgressConfig(
     store_cidr="192.168.1.197/32",     # your object store (minio / S3-compatible) — k8s only
@@ -256,7 +256,7 @@ print(result.artifacts)         # collected output_paths
 ## Copy-paste: local (Kata microVM via nerdctl, egress enforced host-side)
 
 ```python
-from resoluto_sandbox import Sandbox
+from resoluto.sandbox import Sandbox
 result = Sandbox(backend="local").run(["python", "agent.py"], workspace=".")
 ```
 Kata microVM (hardware-virtualized) via nerdctl + a dedicated containerd on the host. Egress is

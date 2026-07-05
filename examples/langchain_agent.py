@@ -5,7 +5,7 @@
 # ///
 """A minimal LangChain agent using the Anthropic integration: read a prompt, print Claude's answer.
 
-This script is plain — it imports `langchain_anthropic`, never `resoluto_sandbox`. It runs
+This script is plain — it imports `langchain_anthropic`, never `resoluto.sandbox`. It runs
 identically on your machine and inside the sandbox — via `uv run`:
 
     uv run examples/langchain_agent.py "Say hello in five words"

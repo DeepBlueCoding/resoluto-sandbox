@@ -16,8 +16,8 @@ import uuid
 
 import pytest
 
-from resoluto_sandbox import ChunkReader, ChunkShipper, SpanEvent
-from resoluto_sandbox.conduit.s3 import S3Conduit, mint_scoped_credential
+from resoluto.sandbox import ChunkReader, ChunkShipper, SpanEvent
+from resoluto.sandbox.conduit.s3 import S3Conduit, mint_scoped_credential
 
 ENDPOINT = "http://localhost:9100"
 CREDS = dict(aws_access_key_id="minioadmin", aws_secret_access_key="minioadmin", region_name="us-east-1")

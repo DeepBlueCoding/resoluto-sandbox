@@ -42,10 +42,10 @@ to the lane pod (created before the pod) so egress is enforced from the first pa
 
 ```python
 import os
-from resoluto_sandbox import Sandbox
-from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
-from resoluto_sandbox.conduit.factory import store_from_env
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
+from resoluto.sandbox import Sandbox
+from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto.sandbox.conduit.factory import store_from_env
+from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
 
 # The ONE shared builder — resolves RESOLUTO_STORE_ENDPOINT to the store CIDR:port (honoring the
 # RESOLUTO_STORE_EGRESS_CIDR/PORT override for a DNAT'd store; NetworkPolicy is evaluated POST-DNAT).
@@ -66,8 +66,8 @@ sb = Sandbox(backend=SubstrateBackend(
 ))
 ```
 
-`EgressConfig` is imported from `resoluto_sandbox.runtime.k8s`. Do not add it to the top-level
-`resoluto_sandbox` import — that would pull in `kubernetes_asyncio` eagerly.
+`EgressConfig` is imported from `resoluto.sandbox.runtime.k8s`. Do not add it to the top-level
+`resoluto.sandbox` import — that would pull in `kubernetes_asyncio` eagerly.
 
 ### What the NetworkPolicy allows
 
@@ -127,7 +127,7 @@ check.
 
 ## Modifying the egress allowlist — ONE config, both backends
 
-Egress is configured by a single backend-neutral value object, `resoluto_sandbox.egress.EgressConfig`,
+Egress is configured by a single backend-neutral value object, `resoluto.sandbox.egress.EgressConfig`,
 which each backend renders to its own mechanism (k8s → NetworkPolicy, local → host `iptables`). It is
 **deny-by-default**: `EgressConfig()` allows ONLY the store + DNS; IMDS (and on local, RFC1918) are
 always denied. So github, api.anthropic.com, package mirrors, etc. do NOT work until you open them.
@@ -165,7 +165,7 @@ Sandbox(backend="local").run(argv)                                  # egress=Non
 ```
 
 Each `run()` sets that step's allowed domains on the fly and clears them after — **no re-provision**.
-Under the hood the built-in **SNI proxy** (`resoluto_sandbox.egress_proxy`) reads the step's allowlist
+Under the hood the built-in **SNI proxy** (`resoluto.sandbox.egress_proxy`) reads the step's allowlist
 LIVE (from a file each run rewrites) and splices the (still-encrypted) stream to the original
 destination ONLY if the TLS SNI matches — exact (`api.anthropic.com`) or `*.wildcard` (`*.openai.com`).
 No IP pinning, no CA/MITM, works under any CNI; it refuses internal/IMDS destinations even on an SNI
@@ -184,7 +184,7 @@ today; on `k8s` use `EgressConfig` (per-runtime).
 
 **In code (k8s):**
 ```python
-from resoluto_sandbox.egress import EgressConfig
+from resoluto.sandbox.egress import EgressConfig
 EgressConfig(store_cidr="10.0.0.5/32", store_port=9100,
              allow=["github.com"], allow_port=22)        # least privilege: + git-over-SSH
 EgressConfig(store_cidr="10.0.0.5/32", public_https=True)  # escape hatch: all outbound :443
@@ -199,7 +199,7 @@ export RESOLUTO_EGRESS_PUBLIC_HTTPS=1                       # opt IN to all :443
 ```
 
 - **local**: `scripts/local-backend-up.sh` renders the firewall from these env knobs via the SAME
-  renderer (`python -m resoluto_sandbox.egress local-iptables`). Set them and re-run the script; the
+  renderer (`python -m resoluto.sandbox.egress local-iptables`). Set them and re-run the script; the
   Kata canary re-verifies enforcement.
 - **k8s**: pass an `EgressConfig` to `K8sSandboxRuntime(egress=...)`, or `EgressConfig.from_store_env()`
   (which reads the same env). `egress=None` = opt OUT of isolation entirely (no NetworkPolicy,
@@ -208,7 +208,7 @@ export RESOLUTO_EGRESS_PUBLIC_HTTPS=1                       # opt IN to all :443
 There is no per-rule *blacklist* primitive (the model is default-deny; IMDS/RFC1918 are hardcoded
 denies). "Blacklist a host" = enumerate the hosts you DO want in `allow=[...]` and leave
 `public_https=False`. To add a NEW backend, write a renderer that maps `EgressConfig` to its
-mechanism (see `src/resoluto_sandbox/egress.py`).
+mechanism (see `src/resoluto.sandbox/egress.py`).
 
 ## What you can manage
 

@@ -1,8 +1,8 @@
 """Resoluto sandbox — store-mediated, Kata-isolated execution; concrete runtimes/conduits with platform deps import lazily."""
-from resoluto_sandbox.backends.base import Backend, RunResult
-from resoluto_sandbox.backends.substrate import SubstrateBackend
-from resoluto_sandbox.client import Sandbox
-from resoluto_sandbox.contracts import (
+from resoluto.sandbox.backends.base import Backend, RunResult
+from resoluto.sandbox.backends.substrate import SubstrateBackend
+from resoluto.sandbox.client import Sandbox
+from resoluto.sandbox.contracts import (
     Admission,
     Conduit,
     Lease,
@@ -14,18 +14,18 @@ from resoluto_sandbox.contracts import (
     SandboxStatus,
     SpanEvent,
 )
-from resoluto_sandbox.driver import NodeOutcome, drive_node, drive_node_raw
-from resoluto_sandbox.conduit import LocalConduit, StdoutConduit
-from resoluto_sandbox.pool import SandboxLease, SandboxPool
-from resoluto_sandbox.runner import run_node_in_sandbox
-from resoluto_sandbox.spans import SpanEmitter
-from resoluto_sandbox.staging import (
+from resoluto.sandbox.driver import NodeOutcome, drive_node, drive_node_raw
+from resoluto.sandbox.conduit import LocalConduit, StdoutConduit
+from resoluto.sandbox.pool import SandboxLease, SandboxPool
+from resoluto.sandbox.runner import run_node_in_sandbox
+from resoluto.sandbox.spans import SpanEmitter
+from resoluto.sandbox.staging import (
     collect_outputs,
     fetch_outputs,
     put_dir,
     stage_inputs,
 )
-from resoluto_sandbox.telemetry import ChunkReader, ChunkShipper
+from resoluto.sandbox.telemetry import ChunkReader, ChunkShipper
 
 __all__ = [
     "Sandbox", "RunResult", "Backend", "SubstrateBackend",

@@ -9,7 +9,7 @@ prose see [docs/auth.md](../../../../docs/auth.md),
 ## The one API
 
 ```python
-from resoluto_sandbox import Sandbox
+from resoluto.sandbox import Sandbox
 
 Sandbox(backend="local" | "k8s" | <Backend instance>)    # default "local"
 sb.run(
@@ -36,7 +36,7 @@ class RunResult(BaseModel):
 ```
 
 The program is PLAIN: reads argv, writes stdout/files. It never imports
-`resoluto_sandbox`. Same program runs in a Kata microVM via nerdctl (local) or a Kata pod (k8s).
+`resoluto.sandbox`. Same program runs in a Kata microVM via nerdctl (local) or a Kata pod (k8s).
 
 Dependencies are your program's concern — put `uv run`/`pip install` in your argv, or use a prebuilt image.
 
@@ -51,7 +51,7 @@ bridge, canary runs). The guest inherits env you pass via `env=`. You need `/dev
 the dedicated containerd + an image with `claude` CLI baked in.
 
 ```python
-from resoluto_sandbox import Sandbox
+from resoluto.sandbox import Sandbox
 
 r = Sandbox(backend="local").run(
     ["uv", "run", "claude_agent.py", "Say hello in five words"],   # relative to workspace, NOT "examples/..."
@@ -72,10 +72,10 @@ pod authenticates to the store via a scoped token. Requires `RESOLUTO_STORE_KIND
 
 ```python
 import os
-from resoluto_sandbox import Sandbox
-from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
-from resoluto_sandbox.conduit.factory import store_from_env
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
+from resoluto.sandbox import Sandbox
+from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto.sandbox.conduit.factory import store_from_env
+from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
 
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
@@ -120,17 +120,17 @@ with IMDS always blocked. **github / api.anthropic.com / any HTTPS do NOT work u
 open them** — use `allow=[...]` (least privilege, e.g. `["api.anthropic.com","registry.npmjs.org","pypi.org"]`
 or git-over-SSH `:22` via `allow_port`) or `public_https=True` (escape hatch: ALL public
 443, trusted code). The same config renders to a k8s NetworkPolicy OR local iptables
-(the two renderers in `resoluto_sandbox.egress`). On the **local** backend prefer per-run
+(the two renderers in `resoluto.sandbox.egress`). On the **local** backend prefer per-run
 `Sandbox.run(egress=["api.anthropic.com"])` — enforced by DOMAIN via the built-in SNI proxy
 (never goes stale for CDN-backed hosts); `EgressConfig(allow=[...])` (CIDR-based) is the k8s path.
 
 ```python
 import os
-from resoluto_sandbox import Sandbox
-from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
-from resoluto_sandbox.conduit.factory import store_from_env
-from resoluto_sandbox.egress import EgressConfig                    # canonical home (also re-exported from runtime.k8s)
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
+from resoluto.sandbox import Sandbox
+from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto.sandbox.conduit.factory import store_from_env
+from resoluto.sandbox.egress import EgressConfig                    # canonical home (also re-exported from runtime.k8s)
+from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
 
 egress = EgressConfig(
     store_cidr="192.168.1.197/32",      # object store (k8s only; local store is a file mount)
@@ -160,15 +160,15 @@ if the policy was not enforced. Full table: [docs/networking.md](../../../../doc
 
 The image is a `SubstrateBackend` concern — pass it as `image=`. The image
 must bake every runtime dep your program needs. The
-entrypoint is fixed to `python -m resoluto_sandbox.runner_main`; your `argv`
+entrypoint is fixed to `python -m resoluto.sandbox.runner_main`; your `argv`
 is delivered via env and executed by the runner inside `/workspace`.
 
 ```python
 import os
-from resoluto_sandbox import Sandbox
-from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
-from resoluto_sandbox.conduit.factory import store_from_env
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
+from resoluto.sandbox import Sandbox
+from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto.sandbox.conduit.factory import store_from_env
+from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
 
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
@@ -187,7 +187,7 @@ in a Kata microVM via nerdctl on this host.
 
 ### 6. Secrets: env_file, SecretKeyRef, SecretProvider
 
-Three mechanisms, not interchangeable — see `resoluto_sandbox/secrets.py` + `envfile.py`.
+Three mechanisms, not interchangeable — see `resoluto.sandbox/secrets.py` + `envfile.py`.
 
 **`env_file` — host-side convenience, NOT security** (same plaintext exposure as `env=`):
 
@@ -201,7 +201,7 @@ anything else) — kubelet materializes it via `valueFrom.secretKeyRef`; ignored
 Secret concept there):
 
 ```python
-from resoluto_sandbox.secrets import SecretKeyRef
+from resoluto.sandbox.secrets import SecretKeyRef
 
 sb.run(argv, secrets={"ANTHROPIC_API_KEY": SecretKeyRef(name="anthropic-key", key="api_key")})
 ```
@@ -289,6 +289,6 @@ Both backends merge stdout→`output` (errors stays `""`).
   contract parity with S3 — no real-GCS integration test. Run the conformance
   suite against a live bucket before relying on it.
 
-- **Import `EgressConfig` from `resoluto_sandbox.egress`** (its canonical home — pure
-  stdlib, also re-exported from `resoluto_sandbox.runtime.k8s` for back-compat), NOT via
+- **Import `EgressConfig` from `resoluto.sandbox.egress`** (its canonical home — pure
+  stdlib, also re-exported from `resoluto.sandbox.runtime.k8s` for back-compat), NOT via
   the top-level package (that import would eagerly pull in `kubernetes_asyncio`).

@@ -33,7 +33,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from resoluto_sandbox import Sandbox
+from resoluto.sandbox import Sandbox
 
 EXAMPLES = Path(__file__).resolve().parent
 AGENT = EXAMPLES / "llm_agent.py"
@@ -103,10 +103,10 @@ def run_k8s(prompt: str, token: str) -> str:
         print("[SKIP] k8s — set the s3 store config:  set -a; source store.env; set +a")
         return "BLOCKED"
     import asyncio
-    from resoluto_sandbox.backends.substrate import SubstrateBackend
-    from resoluto_sandbox.conduit.factory import store_from_env
-    from resoluto_sandbox.conduit.s3 import mint_scoped_credential
-    from resoluto_sandbox.runtime.k8s import EgressConfig, K8sSandboxRuntime
+    from resoluto.sandbox.backends.substrate import SubstrateBackend
+    from resoluto.sandbox.conduit.factory import store_from_env
+    from resoluto.sandbox.conduit.s3 import mint_scoped_credential
+    from resoluto.sandbox.runtime.k8s import EgressConfig, K8sSandboxRuntime
 
     sts = asyncio.run(mint_scoped_credential(
         bucket=os.environ["RESOLUTO_STORE_BUCKET"], prefix="run",

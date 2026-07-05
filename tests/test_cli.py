@@ -1,7 +1,7 @@
 import pytest
 
-import resoluto_sandbox.cli as cli
-from resoluto_sandbox.cli import main
+import resoluto.sandbox.cli as cli
+from resoluto.sandbox.cli import main
 
 
 @pytest.mark.integration

@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import asyncio
 
-from resoluto_sandbox.contracts import (
+from resoluto.sandbox.contracts import (
     SandboxHandle,
     SandboxLaunchSpec,
     SandboxRuntime,
 )
-from resoluto_sandbox.resource_semaphore import ResourceSemaphore
+from resoluto.sandbox.resource_semaphore import ResourceSemaphore
 
 
 class SandboxLease:

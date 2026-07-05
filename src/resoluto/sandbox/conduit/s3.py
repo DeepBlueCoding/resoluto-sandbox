@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from contextlib import asynccontextmanager
 
-from resoluto_sandbox.contracts import Conduit, ConduitError, ObjectInfo
+from resoluto.sandbox.contracts import Conduit, ConduitError, ObjectInfo
 
 
 # Permanent authorization/authentication denials — NOT transient transport failures. These must

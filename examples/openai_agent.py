@@ -6,7 +6,7 @@
 """A minimal OpenAI Agents SDK agent: read a prompt, print the model's answer.
 
 This script is plain — it imports `agents` (the `openai-agents` package), never
-`resoluto_sandbox`. It runs identically on your machine and inside the sandbox:
+`resoluto.sandbox`. It runs identically on your machine and inside the sandbox:
 
     uv run examples/openai_agent.py "Say hello in five words"
 

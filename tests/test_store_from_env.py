@@ -9,8 +9,8 @@ import os
 
 import pytest
 
-from resoluto_sandbox.runner_main import store_from_env
-from resoluto_sandbox.conduit.s3 import S3Conduit
+from resoluto.sandbox.runner_main import store_from_env
+from resoluto.sandbox.conduit.s3 import S3Conduit
 
 
 TOKEN_DICT = {
@@ -63,7 +63,7 @@ def test_store_from_env_falls_back_to_aws_creds_when_no_token(monkeypatch):
 
 def test_store_from_env_localfs_unaffected(monkeypatch, tmp_path):
     """localfs backend is not affected by the RESOLUTO_STORE_WRITE_TOKEN logic."""
-    from resoluto_sandbox.conduit import LocalConduit
+    from resoluto.sandbox.conduit import LocalConduit
 
     monkeypatch.setenv("RESOLUTO_STORE_KIND", "localfs")
     monkeypatch.setenv("RESOLUTO_STORE_ROOT", str(tmp_path))

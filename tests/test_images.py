@@ -1,5 +1,5 @@
 import pytest
-from resoluto_sandbox.images import build, image_tags, PROVIDERS, SDK_PACKAGE, SDK_VERSION
+from resoluto.sandbox.images import build, image_tags, PROVIDERS, SDK_PACKAGE, SDK_VERSION
 
 
 class FakeRunner:
@@ -83,7 +83,7 @@ def test_cli_image_build_langchain(monkeypatch, capsys):
     import subprocess
     monkeypatch.setattr(subprocess, "run", fake_run)
 
-    from resoluto_sandbox.cli import main
+    from resoluto.sandbox.cli import main
     rc = main(["image", "build", "--provider", "langchain", "--version", "9.9.9"])
     assert rc == 0
     out = capsys.readouterr().out
@@ -100,7 +100,7 @@ def test_cli_image_build_all_builds_base_once(monkeypatch, capsys):
     import subprocess
     monkeypatch.setattr(subprocess, "run", fake_run)
 
-    from resoluto_sandbox.cli import main
+    from resoluto.sandbox.cli import main
     rc = main(["image", "build", "--provider", "all", "--version", "1.0.0"])
     assert rc == 0
     base_calls = [c for c in calls if "Dockerfile.base" in c]
@@ -118,7 +118,7 @@ def test_cli_image_build_context_flag_passed_through(monkeypatch, capsys):
     import subprocess
     monkeypatch.setattr(subprocess, "run", fake_run)
 
-    from resoluto_sandbox.cli import main
+    from resoluto.sandbox.cli import main
     rc = main(["image", "build", "--provider", "claude", "--version", "1.0.0", "--context", ".."])
     assert rc == 0
     assert len(calls) == 2

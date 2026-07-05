@@ -102,10 +102,10 @@ The image is not a `Sandbox` concern — inject a configured `SubstrateBackend`:
 
 ```python
 import os
-from resoluto_sandbox import Sandbox
-from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
-from resoluto_sandbox.conduit.factory import store_from_env
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
+from resoluto.sandbox import Sandbox
+from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto.sandbox.conduit.factory import store_from_env
+from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
 
 runtime = K8sSandboxRuntime(
     namespace=os.environ.get("RESOLUTO_SANDBOX_NAMESPACE", "resoluto-sandboxes"),
@@ -138,10 +138,10 @@ anywhere — covers the LLM API + git, no fragile FQDN→/32 pinning), and DNS. 
 
 ```python
 import os
-from resoluto_sandbox import Sandbox
-from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
-from resoluto_sandbox.conduit.factory import store_from_env
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
+from resoluto.sandbox import Sandbox
+from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto.sandbox.conduit.factory import store_from_env
+from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
 
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
@@ -301,10 +301,10 @@ prevent accidentally targeting the wrong cluster. Use
 
 ```python
 import os
-from resoluto_sandbox import Sandbox
-from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
-from resoluto_sandbox.conduit.factory import store_from_env
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
+from resoluto.sandbox import Sandbox
+from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto.sandbox.conduit.factory import store_from_env
+from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
 
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
@@ -331,8 +331,8 @@ To add a new isolation target, implement `SandboxRuntime` (the isolation/placeme
 and wire it into `SubstrateBackend`:
 
 ```python
-from resoluto_sandbox.backends.substrate import SubstrateBackend
-from resoluto_sandbox.conduit import LocalConduit
+from resoluto.sandbox.backends.substrate import SubstrateBackend
+from resoluto.sandbox.conduit import LocalConduit
 
 sb = Sandbox(backend=SubstrateBackend(
     runtime=MyRuntime(...),
@@ -346,7 +346,7 @@ For a completely new run approach (not store-mediated), implement the `Backend` 
 (one method: `run(...) -> RunResult`) and inject it:
 
 ```python
-from resoluto_sandbox.backends.base import Backend, RunResult
+from resoluto.sandbox.backends.base import Backend, RunResult
 
 class MyBackend(Backend):
     def run(self, argv, *, workspace=None, stdin=None, env=None, env_file=None,

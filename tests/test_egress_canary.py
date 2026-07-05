@@ -1,7 +1,7 @@
 """Unit tests for egress_canary.evaluate_verdict — pure function, no network."""
 import pytest
 
-from resoluto_sandbox.egress_canary import CanaryVerdict, ProbeResult, evaluate_verdict
+from resoluto.sandbox.egress_canary import CanaryVerdict, ProbeResult, evaluate_verdict
 
 
 def _p(target: str, expected: bool, actual: bool) -> ProbeResult:

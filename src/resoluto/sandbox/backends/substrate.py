@@ -8,11 +8,11 @@ from pathlib import Path
 from typing import IO, Sequence
 from uuid import uuid4
 
-from resoluto_sandbox.backends.artifacts import _collect, read_result_json
-from resoluto_sandbox.backends.base import Backend, RunResult
-from resoluto_sandbox.contracts import Conduit, Resources, SandboxRuntime
-from resoluto_sandbox.envfile import parse_env_file
-from resoluto_sandbox.secrets import SecretKeyRef
+from resoluto.sandbox.backends.artifacts import _collect, read_result_json
+from resoluto.sandbox.backends.base import Backend, RunResult
+from resoluto.sandbox.contracts import Conduit, Resources, SandboxRuntime
+from resoluto.sandbox.envfile import parse_env_file
+from resoluto.sandbox.secrets import SecretKeyRef
 
 
 def _append_log_event(ev, out_lines: list[str], sink) -> None:
@@ -106,9 +106,9 @@ class SubstrateBackend(Backend):
         output_paths: Sequence[str] | None,
         stream: IO[str] | None,
     ) -> RunResult:
-        from resoluto_sandbox.contracts import SandboxLaunchSpec
-        from resoluto_sandbox.driver import drive_node
-        from resoluto_sandbox.staging import fetch_outputs, put_dir
+        from resoluto.sandbox.contracts import SandboxLaunchSpec
+        from resoluto.sandbox.driver import drive_node
+        from resoluto.sandbox.staging import fetch_outputs, put_dir
 
         run_id = "run-" + uuid4().hex[:8]
         node_id = "run"
@@ -140,7 +140,7 @@ class SubstrateBackend(Backend):
             image=self._image,
             flavor="plain",
             env=pod_env,
-            args=["python", "-m", "resoluto_sandbox.runner_main"],
+            args=["python", "-m", "resoluto.sandbox.runner_main"],
             resources=self._resources,
             store_prefix=prefix,
             labels={"resoluto.run_id": run_id, "resoluto.node_id": node_id},

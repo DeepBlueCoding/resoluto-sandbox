@@ -5,11 +5,11 @@
 # ///
 """A minimal Claude agent: read a prompt, print Claude's answer.
 
-This script is plain — it imports `claude_agent_sdk`, never `resoluto_sandbox`.
+This script is plain — it imports `claude_agent_sdk`, never `resoluto.sandbox`.
 It runs identically on your machine and inside the sandbox:
 
     uv run examples/claude_agent.py "Say hello in five words"          # local
-    python -c "from resoluto_sandbox import Sandbox; \
+    python -c "from resoluto.sandbox import Sandbox; \
         print(Sandbox().run(['uv','run','examples/claude_agent.py','Say hi']).output)"
 
 Auth is handled entirely by the `claude` CLI the SDK forks — see docs/auth.md.

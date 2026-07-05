@@ -9,7 +9,7 @@ Reference for an agent that will USE or EXTEND this sandbox in its own system. T
 ONE `SubstrateBackend` drives both backends. The only thing that varies is the injected `SandboxRuntime`.
 
 ```python
-from resoluto_sandbox.client import Sandbox
+from resoluto.sandbox.client import Sandbox
 
 # select by name (backend shortcuts)
 sb = Sandbox(backend="local")          # SubstrateBackend(KataNerdctlSandboxRuntime + LocalConduit)
@@ -17,10 +17,10 @@ sb = Sandbox(backend="k8s")            # SubstrateBackend(K8sSandboxRuntime + st
 
 # or inject a configured SubstrateBackend (the real k8s path with egress/conduit config)
 import os
-from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
-from resoluto_sandbox.conduit.factory import store_from_env
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
-from resoluto_sandbox.egress import EgressConfig   # backend-neutral; re-exported from runtime.k8s
+from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto.sandbox.conduit.factory import store_from_env
+from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
+from resoluto.sandbox.egress import EgressConfig   # backend-neutral; re-exported from runtime.k8s
 
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
@@ -67,13 +67,13 @@ RunResult = sb.run(
 | `reason` | `str` | substrate forensics (evicted/OOMKilled pod, …); empty for local |
 | `ok` | `bool` (property) | `exit_code == 0` |
 
-The program you run is plain: it reads argv, writes stdout/files, and never imports `resoluto_sandbox`. A program that runs as `uv run agent.py` on your machine runs unchanged under `run()`.
+The program you run is plain: it reads argv, writes stdout/files, and never imports `resoluto.sandbox`. A program that runs as `uv run agent.py` on your machine runs unchanged under `run()`.
 
 Dependencies are your program's concern — put `uv run`/`pip install` in your argv, or use a prebuilt image.
 
 ## The three seams (ABCs)
 
-### 1. `Backend` — `resoluto_sandbox.backends.base`
+### 1. `Backend` — `resoluto.sandbox.backends.base`
 
 The substrate seam. One abstract method; inputs/outputs identical across implementations.
 
@@ -95,7 +95,7 @@ One implementation drives both backends:
 
 Everything else works. It is NOT a roadmap stub.
 
-### 2. `Conduit` — `resoluto_sandbox.contracts`
+### 2. `Conduit` — `resoluto.sandbox.contracts`
 
 The host↔sandbox exchange: a durable key/value rendezvous. The sandbox self-reports append-only immutable JSONL chunk objects under its prefix; the host tails via `list_prefix` + whole-object `get`. No in-sandbox server, no long-lived stream.
 
@@ -115,15 +115,15 @@ class Conduit(ABC):
 
 `ObjectInfo(key: str, size: int)`. Transport/I/O failures raise `ConduitError`.
 
-Implementations (`resoluto_sandbox.conduit`):
+Implementations (`resoluto.sandbox.conduit`):
 - **`LocalConduit(root)`** — localfs. Proven (local backend bind-mount).
 - **`StdoutConduit()`** — writes chunks to stdout. Proven (local backend path).
 - **`S3Conduit(bucket, *, endpoint_url=None, region_name=None, aws_access_key_id=None, aws_secret_access_key=None, aws_session_token=None)`** — proven against minio (the k8s path). `[s3]` extra also pulls `aioboto3`; factory defaults `region_name` to `"us-east-1"` when absent.
 - **`GcsConduit(bucket, *, service_file=)`** — EXPERIMENTAL / unverified. Do not rely on it.
 
-Build one from env with `store_from_env(env=None) -> Conduit` (`resoluto_sandbox.conduit.factory`), keyed on `RESOLUTO_STORE_KIND` ∈ `stdout | localfs | s3 | gcs`. For `s3`, a JSON `RESOLUTO_STORE_WRITE_TOKEN` (prefix-scoped, write-only, expiring) overrides the static `AWS_*` / `RESOLUTO_STORE_*` vars.
+Build one from env with `store_from_env(env=None) -> Conduit` (`resoluto.sandbox.conduit.factory`), keyed on `RESOLUTO_STORE_KIND` ∈ `stdout | localfs | s3 | gcs`. For `s3`, a JSON `RESOLUTO_STORE_WRITE_TOKEN` (prefix-scoped, write-only, expiring) overrides the static `AWS_*` / `RESOLUTO_STORE_*` vars.
 
-### 3. `SandboxRuntime` — `resoluto_sandbox.contracts`
+### 3. `SandboxRuntime` — `resoluto.sandbox.contracts`
 
 The isolation/placement seam. The runtime owns launch, status, destroy, sweep for a specific substrate (local Kata via nerdctl, k8s Kata, ECS, Fly, …).
 
@@ -148,9 +148,9 @@ Implementations:
 
 ## pydantic-only core (the import-light litmus)
 
-`contracts.py` and the backend models are pydantic `BaseModel` + ABCs with NO platform deps (no kubernetes, no boto3 at module top). Heavy clients are imported lazily INSIDE methods (`store_from_env` imports `S3Conduit` only on the `s3` branch; `K8sSandboxRuntime._client` imports `kubernetes_asyncio` lazily). Litmus: importing `resoluto_sandbox.contracts` must not pull a cloud SDK. Keep new contracts dep-light; push platform imports down into the concrete impl.
+`contracts.py` and the backend models are pydantic `BaseModel` + ABCs with NO platform deps (no kubernetes, no boto3 at module top). Heavy clients are imported lazily INSIDE methods (`store_from_env` imports `S3Conduit` only on the `s3` branch; `K8sSandboxRuntime._client` imports `kubernetes_asyncio` lazily). Litmus: importing `resoluto.sandbox.contracts` must not pull a cloud SDK. Keep new contracts dep-light; push platform imports down into the concrete impl.
 
-Key pydantic contracts: `RunResult`, `SandboxLaunchSpec`, `SandboxHandle`, `SandboxStatus`, `NodeResult`, `ObjectInfo`, `SpanEvent`. `EgressConfig` is a frozen `@dataclass` (not pydantic) in `resoluto_sandbox.egress` (pure stdlib; re-exported from `runtime.k8s`).
+Key pydantic contracts: `RunResult`, `SandboxLaunchSpec`, `SandboxHandle`, `SandboxStatus`, `NodeResult`, `ObjectInfo`, `SpanEvent`. `EgressConfig` is a frozen `@dataclass` (not pydantic) in `resoluto.sandbox.egress` (pure stdlib; re-exported from `runtime.k8s`).
 
 ## Where each concern lives
 
@@ -172,10 +172,10 @@ Key pydantic contracts: `RunResult`, `SandboxLaunchSpec`, `SandboxHandle`, `Sand
 
 ```python
 import os
-from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
-from resoluto_sandbox.conduit.s3 import S3Conduit
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
-from resoluto_sandbox.egress import EgressConfig
+from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto.sandbox.conduit.s3 import S3Conduit
+from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
+from resoluto.sandbox.egress import EgressConfig
 
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
@@ -194,7 +194,7 @@ backend = SubstrateBackend(
     image="ghcr.io/you/lane:tag",
     store_env=store_env_for_pod(os.environ),
 )
-from resoluto_sandbox.client import Sandbox
+from resoluto.sandbox.client import Sandbox
 sb = Sandbox(backend=backend)
 res = sb.run(["agent.py"], workspace="/work", output_paths=["out/*.json"])
 ```
@@ -206,7 +206,7 @@ res = sb.run(["agent.py"], workspace="/work", output_paths=["out/*.json"])
 **Primary path:** implement `SandboxRuntime` (the isolation/placement seam) and wire it into `SubstrateBackend`. This reuses the entire store-mediated wire (runner_main, ChunkShipper/ChunkReader, staging, telemetry) and only adds the placement mechanism:
 
 ```python
-from resoluto_sandbox.contracts import SandboxRuntime, SandboxLaunchSpec, SandboxHandle, SandboxStatus
+from resoluto.sandbox.contracts import SandboxRuntime, SandboxLaunchSpec, SandboxHandle, SandboxStatus
 
 class EcsRuntime(SandboxRuntime):
     async def launch(self, spec: SandboxLaunchSpec) -> SandboxHandle: ...
@@ -221,7 +221,7 @@ SubstrateBackend(runtime=EcsRuntime(...), conduit=store_from_env(), image="...",
 **Alternative:** implement the `Backend` ABC directly for a completely different run approach (no store-mediated wire):
 
 ```python
-from resoluto_sandbox.backends.base import Backend, RunResult
+from resoluto.sandbox.backends.base import Backend, RunResult
 
 class MyBackend(Backend):
     def run(self, argv, *, workspace=None, stdin=None, env=None,
@@ -238,7 +238,7 @@ Reuse `Conduit` for the host↔sandbox exchange — don't invent a new transport
 ### Layering (the full stack)
 
 ```
-your program  (plain: reads argv -> writes stdout/files/exit; never imports resoluto_sandbox)
+your program  (plain: reads argv -> writes stdout/files/exit; never imports resoluto.sandbox)
       |  argv / workspace                         ^  output / errors / artifacts
       v                                           |
 ┌─────────────────────────────────────────────────────────────┐

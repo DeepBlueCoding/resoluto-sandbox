@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Sequence
 
-from resoluto_sandbox.telemetry import RESULT_FILENAME
+from resoluto.sandbox.telemetry import RESULT_FILENAME
 
 
 def _collect(cwd: Path, output_paths: Sequence[str] | None) -> list[str]:

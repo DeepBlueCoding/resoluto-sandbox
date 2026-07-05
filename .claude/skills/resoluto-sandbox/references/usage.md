@@ -13,7 +13,7 @@ Cross-links (don't duplicate these):
 ## The single entrypoint
 
 ```python
-from resoluto_sandbox import Sandbox   # re-exported; canonical: resoluto_sandbox.client
+from resoluto.sandbox import Sandbox   # re-exported; canonical: resoluto.sandbox.client
 
 result = Sandbox(backend="local").run(["agent.py", "--task", "fix the bug"], workspace="/abs/repo")
 print(result.output)      # the program's answer
@@ -74,7 +74,7 @@ are set — no `workspace` means nothing comes back out.
 
 ## `RunResult` — every field
 
-From `resoluto_sandbox.backends.base`:
+From `resoluto.sandbox.backends.base`:
 
 ```python
 class RunResult(BaseModel):
@@ -118,10 +118,10 @@ Sandbox(backend="k8s", image="<tag>")        # k8s backend — reads RESOLUTO_ST
 
 # By injection (DI) — the supported path for k8s config with egress/custom conduit
 import os
-from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
-from resoluto_sandbox.conduit.factory import store_from_env
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
-from resoluto_sandbox.egress import EgressConfig   # backend-neutral allowlist (k8s + local); re-exported from runtime.k8s
+from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto.sandbox.conduit.factory import store_from_env
+from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
+from resoluto.sandbox.egress import EgressConfig   # backend-neutral allowlist (k8s + local); re-exported from runtime.k8s
 
 Sandbox(backend=SubstrateBackend(
     runtime=K8sSandboxRuntime(
@@ -169,13 +169,13 @@ NO wall-clock timeout on the work itself.
 ## The decoupling guarantee: same program, any backend
 
 The program you run is PLAIN. It reads `argv`, writes `stdout`/files, optionally
-drops a `result.json`. It imports NOTHING from `resoluto_sandbox`. The contract:
+drops a `result.json`. It imports NOTHING from `resoluto.sandbox`. The contract:
 
 > A program that works as `uv run agent.py` on your machine works unchanged inside the sandbox.
 > On `local` it runs in a Kata microVM via nerdctl; on `k8s` it runs in a Kata microVM pod. Same program,
 > same inputs, same outputs.
 
-Don't reach into `resoluto_sandbox` from the workload — if you find
+Don't reach into `resoluto.sandbox` from the workload — if you find
 yourself importing the package inside the program you run, you've broken the seam.
 
 ---
@@ -209,11 +209,11 @@ print(r.output); print(r.artifacts); print(r.result)   # result.json parsed if w
 Untrusted run in a Kata pod, with egress lockdown:
 ```python
 import os
-from resoluto_sandbox import Sandbox
-from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
-from resoluto_sandbox.conduit.factory import store_from_env
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
-from resoluto_sandbox.egress import EgressConfig
+from resoluto.sandbox import Sandbox
+from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto.sandbox.conduit.factory import store_from_env
+from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
+from resoluto.sandbox.egress import EgressConfig
 
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",

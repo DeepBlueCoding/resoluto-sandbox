@@ -9,7 +9,7 @@ from typing import Awaitable, Callable
 
 from pydantic import ValidationError
 
-from resoluto_sandbox.contracts import (
+from resoluto.sandbox.contracts import (
     Admission,
     Conduit,
     ConduitError,
@@ -19,7 +19,7 @@ from resoluto_sandbox.contracts import (
     SandboxRuntime,
     SpanEvent,
 )
-from resoluto_sandbox.telemetry import ChunkReader, result_key
+from resoluto.sandbox.telemetry import ChunkReader, result_key
 
 OnEvent = Callable[[SpanEvent], None] | Callable[[SpanEvent], Awaitable[None]]
 

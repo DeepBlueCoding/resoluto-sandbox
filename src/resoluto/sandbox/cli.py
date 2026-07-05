@@ -66,7 +66,7 @@ def _cmd_run(args: argparse.Namespace, rest: list[str]) -> int:
         print("error: no program specified — use: resoluto-sandbox run [opts] -- <program> [args...]", file=sys.stderr)
         return 2
 
-    from resoluto_sandbox.client import Sandbox
+    from resoluto.sandbox.client import Sandbox
 
     sb = Sandbox(backend=args.backend, image=args.image)
     result = sb.run(program_argv, workspace=args.workspace, env_file=args.env_file, stream=sys.stdout)
@@ -110,7 +110,7 @@ def _cmd_image(args: argparse.Namespace) -> int:
         print("error: use `resoluto-sandbox image build`", file=sys.stderr)
         return 2
     import subprocess
-    from resoluto_sandbox.images import PROVIDERS, build, build_base
+    from resoluto.sandbox.images import PROVIDERS, build, build_base
     providers = list(PROVIDERS) if args.provider == "all" else [args.provider]
     context = getattr(args, "context", ".")
     if args.provider == "all":

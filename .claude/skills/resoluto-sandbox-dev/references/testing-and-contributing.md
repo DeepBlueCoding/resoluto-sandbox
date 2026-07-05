@@ -6,13 +6,13 @@ Cross-links (do not duplicate): wire protocol → `../../../../spec/PROTOCOL.md`
 
 ---
 
-## Public API (verbatim — `src/resoluto_sandbox/client.py`, `backends/base.py`)
+## Public API (verbatim — `src/resoluto.sandbox/client.py`, `backends/base.py`)
 
 ```python
-from resoluto_sandbox import Sandbox, RunResult
-from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
-from resoluto_sandbox.runtime.kata_nerdctl import KataNerdctlSandboxRuntime
+from resoluto.sandbox import Sandbox, RunResult
+from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
+from resoluto.sandbox.runtime.kata_nerdctl import KataNerdctlSandboxRuntime
 
 Sandbox(*, backend: "Backend | str" = "local")          # "local" | "k8s" | Backend instance
   .run(
@@ -48,9 +48,9 @@ Dependencies are your program's concern — put `uv run`/`pip install` in your a
 ### k8s config — inject a configured backend
 ```python
 import os
-from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
-from resoluto_sandbox.conduit.factory import store_from_env
+from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
+from resoluto.sandbox.conduit.factory import store_from_env
 
 sb = Sandbox(backend=SubstrateBackend(
     runtime=K8sSandboxRuntime(context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"), egress=None),
@@ -110,9 +110,9 @@ set -o pipefail; uv run pytest 2>&1 | tail -40
 ## Invariants you MUST preserve when extending
 
 ### 1. core import stays light (pydantic-only) — litmus test
-`tests/test_core_import_is_light.py` spawns a fresh interpreter, imports `resoluto_sandbox`, and **fails if any of `kubernetes_asyncio`, `aioboto3`, `botocore`, `gcloud` got pulled into `sys.modules`**. The top-level surface (`__init__.py`, `contracts.py`, `client.py`) carries no platform deps. Heavy runtimes import **lazily, inside functions** (the `client.py` `"local"`/`"k8s"` backend builders import `KataNerdctlSandboxRuntime`/`K8sSandboxRuntime` at call time, and `conduit/factory.py` imports each concrete conduit inside its branch). `KataNerdctlSandboxRuntime` is stdlib-only (it shells the `nerdctl` CLI), so only `K8sSandboxRuntime` / the S3/GCS conduits carry the platform deps.
+`tests/test_core_import_is_light.py` spawns a fresh interpreter, imports `resoluto.sandbox`, and **fails if any of `kubernetes_asyncio`, `aioboto3`, `botocore`, `gcloud` got pulled into `sys.modules`**. The top-level surface (`__init__.py`, `contracts.py`, `client.py`) carries no platform deps. Heavy runtimes import **lazily, inside functions** (the `client.py` `"local"`/`"k8s"` backend builders import `KataNerdctlSandboxRuntime`/`K8sSandboxRuntime` at call time, and `conduit/factory.py` imports each concrete conduit inside its branch). `KataNerdctlSandboxRuntime` is stdlib-only (it shells the `nerdctl` CLI), so only `K8sSandboxRuntime` / the S3/GCS conduits carry the platform deps.
 
-Footgun: a module-top `import aioboto3` / `from kubernetes_asyncio import ...` anywhere reachable from `import resoluto_sandbox` breaks this test. Keep platform imports function-local. Optional deps gate behind extras (`[k8s]`, `[s3]`, `[gcs]` in `pyproject.toml`).
+Footgun: a module-top `import aioboto3` / `from kubernetes_asyncio import ...` anywhere reachable from `import resoluto.sandbox` breaks this test. Keep platform imports function-local. Optional deps gate behind extras (`[k8s]`, `[s3]`, `[gcs]` in `pyproject.toml`).
 
 ### 2. unit tests NEVER launch a pod
 A non-`@integration` test must not call `K8sSandboxRuntime.launch()` / `KataNerdctlSandboxRuntime.launch()` / `drive_node` against a real cluster or the dedicated containerd — k8s leaks unlabeled `ImagePullBackOff` pods that eat quota; the local runtime leaks Kata microVMs/containers. To exercise substrate code in a unit test, stub the runtime (`nerdctl` CLI / k8s client); otherwise mark `@pytest.mark.integration`.

@@ -1,6 +1,6 @@
 """Test stub for the in-sandbox egress canary: a passing verdict with no real network probes."""
-from resoluto_sandbox.contracts import Conduit
-from resoluto_sandbox.egress_canary import CanaryVerdict
+from resoluto.sandbox.contracts import Conduit
+from resoluto.sandbox.egress_canary import CanaryVerdict
 
 
 async def pass_canary(store: Conduit, prefix: str) -> CanaryVerdict:

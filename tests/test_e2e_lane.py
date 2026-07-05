@@ -18,15 +18,15 @@ import uuid
 
 import pytest
 
-from resoluto_sandbox import (
+from resoluto.sandbox import (
     SandboxLaunchSpec,
     SandboxPool,
     drive_node,
     fetch_outputs,
     put_dir,
 )
-from resoluto_sandbox.conduit.s3 import S3Conduit
-from resoluto_sandbox.runtime.k8s import EgressConfig, K8sSandboxRuntime
+from resoluto.sandbox.conduit.s3 import S3Conduit
+from resoluto.sandbox.runtime.k8s import EgressConfig, K8sSandboxRuntime
 
 # These drive a FRESH runner image whose in-guest egress canary is always-on (the trusted-local
 # bypass was removed). They therefore require a CNI that actually ENFORCES the lane's egress

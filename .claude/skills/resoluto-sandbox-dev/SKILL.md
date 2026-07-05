@@ -14,11 +14,11 @@ Two seams. **SandboxRuntime** = the isolation/placement mechanism (a Kata microV
 For `k8s`: the guest self-reports append-only JSONL chunks to its Conduit prefix; `drive_node` tails + reaps. Store-mediated, so no long-lived stream to wedge.
 
 ```python
-from resoluto_sandbox import Sandbox
-from resoluto_sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
-from resoluto_sandbox.conduit.factory import store_from_env
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
-from resoluto_sandbox.egress import EgressConfig   # backend-neutral allowlist; re-exported from runtime.k8s
+from resoluto.sandbox import Sandbox
+from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto.sandbox.conduit.factory import store_from_env
+from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
+from resoluto.sandbox.egress import EgressConfig   # backend-neutral allowlist; re-exported from runtime.k8s
 import os
 
 # local: Kata microVM (via nerdctl + a dedicated containerd) on this host
@@ -61,7 +61,7 @@ Proven conduits: `local`/`stdout` (local backend) and `s3` against minio (k8s). 
 
 ## Footguns
 
-- **`egress=None` is the k8s opt-OUT** (no NetworkPolicy → UNRESTRICTED, Kata kernel isolation only) — DIFFERENT from `EgressConfig()`, which is SECURE BY DEFAULT (store + DNS only). Pass `egress=EgressConfig(...)` and open what you need. `EgressConfig` is **backend-neutral** (`resoluto_sandbox.egress`): two renderers — `k8s_egress_rules()` (NetworkPolicy) and `local_egress_iptables()` (iptables) — drive the SAME config on both backends; knobs `allow` / `allow_port` (least privilege) / `public_https` (escape hatch, default False) — env `RESOLUTO_EGRESS_ALLOW` / `_ALLOW_PORT` / `_PUBLIC_HTTPS` (default 0/deny). A new provider = one new renderer.
+- **`egress=None` is the k8s opt-OUT** (no NetworkPolicy → UNRESTRICTED, Kata kernel isolation only) — DIFFERENT from `EgressConfig()`, which is SECURE BY DEFAULT (store + DNS only). Pass `egress=EgressConfig(...)` and open what you need. `EgressConfig` is **backend-neutral** (`resoluto.sandbox.egress`): two renderers — `k8s_egress_rules()` (NetworkPolicy) and `local_egress_iptables()` (iptables) — drive the SAME config on both backends; knobs `allow` / `allow_port` (least privilege) / `public_https` (escape hatch, default False) — env `RESOLUTO_EGRESS_ALLOW` / `_ALLOW_PORT` / `_PUBLIC_HTTPS` (default 0/deny). A new provider = one new renderer.
 - **`local` = Kata microVM (hardware-virtualized) via nerdctl + a dedicated containerd** — each sandbox is a Kata microVM (VM-grade isolation, parity with k8s, single host, no cluster), NOT a Docker container, NOT a bare host subprocess. Needs `/dev/kvm`, `nerdctl`, the dedicated containerd up (`scripts/local-backend-up.sh`) + an image (default `resoluto-sandbox-base:<installed wheel version>` (`default_local_image()`), never a floating tag). The egress canary RUNS (fail-closed); local egress is enforced HOST-SIDE on the lane CNI bridge (default-deny: store + DNS only until you opt in via `RESOLUTO_EGRESS_ALLOW` / `_PUBLIC_HTTPS`; REJECT IMDS + RFC1918) — immune to in-guest root.
 - **`stdin` NOT supported on either backend** — both raise `NotImplementedError`. Pass inputs via argv, env, or workspace files.
 - **Image tag == wheel** — the `k8s` image bakes a specific build; sandbox-side code changes need a rebuild+republish. The host gets source changes instantly → they drift. Bump the tag.

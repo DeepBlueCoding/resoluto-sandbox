@@ -7,7 +7,7 @@
 It follows the documented program contract exactly (see the resoluto-sandbox skill,
 references/agents.md): it receives its task on argv (and an optional SMOKE_TAG via env),
 'reasons' over the input, prints the answer to stdout, and writes result.json. It NEVER
-imports resoluto_sandbox — it is a plain program, identical on your host and in the sandbox.
+imports resoluto.sandbox — it is a plain program, identical on your host and in the sandbox.
 
     uv run examples/echo_agent.py "ping-42"
 """

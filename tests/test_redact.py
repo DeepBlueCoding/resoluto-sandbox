@@ -1,5 +1,5 @@
 """Redaction proof (§12.7) — secrets must never ride the telemetry channel."""
-from resoluto_sandbox.redact import redact_data, redact_text
+from resoluto.sandbox.redact import redact_data, redact_text
 
 
 def test_redact_text_scrubs_known_secret_shapes():

@@ -7,7 +7,7 @@ import re
 import time
 from typing import Callable
 
-from resoluto_sandbox.contracts import Conduit, SpanEvent
+from resoluto.sandbox.contracts import Conduit, SpanEvent
 
 _CHUNK_RE = re.compile(r"events-(\d+)\.jsonl$")
 _MANIFEST = "_manifest.json"

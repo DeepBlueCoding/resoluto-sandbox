@@ -3,8 +3,8 @@ from typing import IO, Sequence
 
 import pytest
 
-from resoluto_sandbox import Backend, RunResult, Sandbox
-from resoluto_sandbox.secrets import SecretKeyRef
+from resoluto.sandbox import Backend, RunResult, Sandbox
+from resoluto.sandbox.secrets import SecretKeyRef
 
 
 class _CapturingBackend(Backend):

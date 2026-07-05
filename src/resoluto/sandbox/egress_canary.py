@@ -5,7 +5,7 @@ import asyncio
 
 from pydantic import BaseModel
 
-from resoluto_sandbox.contracts import Conduit
+from resoluto.sandbox.contracts import Conduit
 
 
 class ProbeResult(BaseModel):

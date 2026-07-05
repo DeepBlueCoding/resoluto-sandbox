@@ -4,7 +4,7 @@ gcloud dep and no network. Pins list_prefix pagination (nextPageToken) and copy_
 suffix-relativization — the off-by-one logic that breaks silently."""
 import pytest
 
-from resoluto_sandbox.conduit.gcs import GcsConduit
+from resoluto.sandbox.conduit.gcs import GcsConduit
 
 
 class _FakeStorage:

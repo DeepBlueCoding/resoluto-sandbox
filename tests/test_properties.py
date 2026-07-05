@@ -3,8 +3,8 @@ import asyncio
 from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
-from resoluto_sandbox.redact import redact_text
-from resoluto_sandbox.resource_semaphore import ResourceSemaphore
+from resoluto.sandbox.redact import redact_text
+from resoluto.sandbox.resource_semaphore import ResourceSemaphore
 
 _TOKEN_CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 

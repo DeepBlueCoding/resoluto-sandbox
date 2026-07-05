@@ -7,17 +7,17 @@ import asyncio
 
 import pytest
 
-from resoluto_sandbox.contracts import (
+from resoluto.sandbox.contracts import (
     SandboxHandle,
     SandboxLaunchSpec,
     SandboxRuntime,
     SandboxStatus,
 )
 from canary_stub import pass_canary
-from resoluto_sandbox.driver import drive_node
-from resoluto_sandbox.conduit import LocalConduit
-from resoluto_sandbox.pool import SandboxPool
-from resoluto_sandbox.runner import run_node_in_sandbox
+from resoluto.sandbox.driver import drive_node
+from resoluto.sandbox.conduit import LocalConduit
+from resoluto.sandbox.pool import SandboxPool
+from resoluto.sandbox.runner import run_node_in_sandbox
 
 
 class RunnerBackedRuntime(SandboxRuntime):
@@ -227,7 +227,7 @@ class _UnstartableRuntime(SandboxRuntime):
 async def test_drive_node_raw_unstartable_fast_fail(tmp_path):
     # drive_node_raw fails fast (debounced) on a fatal waiting reason and reaps the pod,
     # instead of waiting out the death window — the silence watchdog only arms at RUNNING.
-    from resoluto_sandbox.driver import drive_node_raw
+    from resoluto.sandbox.driver import drive_node_raw
     store = LocalConduit(tmp_path)
     rt = _UnstartableRuntime()
     outcome = await drive_node_raw(
@@ -242,7 +242,7 @@ async def test_drive_node_raw_unstartable_fast_fail(tmp_path):
 async def test_drive_node_raw_completes_on_result_ready_before_terminal(tmp_path):
     # A caller whose work product lands BEFORE the pod reports terminal (the worker's
     # result.json) finishes as soon as result_ready() is true — the pod may still be running.
-    from resoluto_sandbox.driver import drive_node_raw
+    from resoluto.sandbox.driver import drive_node_raw
     store = LocalConduit(tmp_path)
 
     class _NeverTerminalRuntime(SandboxRuntime):
@@ -275,8 +275,8 @@ async def test_drive_node_raw_completes_on_result_ready_before_terminal(tmp_path
 
 
 def test_sandbox_pool_satisfies_admission_protocol():
-    from resoluto_sandbox.contracts import Admission
-    from resoluto_sandbox.runtime import k8s  # noqa: F401 — ensure import path is clean
+    from resoluto.sandbox.contracts import Admission
+    from resoluto.sandbox.runtime import k8s  # noqa: F401 — ensure import path is clean
     pool = SandboxPool(DeadRuntime(), max_concurrent=1)
     assert isinstance(pool, Admission)  # structural: pool is a valid admitter, no inheritance
 
@@ -307,7 +307,7 @@ class _CompletedRuntime(SandboxRuntime):
 async def test_drive_node_corrupt_result_json_is_attributed_distinctly(tmp_path):
     # A present-but-corrupt result.json must NOT be masked as "no result.json" — the driver
     # distinguishes a parse failure (real serialization bug) from a missing work product.
-    from resoluto_sandbox.telemetry import result_key
+    from resoluto.sandbox.telemetry import result_key
     store = LocalConduit(tmp_path)
     prefix = "run/r1/nodes/corrupt"
     await store.put(result_key(prefix), b'{"status": 12345}')  # status must be a literal string
@@ -360,7 +360,7 @@ class _VanishingRuntime(SandboxRuntime):
 async def test_drive_node_raw_external_disposition_on_vanished_pod(tmp_path):
     # Sustained 'unknown' phase + telemetry silence (after the watchdog armed at running) ==
     # the pod was terminated externally. The worker keys on this disposition.
-    from resoluto_sandbox.driver import drive_node_raw
+    from resoluto.sandbox.driver import drive_node_raw
     store = LocalConduit(tmp_path)
     state = {"polls": 0}
     # Time stays 0 (so arm stamps at 0 and the running poll is never "dead") until the pod has

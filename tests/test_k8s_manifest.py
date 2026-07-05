@@ -4,8 +4,8 @@ import logging
 
 import pytest
 
-from resoluto_sandbox.contracts import Resources, SandboxLaunchSpec, parse_quantity
-from resoluto_sandbox.runtime.k8s import EgressConfig, K8sSandboxRuntime
+from resoluto.sandbox.contracts import Resources, SandboxLaunchSpec, parse_quantity
+from resoluto.sandbox.runtime.k8s import EgressConfig, K8sSandboxRuntime
 
 
 @pytest.fixture(autouse=True)
@@ -209,7 +209,7 @@ def test_manifest_always_carries_sandbox_label():
         labels={"resoluto.run_id": "abc", "resoluto.node_id": "n1"},
     )
     manifest = rt._manifest(spec, "sbx-test")
-    assert manifest["metadata"]["labels"]["resoluto.sandbox"] == "true"
+    assert manifest["metadata"]["labels"]["resoluto_sandbox"] == "true"
     assert manifest["metadata"]["labels"]["resoluto.run_id"] == "abc"
 
 
@@ -293,7 +293,7 @@ async def test_launch_always_refuses_non_kata(rc, monkeypatch):
 # ── dind tmpfs memory preflight ──────────────────────────────────────────────
 
 
-from resoluto_sandbox.runtime.k8s import _parse_k8s_memory  # noqa: E402
+from resoluto.sandbox.runtime.k8s import _parse_k8s_memory  # noqa: E402
 
 
 @pytest.mark.parametrize("s,expected", [
@@ -409,8 +409,8 @@ async def test_preflight_fires_in_launch_for_dind_tmpfs(monkeypatch):
 def test_manifest_stamps_opaque_scheduling_gates_and_annotations():
     """Decoupling contract: the substrate stamps caller-supplied scheduling gates +
     annotations VERBATIM (the seam Kueue composes through), and emits honest requests."""
-    from resoluto_sandbox.contracts import SandboxLaunchSpec
-    from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
+    from resoluto.sandbox.contracts import SandboxLaunchSpec
+    from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
     rt = K8sSandboxRuntime()
     spec = SandboxLaunchSpec(
         image="x", store_prefix="run/x/nodes/n/lane-0",
@@ -430,8 +430,8 @@ def test_manifest_stamps_opaque_scheduling_gates_and_annotations():
 
 def test_manifest_no_gates_by_default_normal_scheduling():
     # No scheduling_gates → no schedulingGates key → plain kube-scheduler, no admitter.
-    from resoluto_sandbox.contracts import SandboxLaunchSpec
-    from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
+    from resoluto.sandbox.contracts import SandboxLaunchSpec
+    from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
     m = K8sSandboxRuntime()._manifest(
         SandboxLaunchSpec(image="x", store_prefix="run/x/nodes/n/lane-0"), "sbx-test")
     assert "schedulingGates" not in m["spec"]

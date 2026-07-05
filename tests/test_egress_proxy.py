@@ -1,7 +1,7 @@
 """The SNI egress proxy's pure logic: TLS ClientHello SNI parsing + wildcard domain matching."""
 import struct
 
-from resoluto_sandbox.egress_proxy import domain_allowed, is_public_ip, parse_sni
+from resoluto.sandbox.egress_proxy import domain_allowed, is_public_ip, parse_sni
 
 
 def test_is_public_ip_blocks_internal():
@@ -72,7 +72,7 @@ def test_domain_allowed_empty_inputs():
 
 
 def test_load_domains_file(tmp_path):
-    from resoluto_sandbox.egress_proxy import load_domains_file
+    from resoluto.sandbox.egress_proxy import load_domains_file
     f = tmp_path / "domains"
     f.write_text("api.anthropic.com, *.openai.com\nregistry.npmjs.org")
     assert load_domains_file(str(f)) == ["api.anthropic.com", "*.openai.com", "registry.npmjs.org"]
@@ -83,8 +83,8 @@ def test_load_domains_file(tmp_path):
 
 async def test_kata_apply_egress_writes_live_allowlist_file(tmp_path):
     # per-run egress on the local runtime = writing the proxy's live allowlist file (no re-provision)
-    from resoluto_sandbox.runtime.kata_nerdctl import KataNerdctlSandboxRuntime
-    from resoluto_sandbox.egress_proxy import load_domains_file
+    from resoluto.sandbox.runtime.kata_nerdctl import KataNerdctlSandboxRuntime
+    from resoluto.sandbox.egress_proxy import load_domains_file
     f = tmp_path / "egress-domains"
     rt = KataNerdctlSandboxRuntime(address="x", namespace="n", conduit_host_dir=str(tmp_path),
                                    runtime="io.containerd.kata.v2", egress_domains_file=str(f))

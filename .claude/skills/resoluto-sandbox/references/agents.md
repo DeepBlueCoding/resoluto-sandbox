@@ -1,7 +1,7 @@
 # Bring your own agent (any language) + auth
 
 The sandbox runs a **plain program**. Your program reads argv and writes
-stdout/files; it NEVER imports `resoluto_sandbox`. What runs as
+stdout/files; it NEVER imports `resoluto.sandbox`. What runs as
 `uv run agent.py` (or `./agent`, `node agent.js`, …) on your machine runs
 unchanged under `Sandbox().run(...)`. On `backend="local"` it runs in a Kata
 microVM via nerdctl; on `backend="k8s"` it runs in a Kata microVM pod.
@@ -48,7 +48,7 @@ gate/lane/git vocabulary by design. `result.json` is optional; absence ⇒ `RunR
 ## The API
 
 ```python
-from resoluto_sandbox import Sandbox
+from resoluto.sandbox import Sandbox
 
 Sandbox(*, backend: Backend | str = "local")    # "local" | "k8s" | injected Backend instance
 
@@ -140,7 +140,7 @@ pass the credentials explicitly:
 # One-time interactive login on your Max/Pro account, if needed:
 claude
 
-python -c "from resoluto_sandbox import Sandbox; \
+python -c "from resoluto.sandbox import Sandbox; \
   print(Sandbox().run(['uv','run','examples/claude_agent.py','Say hello in five words']).output)"
 ```
 
@@ -191,12 +191,12 @@ staging; the pod gets only the scoped token:
 
 ```python
 import asyncio, json, os
-from resoluto_sandbox import Sandbox
-from resoluto_sandbox.backends.substrate import SubstrateBackend
-from resoluto_sandbox.conduit.factory import store_from_env
-from resoluto_sandbox.conduit.s3 import mint_scoped_credential
-from resoluto_sandbox.runtime.k8s import K8sSandboxRuntime
-from resoluto_sandbox.egress import EgressConfig
+from resoluto.sandbox import Sandbox
+from resoluto.sandbox.backends.substrate import SubstrateBackend
+from resoluto.sandbox.conduit.factory import store_from_env
+from resoluto.sandbox.conduit.s3 import mint_scoped_credential
+from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
+from resoluto.sandbox.egress import EgressConfig
 
 token = asyncio.run(mint_scoped_credential(
     bucket=os.environ["RESOLUTO_STORE_BUCKET"], prefix="run",
@@ -272,8 +272,8 @@ carries pod forensics (e.g. `OOMKilled`, evicted) when present.
 
 ### `EgressConfig` (default-deny pod egress)
 
-`from resoluto_sandbox.egress import EgressConfig` — backend-neutral frozen dataclass (also re-exported
-from `resoluto_sandbox.runtime.k8s` for back-compat). SECURE BY DEFAULT — `EgressConfig()` allows only
+`from resoluto.sandbox.egress import EgressConfig` — backend-neutral frozen dataclass (also re-exported
+from `resoluto.sandbox.runtime.k8s` for back-compat). SECURE BY DEFAULT — `EgressConfig()` allows only
 store + DNS; there is NO `llm_cidr`/`git_cidrs`, you open HTTPS via `allow=[...]` or `public_https`:
 
 ```python
