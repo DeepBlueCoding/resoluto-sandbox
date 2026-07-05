@@ -21,11 +21,15 @@ def _runtime(egress: EgressConfig) -> K8sSandboxRuntime:
     )
 
 
-def _spec(labels: dict) -> SandboxLaunchSpec:
+def _spec(labels: dict, *, egress_allow: tuple = (), egress_public_https: bool = False) -> SandboxLaunchSpec:
+    # egress_allow/egress_public_https are graph-declared and travel on the SPEC — _network_policy
+    # applies them from here, not from the runtime's EgressConfig (see k8s.py:_network_policy).
     return SandboxLaunchSpec(
         image="test/image:latest",
         labels=labels,
         store_prefix="run/test/nodes/run/lane-0",
+        egress_allow=list(egress_allow),
+        egress_public_https=egress_public_https,
     )
 
 
@@ -34,7 +38,7 @@ def _policy(*, store_port: int = _STORE_PORT) -> dict:
     # is now deny-by-default; that is covered in tests/test_egress.py).
     egress = EgressConfig(store_cidr=_STORE_CIDR, store_port=store_port, public_https=True)
     rt = _runtime(egress)
-    spec = _spec({"app": "lane"})
+    spec = _spec({"app": "lane"}, egress_public_https=True)
     return rt._network_policy(spec, "pod-x", "uid-x")
 
 
@@ -105,7 +109,10 @@ def test_network_policy_namespace_matches_runtime():
 
 
 def _rules(egress: EgressConfig) -> list[dict]:
-    return _runtime(egress)._network_policy(_spec({"app": "lane"}), "pod-x", "uid-x")["spec"]["egress"]
+    # Mirror the EgressConfig's allow/public_https onto the spec — that's what _network_policy
+    # actually reads (the runtime's own EgressConfig only supplies the store base).
+    spec = _spec({"app": "lane"}, egress_allow=tuple(egress.allow), egress_public_https=egress.public_https)
+    return _runtime(egress)._network_policy(spec, "pod-x", "uid-x")["spec"]["egress"]
 
 
 def test_allow_cidr_adds_rule_on_allow_port():
