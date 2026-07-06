@@ -50,3 +50,4 @@ class GcsConduit(Conduit):
     async def aclose(self) -> None:
         if self._storage is not None:
             await self._storage.close()
+            self._storage = None  # so _client() lazily recreates on next use, not a closed session

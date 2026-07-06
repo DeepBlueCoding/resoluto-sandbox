@@ -94,6 +94,7 @@ class SubstrateBackend(Backend):
         finally:
             if clear_egress is not None:
                 await clear_egress()
+            await self._conduit.aclose()
 
     async def _launch_and_collect(
         self,

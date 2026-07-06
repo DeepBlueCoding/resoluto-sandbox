@@ -25,9 +25,13 @@ from resoluto.sandbox.secrets import SecretKeyRef
 class _FakeConduit(Conduit):
     """An injected store so the backend never reconstructs one."""
 
+    def __init__(self):
+        self.aclose_calls = 0
+
     async def put(self, key, data): ...
     async def get(self, key): return b""
     async def list_prefix(self, prefix): return []
+    async def aclose(self): self.aclose_calls += 1
 
 
 class _FakeRuntime(SandboxRuntime):
@@ -182,6 +186,36 @@ def test_secrets_key_ref_routes_to_k8s_secret_refs(monkeypatch):
     assert spec.k8s_secret_refs == {"ANTHROPIC_API_KEY": ("anthropic-key", "api_key")}
     assert "RESOLUTO_SECRET_REFS" not in spec.env
     assert "ANTHROPIC_API_KEY" not in spec.env  # never a plaintext literal in the neutral env dict
+
+
+def test_conduit_aclose_called_when_run_finishes(monkeypatch):
+    # "A sandbox dies when it stops the work": the conduit's cached client (session, HTTP
+    # connection, ...) is released as soon as run() is done — same finally block as clear_egress().
+    _patch_drive(monkeypatch)
+    conduit = _FakeConduit()
+    backend = SubstrateBackend(
+        runtime=_FakeRuntime(), conduit=conduit, image="img:dev",
+        store_env={"RESOLUTO_STORE_KIND": "s3", "RESOLUTO_STORE_BUCKET": "b"},
+    )
+    backend.run(["true"])
+    assert conduit.aclose_calls == 1
+
+
+def test_conduit_aclose_called_even_on_failure(monkeypatch):
+    conduit = _FakeConduit()
+
+    async def failing_drive_node(*a, **kw):
+        raise RuntimeError("boom")
+
+    import resoluto.sandbox.driver as driver
+    monkeypatch.setattr(driver, "drive_node", failing_drive_node)
+    backend = SubstrateBackend(
+        runtime=_FakeRuntime(), conduit=conduit, image="img:dev",
+        store_env={"RESOLUTO_STORE_KIND": "s3", "RESOLUTO_STORE_BUCKET": "b"},
+    )
+    with pytest.raises(RuntimeError, match="boom"):
+        backend.run(["true"])
+    assert conduit.aclose_calls == 1
 
 
 def test_default_resources_and_dead_after_s(monkeypatch):

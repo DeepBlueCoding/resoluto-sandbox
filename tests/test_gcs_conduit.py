@@ -35,6 +35,16 @@ async def test_aclose_closes_the_cached_storage_client():
 
 
 @pytest.mark.asyncio
+async def test_aclose_resets_storage_so_client_lazily_recreates():
+    # A reused Conduit calls aclose() after every run() (SubstrateBackend._run_async's finally).
+    # If _storage weren't reset to None, the NEXT _client() call would hand back the closed client.
+    c = GcsConduit("my-bucket")
+    c._storage = _FakeStorage({})  # simulate _client() having been called once already
+    await c.aclose()
+    assert c._storage is None
+
+
+@pytest.mark.asyncio
 async def test_aclose_is_a_noop_when_never_used():
     c = GcsConduit("my-bucket")  # never touched _client(), so self._storage is still None
     await c.aclose()  # must not raise
