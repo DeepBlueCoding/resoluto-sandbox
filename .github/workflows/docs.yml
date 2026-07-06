@@ -1,0 +1,64 @@
+name: Deploy Documentation
+
+# Builds the Material for MkDocs site (API autodoc + llms.txt for AI agents)
+# and publishes versioned docs to gh-pages via `mike`.
+#   push to main         → the "main" (dev) docs version
+#   tag  vX.Y.Z          → version X.Y.Z, aliased "latest" (the default)
+#   tag  vX.Y.Z(-|.dev)  → that pre-release version only (not aliased latest)
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "src/**"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: docs-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Install docs deps
+        run: uv sync --group docs
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+      - run: git fetch origin gh-pages:gh-pages || true
+
+      - name: Deploy (release tag → latest)
+        if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') && !contains(github.ref, '.dev')
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          VERSION="${REF_NAME#v}"
+          uv run mike deploy --push --update-aliases "$VERSION" latest
+          uv run mike set-default --push latest
+
+      - name: Deploy (pre-release tag)
+        if: startsWith(github.ref, 'refs/tags/v') && (contains(github.ref, '-') || contains(github.ref, '.dev'))
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          VERSION="${REF_NAME#v}"
+          uv run mike deploy --push "$VERSION"
+
+      - name: Deploy (main → dev docs)
+        if: github.ref == 'refs/heads/main'
+        run: uv run mike deploy --push main

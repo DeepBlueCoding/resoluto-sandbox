@@ -1,0 +1,128 @@
+site_name: Resoluto Sandbox
+site_description: The store-mediated, Kata-isolated execution substrate — a passive, self-reporting sandbox that rendezvous with the host through a durable store.
+site_author: DeepBlueCoding
+site_url: https://deepbluecoding.github.io/resoluto-sandbox/
+
+repo_name: DeepBlueCoding/resoluto-sandbox
+repo_url: https://github.com/DeepBlueCoding/resoluto-sandbox
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  font:
+    text: Inter
+    code: JetBrains Mono
+  icon:
+    logo: material/cube-outline
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to light
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark
+  features:
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+
+plugins:
+  - search
+  - mike:
+      version_selector: true
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            separate_signature: true
+            signature_crossrefs: true
+            merge_init_into_class: true
+            members_order: source
+  # Emits /llms.txt (index) + /llms-full.txt (full corpus) for AI agents.
+  - llmstxt:
+      full_output: llms-full.txt
+      sections:
+        Overview:
+          - index.md
+        Usage:
+          - getting-started.md
+          - concepts.md
+          - backends.md
+          - networking.md
+          - auth.md
+        API:
+          - api/*.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - toc:
+      permalink: true
+
+extra_css:
+  - stylesheets/extra.css
+
+extra:
+  version:
+    provider: mike
+    default: latest
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/DeepBlueCoding/resoluto-sandbox
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/resoluto-sandbox/
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Concepts: concepts.md
+  - Backends: backends.md
+  - Networking: networking.md
+  - Auth: auth.md
+  - API Reference:
+      - Sandbox: api/sandbox.md
+      - Conduit: api/conduit.md
+      - Runtime & Contracts: api/runtime.md
+      - Pool: api/pool.md
+  - Changelog: changelog.md

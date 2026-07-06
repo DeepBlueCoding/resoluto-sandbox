@@ -43,3 +43,11 @@ dev = [
     "jsonschema>=4.26.0",
     "hypothesis>=6.155.7",
 ]
+docs = [
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.26",
+    "mike>=2.1",
+    "mkdocs-llmstxt>=0.1",
+    "ruff>=0.6",
+    "resoluto-sandbox",
+]
