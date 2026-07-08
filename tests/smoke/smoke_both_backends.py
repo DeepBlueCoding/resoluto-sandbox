@@ -14,7 +14,7 @@ For each backend it asserts the documented program contract (references/agents.m
   artifact: result.json is collected (RunResult.artifacts) and parsed (RunResult.result)
 
 Run from resoluto-sandbox/ with the backends provisioned:
-    set -a; source store.env; set +a      # k8s: minio + s3 + STS + sandbox image + kube context
+    # k8s: export your s3 store config (RESOLUTO_STORE_*) + RESOLUTO_SANDBOX_KUBECONTEXT + RESOLUTO_SANDBOX_IMAGE
     set -a; source local.env; set +a      # local: RESOLUTO_LOCAL_* knobs (or rely on defaults)
     uv run python tests/smoke/smoke_both_backends.py            # both
     uv run python tests/smoke/smoke_both_backends.py --local-only
@@ -93,7 +93,7 @@ def run_k8s() -> str:
     forwarded to the pod. Mint one (broad run/* prefix) and hand it to the pod via store_env.
     """
     if os.environ.get("RESOLUTO_STORE_KIND") != "s3" or "RESOLUTO_STORE_BUCKET" not in os.environ:
-        print("\n[SKIP] k8s — set the s3 store config first:  set -a; source store.env; set +a")
+        print("\n[SKIP] k8s — set the s3 store config first (export RESOLUTO_STORE_*)")
         return "BLOCKED"
 
     from resoluto.sandbox.backends.substrate import SubstrateBackend

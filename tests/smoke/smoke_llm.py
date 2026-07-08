@@ -20,7 +20,8 @@ PROVISION time, so provision it with the LLM opened first:
     RESOLUTO_EGRESS_ALLOW=anthropic bash scripts/local-backend-up.sh    # (or RESOLUTO_EGRESS_PUBLIC_HTTPS=1)
 
 Run from resoluto-sandbox/ (sandbox image present; backends provisioned):
-    set -a; source store.env; source local.env; set +a
+    export RESOLUTO_STORE_* RESOLUTO_SANDBOX_IMAGE   # your s3 store (k8s); then:
+    set -a; source local.env; set +a                 # local-Kata backend config
     uv run python tests/smoke/smoke_llm.py                       # local backend
     uv run python tests/smoke/smoke_llm.py --k8s-only            # k8s backend
     uv run python tests/smoke/smoke_llm.py "your own prompt"
@@ -100,7 +101,7 @@ def run_local(prompt: str, token: str) -> str:
 
 def run_k8s(prompt: str, token: str) -> str:
     if os.environ.get("RESOLUTO_STORE_KIND") != "s3":
-        print("[SKIP] k8s — set the s3 store config:  set -a; source store.env; set +a")
+        print("[SKIP] k8s — set the s3 store config (export RESOLUTO_STORE_*)")
         return "BLOCKED"
     import asyncio
     from resoluto.sandbox.backends.substrate import SubstrateBackend
