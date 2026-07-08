@@ -9,10 +9,9 @@ This proves the full workload path end to end: a real LLM call runs inside the K
 reaching api.anthropic.com over the allowed public :443 egress, and its input/output
 round-trips through the store-mediated substrate.
 
-Auth (docs/auth.md): the guest `claude` CLI authenticates with CLAUDE_CODE_OAUTH_TOKEN. We use
-$CLAUDE_CODE_OAUTH_TOKEN if set, else the OAuth access token from your subscription login
-(~/.claude/.credentials.json). ANTHROPIC_API_KEY stays unset so usage bills your subscription.
-The token rides in the pod env (a secret) — fine for a local dev smoke.
+Auth: export CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`); it is forwarded to the guest via
+env= (the sandbox never reads or parses a provider credential file). ANTHROPIC_API_KEY stays unset so
+usage bills your subscription. The token rides in the pod env (a secret) — fine for a local dev smoke.
 
 Egress is DENY-by-default (secure) — a sandbox can't reach the LLM until you open it. The k8s
 path here opens just the provider (`allow=["anthropic"]`). The LOCAL backend enforces egress at
@@ -38,21 +37,7 @@ from resoluto.sandbox import Sandbox
 
 EXAMPLES = Path(__file__).resolve().parent
 AGENT = EXAMPLES / "llm_agent.py"
-CREDS = Path.home() / ".claude" / ".credentials.json"
 DEFAULT_PROMPT = "In exactly five words, say why isolated sandboxes matter."
-
-
-def _oauth_token() -> str | None:
-    """The Claude OAuth token: env first, else the subscription access token from the creds file."""
-    tok = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
-    if tok:
-        return tok
-    if CREDS.exists():
-        try:
-            return json.loads(CREDS.read_text())["claudeAiOauth"]["accessToken"]
-        except (KeyError, ValueError):
-            return None
-    return None
 
 
 def _staged_workspace() -> str:
@@ -154,10 +139,10 @@ def main() -> int:
     flags = {a for a in args if a.startswith("--")}
     prompt = next((a for a in args if not a.startswith("--")), DEFAULT_PROMPT)
 
-    token = _oauth_token()
+    token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
     if not token:
-        print("no Claude auth — set CLAUDE_CODE_OAUTH_TOKEN (`claude setup-token`) or log in "
-              "with `claude` so ~/.claude/.credentials.json exists. ANTHROPIC_API_KEY is not used.")
+        print("set CLAUDE_CODE_OAUTH_TOKEN (`claude setup-token`) to auth the agent. "
+              "ANTHROPIC_API_KEY is not used.")
         return 1
 
     results = {}

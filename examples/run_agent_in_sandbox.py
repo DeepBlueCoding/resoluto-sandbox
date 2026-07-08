@@ -14,15 +14,15 @@ isolated instead — that is all the sandbox does.
 Prereqs — from resoluto-sandbox/, local Kata backend provisioned:
     bash scripts/local-backend-up.sh                 # provision the local Kata backend
     set -a; source local.env; set +a                 # exports RESOLUTO_SANDBOX_IMAGE (the sandbox image)
-    claude setup-token                               # or `claude` login -> ~/.claude/.credentials.json
+    export CLAUDE_CODE_OAUTH_TOKEN=$(claude setup-token)   # provider auth — you obtain it, the sandbox forwards it
 
     uv run python examples/run_agent_in_sandbox.py "In five words, why isolate an agent?"
 
-Auth (docs/auth.md): the guest `claude` CLI authenticates with CLAUDE_CODE_OAUTH_TOKEN (your
-subscription token); ANTHROPIC_API_KEY stays UNSET so usage bills your subscription, not the API.
+The token is passed straight to the guest via `env=` (the sandbox forwards it, nothing more —
+it never reads or parses any provider credential file). Obtaining the token and choosing
+subscription-vs-API billing (keep ANTHROPIC_API_KEY unset) is the provider's concern.
 """
 import io
-import json
 import os
 import shutil
 import sys
@@ -32,21 +32,7 @@ from pathlib import Path
 from resoluto.sandbox import Sandbox
 
 PAYLOAD = Path(__file__).resolve().parent / "payloads" / "claude_agent.py"
-CREDS = Path.home() / ".claude" / ".credentials.json"
 DEFAULT_PROMPT = "In five words, why run an untrusted agent in a sandbox?"
-
-
-def _oauth_token() -> str | None:
-    """The Claude OAuth token: env first, else the subscription access token from the creds file."""
-    tok = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
-    if tok:
-        return tok
-    if CREDS.exists():
-        try:
-            return json.loads(CREDS.read_text())["claudeAiOauth"]["accessToken"]
-        except (KeyError, ValueError):
-            return None
-    return None
 
 
 def main() -> int:
@@ -57,10 +43,10 @@ def main() -> int:
         print("set RESOLUTO_SANDBOX_IMAGE first (the provisioned sandbox image):  "
               "set -a; source local.env; set +a", file=sys.stderr)
         return 1
-    token = _oauth_token()
+    # provider auth is the CALLER's job — the sandbox just forwards whatever secret you pass via env=.
+    token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
     if not token:
-        print("no Claude auth — run `claude setup-token` (or log in with `claude`). "
-              "ANTHROPIC_API_KEY is not used.", file=sys.stderr)
+        print("set CLAUDE_CODE_OAUTH_TOKEN (run `claude setup-token`) to auth the agent.", file=sys.stderr)
         return 1
 
     # a throwaway workspace holding just the agent program — the token travels via env, not files
