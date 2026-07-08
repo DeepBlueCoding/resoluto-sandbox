@@ -12,18 +12,25 @@ Two kinds of file live here — keep them straight:
 
 | Driver | Shows |
 |--------|-------|
-| `run_agent_in_sandbox.py` | Run any untrusted program isolated in a Kata microVM — here a Claude agent as the sample workload — egress locked, input→output round-tripped through the store. |
-| `run_hello_in_sandbox.py` | The bare mechanics — stage a plain program (`payloads/hello.py`) into the guest and run it under the local Kata backend. |
+| `run_agent_in_sandbox.py <claude\|langchain\|openai>` | Run a provider's agent isolated in a Kata microVM — **symmetric across all three provider images**. The provider you name selects the matching prebuilt image, payload, credential env, and egress host; nothing privileges one provider. |
+| `run_hello_in_sandbox.py` | The bare mechanics — stage a plain program (`payloads/hello.py`) into the guest and run it on the base image. |
 
 ```bash
-# provision the local Kata backend first (see the repo README), then:
-set -a; source local.env; set +a                                       # exports RESOLUTO_SANDBOX_IMAGE
-uv run python examples/run_hello_in_sandbox.py                         # simplest: hello, sandboxed
-uv run python examples/run_agent_in_sandbox.py "why isolate agents?"   # a real agent, isolated
+# provision the local Kata backend + build the provider image you want (see the repo README), then:
+set -a; source local.env; set +a                                # exports RESOLUTO_SANDBOX_IMAGE (base)
+uv run python examples/run_hello_in_sandbox.py                   # simplest: hello, on the base image
+
+export OPENAI_API_KEY=...                                        # each provider brings its OWN credential
+uv run python examples/run_agent_in_sandbox.py openai "why isolate agents?"
+export ANTHROPIC_API_KEY=...
+uv run python examples/run_agent_in_sandbox.py langchain "why isolate agents?"
+export CLAUDE_CODE_OAUTH_TOKEN=$(claude setup-token)
+uv run python examples/run_agent_in_sandbox.py claude "why isolate agents?"
 ```
 
-Neither driver hardcodes an image tag — both read `RESOLUTO_SANDBOX_IMAGE` (set when you provision the
-backend) and fail fast if it is unset.
+`run_hello_in_sandbox.py` reads `RESOLUTO_SANDBOX_IMAGE` (the base image); `run_agent_in_sandbox.py`
+resolves the provider overlay tag automatically from the sandbox's own `image_tags()`. Each forwards the
+provider's credential via `env=` — the sandbox never reads or parses a credential file.
 
 ## Payloads
 

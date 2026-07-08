@@ -41,16 +41,19 @@ The result captures the output, the exit code, and any files you asked to collec
 > never a floating tag; build it from `Dockerfile.base` or `resoluto-sandbox image build`). Run argv with
 > the **guest's** `python` and paths relative to `workspace`, not host absolute paths.
 
-**Run an arbitrary program, isolated** — the sandbox runs any untrusted program; a real LLM agent is
-just one example. `run_agent_in_sandbox.py` runs a plain Claude agent (`examples/payloads/claude_agent.py`,
-which never imports the library) inside a Kata microVM with egress locked to the LLM, then prints its
-input → output:
+**Run an arbitrary program, isolated** — the sandbox runs any untrusted program; an LLM agent is just
+one example. `run_agent_in_sandbox.py <provider>` is symmetric across every provider image the sandbox
+ships — the name you pass selects the matching prebuilt image, payload, credential, and egress host
+(nothing privileges one provider). Each payload is a plain program that never imports the library:
 
 ```bash
-set -a; source local.env; set +a          # exports RESOLUTO_SANDBOX_IMAGE (provision the backend first)
-uv run python examples/run_agent_in_sandbox.py "In five words, why isolate an agent?"
-#   INPUT  (prompt) : 'In five words, why isolate an agent?'
-#   OUTPUT (answer) : 'Untrusted code cannot escape containment.'
+set -a; source local.env; set +a          # provision the local Kata backend first; build the provider image too
+export OPENAI_API_KEY=...                  # each provider brings its OWN credential; the sandbox just forwards it
+uv run python examples/run_agent_in_sandbox.py openai "In five words, why isolate an agent?"
+#   provider : openai  (resoluto-sandbox:openai-agents-0.17.7)
+#   INPUT    : 'In five words, why isolate an agent?'
+#   OUTPUT   : 'Untrusted code cannot escape containment.'
+# ...or `claude` (CLAUDE_CODE_OAUTH_TOKEN) / `langchain` (ANTHROPIC_API_KEY) — same driver, different image.
 ```
 
 For the bare mechanics without an LLM, see `examples/run_hello_in_sandbox.py`. The end-to-end
@@ -374,7 +377,7 @@ On `k8s`, retag + push to your registry (`docs/backends.md`), then inject the sa
 - `docs/networking.md` — egress isolation (the canary + per-backend enforcement)
 - `docs/auth.md` — Claude Max/Pro subscription auth (no API key needed)
 - `spec/PROTOCOL.md` — the language-neutral host ↔ sandbox wire protocol
-- `examples/` — start at `run_agent_in_sandbox.py` (a real Claude agent isolated in a Kata microVM)
-  or `run_hello_in_sandbox.py` (the bare mechanics); `payloads/` holds the plain programs run inside
-  (`hello.py`, `claude_agent.py`, `langchain_agent.py`, `openai_agent.py`, one per prebuilt provider
-  image). See [`examples/README.md`](examples/README.md).
+- `examples/` — `run_agent_in_sandbox.py <claude|langchain|openai>` runs any provider's agent isolated
+  (symmetric across all three images); `run_hello_in_sandbox.py` is the bare mechanics. `payloads/`
+  holds the plain programs run inside (`hello.py`, `claude_agent.py`, `langchain_agent.py`,
+  `openai_agent.py`, one per prebuilt provider image). See [`examples/README.md`](examples/README.md).

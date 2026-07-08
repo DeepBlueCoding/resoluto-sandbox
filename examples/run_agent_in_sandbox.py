@@ -2,66 +2,76 @@
 # /// script
 # requires-python = ">=3.12"
 # ///
-"""Run an untrusted program isolated in a Kata microVM — here, a Claude agent as the sample workload.
+"""Run a provider's agent isolated in a Kata microVM — symmetric across every image the sandbox ships.
 
-The sandbox itself knows nothing about agents; it runs whatever program you hand it, isolated.
-`payloads/claude_agent.py` is just such a program: a PLAIN script that makes a live LLM call via
-claude-agent-sdk and never imports `resoluto.sandbox`. This driver wraps it from the OUTSIDE — runs it
-hardware-isolated in a Kata microVM (local backend), with network egress locked to one endpoint, and
-its input/output round-tripped through the store. Swap the payload for any other program to run THAT
-isolated instead — that is all the sandbox does.
+The sandbox is provider-agnostic: it stages a program and forwards whatever secret you pass via `env=`.
+Nothing here privileges one provider — you pick a name and the driver looks up the matching prebuilt
+image (via the sandbox's own `image_tags()`), the payload program, the credential env var, and the LLM
+host to allow. `payloads/<name>_agent.py` is a PLAIN program; it never imports `resoluto.sandbox`.
 
-Prereqs — from resoluto-sandbox/, local Kata backend provisioned:
-    bash scripts/local-backend-up.sh                 # provision the local Kata backend
-    set -a; source local.env; set +a                 # exports RESOLUTO_SANDBOX_IMAGE (the sandbox image)
-    export CLAUDE_CODE_OAUTH_TOKEN=$(claude setup-token)   # provider auth — you obtain it, the sandbox forwards it
+    resoluto-sandbox image build --provider <name>        # build the overlay image (claude|langchain|openai)
+    # transfer it into the local containerd (README: Prebuilt provider images)
+    export <AUTH_ENV>=...                                  # the provider's OWN credential (table below)
+    uv run python examples/run_agent_in_sandbox.py <name> "your prompt"
 
-    uv run python examples/run_agent_in_sandbox.py "In five words, why isolate an agent?"
-
-The token is passed straight to the guest via `env=` (the sandbox forwards it, nothing more —
-it never reads or parses any provider credential file). Obtaining the token and choosing
-subscription-vs-API billing (keep ANTHROPIC_API_KEY unset) is the provider's concern.
+  name       payload              credential env            LLM host
+  ---------  -------------------  ------------------------  -----------------
+  claude     claude_agent.py      CLAUDE_CODE_OAUTH_TOKEN   api.anthropic.com
+  langchain  langchain_agent.py   ANTHROPIC_API_KEY         api.anthropic.com
+  openai     openai_agent.py      OPENAI_API_KEY            api.openai.com
 """
 import io
 import os
 import shutil
 import sys
 import tempfile
+from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
 from resoluto.sandbox import Sandbox
+from resoluto.sandbox.images import image_tags
 
-PAYLOAD = Path(__file__).resolve().parent / "payloads" / "claude_agent.py"
+PAYLOADS = Path(__file__).resolve().parent / "payloads"
 DEFAULT_PROMPT = "In five words, why run an untrusted agent in a sandbox?"
+
+# provider -> (payload program, the env var carrying ITS credential, the LLM host to allow egress to)
+PROVIDERS = {
+    "claude":    ("claude_agent.py",    "CLAUDE_CODE_OAUTH_TOKEN", "api.anthropic.com"),
+    "langchain": ("langchain_agent.py", "ANTHROPIC_API_KEY",       "api.anthropic.com"),
+    "openai":    ("openai_agent.py",    "OPENAI_API_KEY",          "api.openai.com"),
+}
 
 
 def main() -> int:
-    prompt = " ".join(sys.argv[1:]).strip() or DEFAULT_PROMPT
+    args = sys.argv[1:]
+    if not args or args[0] not in PROVIDERS:
+        print(f"usage: run_agent_in_sandbox.py <{'|'.join(PROVIDERS)}> [prompt]", file=sys.stderr)
+        return 2
+    provider = args[0]
+    prompt = " ".join(args[1:]).strip() or DEFAULT_PROMPT
+    payload, auth_env, llm_host = PROVIDERS[provider]
 
-    image = os.environ.get("RESOLUTO_SANDBOX_IMAGE")
-    if not image:
-        print("set RESOLUTO_SANDBOX_IMAGE first (the provisioned sandbox image):  "
-              "set -a; source local.env; set +a", file=sys.stderr)
-        return 1
-    # provider auth is the CALLER's job — the sandbox just forwards whatever secret you pass via env=.
-    token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
+    image = image_tags(_pkg_version("resoluto-sandbox"))[provider]
+    token = os.environ.get(auth_env)
     if not token:
-        print("set CLAUDE_CODE_OAUTH_TOKEN (run `claude setup-token`) to auth the agent.", file=sys.stderr)
+        print(f"set {auth_env} (the {provider} provider's own credential) — the sandbox forwards it "
+              f"to the guest via env=.", file=sys.stderr)
         return 1
 
-    # a throwaway workspace holding just the agent program — the token travels via env, not files
+    # a throwaway workspace holding just the agent program — the credential travels via env, not files
     with tempfile.TemporaryDirectory(prefix="agent-ws-") as ws:
-        shutil.copy(PAYLOAD, Path(ws) / "claude_agent.py")
+        shutil.copy(PAYLOADS / payload, Path(ws) / payload)
         result = Sandbox(backend="local", image=image).run(
-            ["python", "claude_agent.py", prompt],
+            ["python", payload, prompt],
             workspace=ws,
-            env={"CLAUDE_CODE_OAUTH_TOKEN": token},   # authenticate the guest claude CLI
-            egress=["api.anthropic.com"],             # local backend: lock egress to the LLM only (SNI proxy)
-            stream=io.StringIO(),                     # capture substrate telemetry; print the clean answer below
+            env={auth_env: token},        # forward the provider's secret; the sandbox never inspects it
+            egress=[llm_host],            # lock egress to this provider's LLM endpoint only
+            stream=io.StringIO(),
         )
-    print(f"\nINPUT  (prompt) : {prompt!r}")
-    print(f"OUTPUT (answer) : {result.output.strip()!r}")
-    print(f"exit={result.exit_code}  — ran in a Kata microVM, egress=api.anthropic.com only")
+    print(f"\nprovider : {provider}  ({image})")
+    print(f"INPUT    : {prompt!r}")
+    print(f"OUTPUT   : {result.output.strip()!r}")
+    print(f"exit={result.exit_code}  — ran isolated in a Kata microVM, egress={llm_host} only")
     return result.exit_code
 
 
