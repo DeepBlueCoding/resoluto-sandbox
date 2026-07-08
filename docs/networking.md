@@ -61,7 +61,7 @@ runtime = K8sSandboxRuntime(
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
     conduit=store_from_env(),
-    image="<registry>/resoluto-lane:dev",
+    image="<registry>/resoluto-lane:2026-07",
     store_env=store_env_for_pod(os.environ),
 ))
 ```
@@ -208,7 +208,7 @@ export RESOLUTO_EGRESS_PUBLIC_HTTPS=1                       # opt IN to all :443
 There is no per-rule *blacklist* primitive (the model is default-deny; IMDS/RFC1918 are hardcoded
 denies). "Blacklist a host" = enumerate the hosts you DO want in `allow=[...]` and leave
 `public_https=False`. To add a NEW backend, write a renderer that maps `EgressConfig` to its
-mechanism (see `src/resoluto.sandbox/egress.py`).
+mechanism (see `src/resoluto/sandbox/egress.py`).
 
 ## What you can manage
 

@@ -135,7 +135,7 @@ Sandbox(backend=SubstrateBackend(
         ),
     ),
     conduit=store_from_env(),               # or inject a Conduit instance
-    image="registry.example/lane:dev",
+    image="registry.example/lane:2026-07",
     store_env=store_env_for_pod(os.environ),
 ))
 ```
@@ -223,7 +223,7 @@ runtime = K8sSandboxRuntime(
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
     conduit=store_from_env(),
-    image="registry.example/lane:dev",
+    image="registry.example/lane:2026-07",
     store_env=store_env_for_pod(os.environ),
 ))
 r = sb.run(["agent.py", "--task", "..."], workspace="/abs/repo", output_paths=["**/*.patch"])

@@ -74,6 +74,7 @@ plugins:
           - concepts.md
           - backends.md
           - networking.md
+          - concurrency.md
           - auth.md
         API:
           - api/*.md
@@ -119,6 +120,7 @@ nav:
   - Concepts: concepts.md
   - Backends: backends.md
   - Networking: networking.md
+  - Concurrency: concurrency.md
   - Auth: auth.md
   - API Reference:
       - Sandbox: api/sandbox.md

@@ -84,7 +84,7 @@ runtime = K8sSandboxRuntime(
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
     conduit=store_from_env(),
-    image="<registry>/resoluto-lane:dev",
+    image="<registry>/resoluto-lane:2026-07",
     store_env=store_env_for_pod(os.environ),
 ))
 r = sb.run(
@@ -146,7 +146,7 @@ runtime = K8sSandboxRuntime(
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
     conduit=store_from_env(),
-    image="<registry>/resoluto-lane:dev",
+    image="<registry>/resoluto-lane:2026-07",
     store_env=store_env_for_pod(os.environ),
 ))
 ```
@@ -187,7 +187,7 @@ in a Kata microVM via nerdctl on this host.
 
 ### 6. Secrets: env_file, SecretKeyRef, SecretProvider
 
-Three mechanisms, not interchangeable — see `resoluto.sandbox/secrets.py` + `envfile.py`.
+Three mechanisms, not interchangeable — see `resoluto/sandbox/secrets.py` + `envfile.py`.
 
 **`env_file` — host-side convenience, NOT security** (same plaintext exposure as `env=`):
 

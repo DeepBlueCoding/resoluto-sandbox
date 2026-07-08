@@ -147,14 +147,10 @@ allowlist IMDS.
 
 ## Modifying the egress allowlist — ONE config, both backends
 
-Default-deny whitelist. Three simple knobs — no CIDR math or code edits for the common cases:
-
-| Knob | Env | Meaning |
-|---|---|---|
-| `allow=[...]` | `RESOLUTO_EGRESS_ALLOW` (comma list of host/CIDR) | extra destinations on `allow_port` |
-| `allow_port` | `RESOLUTO_EGRESS_ALLOW_PORT` (default 443) | port for `allow` — e.g. `22` for git-over-SSH |
-| `public_https` | `RESOLUTO_EGRESS_PUBLIC_HTTPS` (`0`/`1`) | DEFAULT `False`/`0` = store + `allow` + DNS only; `True`/`1` = allow ALL `:443` (escape hatch) |
-
+Default-deny whitelist, three knobs — `allow=[...]` (`RESOLUTO_EGRESS_ALLOW`, comma host/CIDR list),
+`allow_port` (`RESOLUTO_EGRESS_ALLOW_PORT`, default 443; e.g. `22` for git-over-SSH), and
+`public_https` (`RESOLUTO_EGRESS_PUBLIC_HTTPS`, `0`/`1`; `1` = allow ALL `:443`). Canonical table with
+per-knob detail: [`docs/networking.md`](../../../../docs/networking.md#modifying-the-egress-allowlist-one-config-both-backends).
 The env knobs are honored by BOTH backends (k8s via `from_store_env()`; local via
 `scripts/local-backend-up.sh`).
 
@@ -183,7 +179,7 @@ export RESOLUTO_EGRESS_PUBLIC_HTTPS=1                       # opt IN to all :443
 There is no per-rule *blacklist* primitive (the model is default-deny; IMDS/RFC1918 are hardcoded
 denies). "Blacklist a host" = enumerate the hosts you DO want in `allow=[...]` and leave
 `public_https=False`. To add a NEW backend,
-write a renderer that maps `EgressConfig` to its mechanism — see `src/resoluto.sandbox/egress.py`.
+write a renderer that maps `EgressConfig` to its mechanism — see `src/resoluto/sandbox/egress.py`.
 
 ## CNI requirement
 
@@ -238,7 +234,7 @@ runtime = K8sSandboxRuntime(
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
     conduit=store_from_env(),
-    image="<registry>/resoluto-lane:dev",
+    image="<registry>/resoluto-lane:2026-07",
     store_env=store_env_for_pod(os.environ),
 ))
 

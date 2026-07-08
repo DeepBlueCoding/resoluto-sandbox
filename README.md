@@ -316,14 +316,14 @@ resoluto-sandbox image build --provider all         # builds the base once, then
 
 Verified end to end against the real Kata sandbox (all three: canary passes, workspace stages, the
 script runs and reaches its auth check). `claude` and `openai` run against the plain prebuilt image;
-`langchain` needs the one-line extended image from above (built as `my-langchain-anthropic:dev` here):
+`langchain` needs the one-line extended image from above (built as `my-langchain-anthropic:2026-07` here):
 
 ```python
 from resoluto.sandbox import Sandbox
 
 # workspace="examples" stages that DIRECTORY'S CONTENTS at /workspace — argv paths are relative
 # to that root, never prefixed with "examples/" again.
-r = Sandbox(backend="local", image="my-langchain-anthropic:dev").run(
+r = Sandbox(backend="local", image="my-langchain-anthropic:2026-07").run(
     ["python3", "langchain_agent.py", "Say hello in five words"],
     workspace="examples",
     env={"ANTHROPIC_API_KEY": "..."},

@@ -33,6 +33,28 @@ The in-sandbox runner merges stdout and stderr as `log` span events, so
 This is intentional, not a dropped field. On k8s, `RunResult.reason` carries
 substrate forensics when a pod is evicted or OOM-killed, and is `""` on a normal exit.
 
+## Sizing — memory, CPU, disk
+
+The facade defaults each sandbox to 4 GiB / 2 CPU. To size it, pass a `Resources` to the injected
+`SubstrateBackend` — **both backends honor it** (k8s renders pod requests/limits, `local` renders
+`nerdctl --memory`/`--cpus`):
+
+```python
+from resoluto.sandbox import Sandbox
+from resoluto.sandbox.contracts import Resources
+from resoluto.sandbox.backends.substrate import SubstrateBackend
+
+sb = Sandbox(backend=SubstrateBackend(
+    runtime=runtime, conduit=conduit, image="<registry>/resoluto-lane:2026-07",
+    store_env=store_env,
+    resources=Resources.from_quantities(memory="16Gi", cpu="4", disk="40Gi"),  # default: 4Gi / 2 cpu
+))
+```
+
+`Resources.from_quantities` takes human quantity strings (`"16Gi"`, `"4"`, `"40Gi"`). The disk-backed
+docker image graph (`graph_backend="block"`, `dind_graph=...`) is a dind-only knob on the direct
+`drive_node` path — see [Concurrency & direct control](concurrency.md#advanced-the-direct-drive_node-path).
+
 ## local
 
 `backend="local"` runs the program in a Kata microVM launched via `nerdctl` against a
@@ -114,7 +136,7 @@ runtime = K8sSandboxRuntime(
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
     conduit=store_from_env(),
-    image="<registry>/resoluto-lane:dev",
+    image="<registry>/resoluto-lane:2026-07",
     store_env=store_env_for_pod(os.environ),
 ))
 result = sb.run(["bash", "-lc", "echo hi"], workspace="./proj", output_paths=["*.txt"])
@@ -125,7 +147,7 @@ print(result.ok)       # True
 Or use the convenience shortcut (reads `RESOLUTO_LANE_IMAGE` and `RESOLUTO_STORE_KIND` from env):
 
 ```python
-Sandbox(backend="k8s", image="<registry>/resoluto-lane:dev").run(...)
+Sandbox(backend="k8s", image="<registry>/resoluto-lane:2026-07").run(...)
 ```
 
 ### Optional: egress lockdown
@@ -136,25 +158,18 @@ permits only: the object store (`store_cidr:store_port`), public HTTPS (TCP/443 
 anywhere — covers the LLM API + git, no fragile FQDN→/32 pinning), and DNS. IMDS
 (`169.254.169.254`) and everything else are denied.
 
+Same wiring as [Usage](#usage) above — just pass `egress=` to the runtime:
+
 ```python
-import os
-from resoluto.sandbox import Sandbox
-from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
-from resoluto.sandbox.conduit.factory import store_from_env
 from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
 
+# EgressConfig.from_store_env() builds this from RESOLUTO_STORE_ENDPOINT.
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
-    # EgressConfig.from_store_env() builds this from RESOLUTO_STORE_ENDPOINT.
     egress=EgressConfig(store_cidr="10.0.0.5/32", store_port=9000),  # store; port default 443
 )
-sb = Sandbox(backend=SubstrateBackend(
-    runtime=runtime,
-    conduit=store_from_env(),
-    image="<registry>/resoluto-lane:dev",
-    store_env=store_env_for_pod(os.environ),
-))
+# ...then inject it into SubstrateBackend exactly as in Usage.
 ```
 
 > NetworkPolicy is evaluated post-DNAT. If the store is reached via DNAT (a dockerized
@@ -258,14 +273,14 @@ the bucket policy to allow the credentials you export below.
 
 ```bash
 tag=$(resoluto-sandbox image build --provider claude)
-docker tag "$tag" <registry>/resoluto-lane:dev
-docker push <registry>/resoluto-lane:dev
+docker tag "$tag" <registry>/resoluto-lane:2026-07
+docker push <registry>/resoluto-lane:2026-07
 ```
 
 Set the image in the environment:
 
 ```bash
-export RESOLUTO_LANE_IMAGE=<registry>/resoluto-lane:dev
+export RESOLUTO_LANE_IMAGE=<registry>/resoluto-lane:2026-07
 ```
 
 ### 6. Export environment variables
@@ -278,7 +293,7 @@ export RESOLUTO_SANDBOX_KUBECONTEXT=<your-context-name>
 export RESOLUTO_SANDBOX_NAMESPACE=resoluto-sandboxes
 
 # Image to run inside each pod
-export RESOLUTO_LANE_IMAGE=<registry>/resoluto-lane:dev
+export RESOLUTO_LANE_IMAGE=<registry>/resoluto-lane:2026-07
 
 # Conduit: S3-compatible store
 export RESOLUTO_STORE_KIND=s3
@@ -299,23 +314,9 @@ prevent accidentally targeting the wrong cluster. Use
 
 ### 7. Smoke test
 
-```python
-import os
-from resoluto.sandbox import Sandbox
-from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
-from resoluto.sandbox.conduit.factory import store_from_env
-from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
+Wire `sb` exactly as in [Usage](#usage) (here reading `image=os.environ["RESOLUTO_LANE_IMAGE"]`), then:
 
-runtime = K8sSandboxRuntime(
-    namespace="resoluto-sandboxes",
-    context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
-)
-sb = Sandbox(backend=SubstrateBackend(
-    runtime=runtime,
-    conduit=store_from_env(),
-    image=os.environ["RESOLUTO_LANE_IMAGE"],
-    store_env=store_env_for_pod(os.environ),
-))
+```python
 result = sb.run(["bash", "-lc", "echo hi from kata"])
 print(result.output)   # "hi from kata"
 assert result.ok

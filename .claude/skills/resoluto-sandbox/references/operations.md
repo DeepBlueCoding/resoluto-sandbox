@@ -1,7 +1,7 @@
 # OPERATIONS: CLI, images, storage, version-lock
 
 Action-first reference for running/extending this sandbox. Verified against source:
-`src/resoluto.sandbox/{cli,images,version_guard}.py`, `conduit/factory.py`,
+`src/resoluto/sandbox/{cli,images,version_guard}.py`, `conduit/factory.py`,
 `backends/{base,substrate}.py`, `runtime/k8s.py`, `client.py`.
 
 Cross-links (don't duplicate): protocol/event/chunk semantics → `../../../../spec/PROTOCOL.md`.
@@ -246,7 +246,7 @@ runtime = K8sSandboxRuntime(
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
     conduit=store_from_env(),       # needs RESOLUTO_STORE_KIND
-    image="resoluto-sandbox:0.2.3-claude",
+    image="<registry>/resoluto-lane:2026-07",
     store_env=store_env_for_pod(os.environ),
 ))
 result = sb.run(["python", "agent.py"], workspace="/path/to/ws", output_paths=["out/*.json"])
@@ -280,8 +280,9 @@ RFC1918). **github / api.anthropic.com / any HTTPS do NOT work until you open th
 `public_https=True` (escape hatch: ALL :443, trusted code). `EgressConfig.from_store_env()`
 derives `store_cidr`/`store_port` from `RESOLUTO_STORE_ENDPOINT` (honoring `RESOLUTO_STORE_EGRESS_CIDR`/
 `RESOLUTO_STORE_EGRESS_PORT`) AND the `RESOLUTO_EGRESS_ALLOW` / `_ALLOW_PORT` / `_PUBLIC_HTTPS` (default
-0/deny) knobs (both backends honor those — local via `scripts/local-backend-up.sh`). To add a NEW
-backend, write a renderer in `egress.py`.
+0/deny) knobs (both backends honor those — local via `scripts/local-backend-up.sh`). Canonical
+per-knob table: [`docs/networking.md`](../../../../docs/networking.md#modifying-the-egress-allowlist-one-config-both-backends).
+To add a NEW backend, write a renderer in `egress.py`.
 > FOOTGUN: `store_cidr` (and CIDR `allow` entries) MUST be CIDR notation (`1.2.3.4/32`) — k8s `ipBlock`
 > rejects FQDNs (`__post_init__` raises `ValueError`); hostname `allow` entries resolve at render time.
 > `egress=None` → opt OUT of isolation (no NetworkPolicy, unrestricted egress) — DIFFERENT from

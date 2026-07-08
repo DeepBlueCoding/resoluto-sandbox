@@ -52,26 +52,8 @@ Each run executes in a short-lived Kata microVM pod via the `drive_node` primiti
 `Conduit` object store. The sandbox reports progress as append-only JSONL chunks to the
 store; the orchestrator tails and reaps the pod when done. No long-lived connection between the halves.
 
-Inject a configured `SubstrateBackend` — the image is not a `Sandbox` constructor concern:
-
-```python
-import os
-from resoluto.sandbox import Sandbox
-from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
-from resoluto.sandbox.conduit.factory import store_from_env
-from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
-
-runtime = K8sSandboxRuntime(
-    namespace="resoluto-sandboxes",
-    context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
-)
-sb = Sandbox(backend=SubstrateBackend(
-    runtime=runtime,
-    conduit=store_from_env(),
-    image="<registry>/resoluto-lane:dev",
-    store_env=store_env_for_pod(os.environ),
-))
-```
+Inject a configured `SubstrateBackend` — the image is not a `Sandbox` constructor concern. See
+[Getting started → The k8s backend](getting-started.md#the-k8s-backend) for the full wiring.
 
 Requirements: a Kubernetes cluster (k3s, kind, EKS, or any distribution) with Kata Containers,
 `RESOLUTO_STORE_KIND` (plus the matching store env vars) set in the environment, and
