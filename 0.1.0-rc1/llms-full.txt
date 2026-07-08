@@ -1,0 +1,1132 @@
+# Resoluto Sandbox
+
+> The store-mediated, Kata-isolated execution substrate — a passive, self-reporting sandbox that rendezvous with the host through a durable store.
+
+# Overview
+
+# Resoluto Sandbox
+
+Run a program in isolation and exchange data through a durable store. Your program stays plain — it reads `argv`, writes `stdout`/files, exits, and never imports `resoluto.sandbox`. A script that runs with `uv run agent.py` on your machine runs unchanged inside a Kata microVM or a Kubernetes pod.
+
+[Get started](https://deepbluecoding.github.io/resoluto-sandbox/0.1.0-rc1/getting-started/index.md) [API reference](https://deepbluecoding.github.io/resoluto-sandbox/0.1.0-rc1/api/sandbox/index.md)
+
+```python
+from resoluto.sandbox import Sandbox
+
+result = Sandbox(backend="local").run(
+    ["python", "-c", "print('hello from the sandbox')"]
+)
+print(result.output)   # hello from the sandbox
+print(result.ok)       # True
+```
+
+- **VM-grade isolation**
+
+  Every step runs in a Kata microVM — `local` via `nerdctl` on a dedicated containerd, `k8s` as a short-lived pod. Isolation never downgrades; there is no trusted-local bypass.
+
+- **Store-mediated rendezvous**
+
+  Host and sandbox never hold a live connection. They meet through a durable `Conduit` (localfs, S3/minio, GCS) — the sandbox writes append-only JSONL chunks; the host tails and reaps. A network blip can't wedge a run.
+
+- **Plain program contract**
+
+  Your program reads `argv`/env, writes `stdout`/files, exits — and never imports the sandbox. Test runners, LLM agents, and shell scripts all qualify unchanged.
+
+- **Cloud-agnostic seams**
+
+  One `SubstrateBackend` drives every backend; only the injected `SandboxRuntime` + `Conduit` vary. A new isolation target or store is a single subclass.
+
+## Install
+
+```bash
+pip install resoluto-sandbox            # base — pydantic-only
+pip install "resoluto-sandbox[k8s]"     # Kata pod runtime + S3 conduit
+pip install "resoluto-sandbox[s3]"      # S3 / minio conduit
+```
+
+The base install is pydantic-only; concrete runtimes and conduits with platform dependencies import lazily. See **[Getting started](https://deepbluecoding.github.io/resoluto-sandbox/0.1.0-rc1/getting-started/index.md)** for usage, **[Backends](https://deepbluecoding.github.io/resoluto-sandbox/0.1.0-rc1/backends/index.md)** for the `local` / `k8s` substrates, **[Networking](https://deepbluecoding.github.io/resoluto-sandbox/0.1.0-rc1/networking/index.md)** for egress control, and the **[API reference](https://deepbluecoding.github.io/resoluto-sandbox/0.1.0-rc1/api/sandbox/index.md)** for the full surface.
+
+For AI agents
+
+This site publishes `/llms.txt` (index) and `/llms-full.txt` (full corpus) — point any LLM tool at them to consume these docs directly.
+# Usage
+
+# Getting started
+
+`Sandbox` is the one class you construct. You give it a backend name (`local` or `k8s`), or inject a configured `Backend`, and call `run(argv, ...)`. The same call is identical for every backend.
+
+## Run a program
+
+```python
+from resoluto.sandbox import Sandbox
+
+result = Sandbox(backend="local").run(
+    ["python", "-c", "print('hello from the sandbox')"]
+)
+print(result.output)   # hello from the sandbox
+print(result.ok)       # True → exit_code == 0
+print(result.exit_code)
+```
+
+The [`RunResult`](https://deepbluecoding.github.io/resoluto-sandbox/0.1.0-rc1/api/sandbox/#resoluto.sandbox.RunResult) captures the merged stdout/stderr (`output`), the `exit_code`, any files you asked to collect (`artifacts`), and a parsed `result.json` if the program wrote one (`result`). `stdin` is not supported — pass inputs via `argv`, `env`, or workspace files.
+
+## Passing inputs and collecting outputs
+
+```python
+result = Sandbox(backend="local").run(
+    ["python", "run_task.py", "--mode", "fast"],
+    workspace="/path/to/project",         # staged into the sandbox as cwd
+    env={"TASK_ID": "RES-42"},            # overlaid on the guest environment
+    output_paths=["out/*.json"],          # globs collected into result.artifacts
+)
+```
+
+`workspace` is staged into the conduit and becomes the program's working directory. `output_paths` globs are matched in the workspace after the program exits and returned in `RunResult.artifacts`.
+
+## The local backend image
+
+`backend="local"` runs in a Kata microVM launched via `nerdctl` against a **dedicated, standalone containerd** (not your regular Docker daemon). It needs a sandbox image present in that containerd. When `image=` is omitted it uses `default_local_image()` — the base substrate tagged to the currently installed `resoluto-sandbox` version (never a floating `:dev`/`:latest` tag):
+
+```python
+from resoluto.sandbox.client import default_local_image
+
+Sandbox(backend="local", image=default_local_image())   # explicit; the default
+```
+
+Build it from `Dockerfile.base` (or `resoluto-sandbox image build`) and load it into the local containerd. Run argv with the **guest's** `python` and paths relative to `workspace`.
+
+## The k8s backend
+
+`backend="k8s"` runs each program in a short-lived Kata microVM pod, rendezvousing through an S3/minio `Conduit`. For anything beyond the defaults, inject a configured [`SubstrateBackend`](https://deepbluecoding.github.io/resoluto-sandbox/0.1.0-rc1/api/runtime/#resoluto.sandbox.SubstrateBackend):
+
+```python
+import os
+from resoluto.sandbox import Sandbox
+from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto.sandbox.conduit.factory import store_from_env
+from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
+
+runtime = K8sSandboxRuntime(
+    namespace="resoluto-sandboxes",
+    context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
+)
+sb = Sandbox(backend=SubstrateBackend(
+    runtime=runtime,
+    conduit=store_from_env(),
+    image="<registry>/resoluto-sandbox-base:0.1.0",
+    store_env=store_env_for_pod(os.environ),
+))
+```
+
+Requirements: a Kubernetes cluster with Kata Containers, `RESOLUTO_STORE_KIND` (plus the matching store env vars), and a pinned `RESOLUTO_SANDBOX_KUBECONTEXT` (fails closed otherwise).
+
+See **[Concepts](https://deepbluecoding.github.io/resoluto-sandbox/0.1.0-rc1/concepts/index.md)** for the run lifecycle, **[Backends](https://deepbluecoding.github.io/resoluto-sandbox/0.1.0-rc1/backends/index.md)** for the substrate details, and **[Networking](https://deepbluecoding.github.io/resoluto-sandbox/0.1.0-rc1/networking/index.md)** for per-run egress control.
+
+# Concepts
+
+## The program contract
+
+A sandbox program reads `argv`, writes to `stdout` / files, and exits with a code. It never imports `resoluto.sandbox`. A script that works as `uv run agent.py` on your machine works unchanged inside the sandbox; test runners, LLM agents, and shell scripts all qualify.
+
+Dependencies are your program's concern — put `uv run`/`pip install` in your argv, or use a prebuilt image.
+
+______________________________________________________________________
+
+## Run lifecycle
+
+```text
+stage → run → collect
+```
+
+1. **Stage** — the `Sandbox` resolves which backend to use, then stages the workspace into the `Conduit` (a bind-mounted directory for local, an S3 prefix for k8s).
+1. **Run** — the program executes. On `backend="local"` this is a Kata microVM launched via `nerdctl` against a standalone containerd on this host (single host, no cluster) sharing a bind-mounted `LocalConduit`. On `backend="k8s"` this is a Kata microVM pod. In both cases the in-sandbox `runner_main` stages inputs, runs the program, and ships output via the `Conduit`. Live output streams to `stream` (default `sys.stdout`). `stdin` is unsupported on either backend.
+1. **Collect** — when the program exits, `RunResult` is assembled from the captured output, exit code, any `output_paths` globs matched in the workspace, and a parsed `result.json` if the program wrote one.
+
+______________________________________________________________________
+
+## Backends
+
+`Sandbox` holds one backend (selected by name or injected). One `SubstrateBackend` drives both backends; the only thing that varies is the injected `SandboxRuntime`.
+
+### `local`
+
+`backend="local"` builds a `SubstrateBackend` wired to a `KataNerdctlSandboxRuntime` and a `LocalConduit`. The program runs in a Kata microVM launched via `nerdctl` against a dedicated, standalone containerd on this host; the host and microVM share a bind-mounted directory as the conduit. Single host, no cluster; egress is enforced host-side on its CNI bridge (default-deny).
+
+The image must contain python + the resoluto-sandbox wheel + your program's deps. Default: `resoluto-sandbox-base:<installed wheel version>` (`client.default_local_image()`) — computed from the running package version, never a hardcoded `:dev`/`:latest` tag; held in this host's containerd, never pulled from a registry. Pass `image=` to override.
+
+### `k8s`
+
+Each run executes in a short-lived Kata microVM pod via the `drive_node` primitive and a `Conduit` object store. The sandbox reports progress as append-only JSONL chunks to the store; the host tails and reaps the pod when done. No long-lived connection between the halves.
+
+Inject a configured `SubstrateBackend` — the image is not a `Sandbox` constructor concern. See [Getting started → The k8s backend](https://deepbluecoding.github.io/resoluto-sandbox/0.1.0-rc1/getting-started/#the-k8s-backend) for the full wiring.
+
+Requirements: a Kubernetes cluster (k3s, kind, EKS, or any distribution) with Kata Containers, `RESOLUTO_STORE_KIND` (plus the matching store env vars) set in the environment, and `RESOLUTO_SANDBOX_KUBECONTEXT` pinned (fails closed otherwise). `stdin` raises `NotImplementedError`, so dependencies must be baked into the image. `RunResult.errors` is always empty; the in-pod runner merges stdout and stderr into the output stream.
+
+The language-neutral wire format is documented in `spec/PROTOCOL.md`.
+
+______________________________________________________________________
+
+## Conduit
+
+A `Conduit` is the exchange medium between the host and the sandbox. It is a durable key/value store with three operations: `put`, `get`, and `list_prefix`. Implementations:
+
+| Class           | Use                                                                                   |
+| --------------- | ------------------------------------------------------------------------------------- |
+| `StdoutConduit` | write-only; emits chunks to stdout — useful for piping                                |
+| `LocalConduit`  | local filesystem; zero infra, for dev and tests (local backend bind-mount)            |
+| `S3Conduit`     | S3 / minio-compatible — the proven k8s backend rendezvous                             |
+| `GcsConduit`    | Google Cloud Storage — **provided, unverified** (experimental; not tested end-to-end) |
+
+Chunks are immutable and append-only. The reader tails via `list_prefix` + whole-object `get`; no streaming or long-lived TCP connection is required. Any blob store with list + read-after-write can be a backend; a new one is a single subclass.
+
+The wire encoding is UTF-8 JSON for structured objects and gzip-tar for file archives. See `spec/PROTOCOL.md` for the full key namespace and JSON Schemas.
+
+# Backends
+
+`Sandbox` delegates every run to a pluggable `Backend`. This page covers the two built-in backends, how to install the k8s stack, and how to wire in a custom backend.
+
+## Overview
+
+| backend | isolation                              | where it runs        | needs                           | use for                                                 |
+| ------- | -------------------------------------- | -------------------- | ------------------------------- | ------------------------------------------------------- |
+| `local` | Kata microVM + host-side egress policy | your machine         | containerd + nerdctl + an image | dev and most workloads, single host, no cluster         |
+| `k8s`   | Kata microVM + egress policy           | a Kubernetes cluster | k8s + Kata + S3 store + image   | untrusted code at scale, locked-down egress, production |
+
+Both backends share one substrate: `SubstrateBackend` drives a run through a `SandboxRuntime` (the isolation/placement seam) and a `Conduit` (the host/sandbox exchange). The backends differ only in which runtime and conduit are wired in.
+
+> For the components glossary, the layered local-vs-k8s architecture diagram, the Conduit data-flow table, and the security-layers table, see the [README's "How it works" section](https://deepbluecoding.github.io/resoluto-sandbox/0.1.0-rc1/README.md#how-it-works) — this page picks up from there with per-backend setup detail.
+
+## Run lifecycle
+
+One flow for both backends; only the runtime and conduit differ. Liveness is a silence watchdog: if no chunk arrives for 600 seconds the sandbox is considered dead. There is no wall-clock timeout on the work itself — a live sandbox runs as long as it keeps emitting.
+
+`stdin` is not supported on either backend — `NotImplementedError` if you pass `stdin=`. Pass inputs via argv, env, or workspace files.
+
+The in-sandbox runner merges stdout and stderr as `log` span events, so `RunResult.output` carries the merged stream and `RunResult.errors` is always `""`. This is intentional, not a dropped field. On k8s, `RunResult.reason` carries substrate forensics when a pod is evicted or OOM-killed, and is `""` on a normal exit.
+
+## Sizing — memory, CPU, disk
+
+The facade defaults each sandbox to 4 GiB / 2 CPU. To size it, pass a `Resources` to the injected `SubstrateBackend` — **both backends honor it** (k8s renders pod requests/limits, `local` renders `nerdctl --memory`/`--cpus`):
+
+```python
+from resoluto.sandbox import Sandbox
+from resoluto.sandbox.contracts import Resources
+from resoluto.sandbox.backends.substrate import SubstrateBackend
+
+sb = Sandbox(backend=SubstrateBackend(
+    runtime=runtime, conduit=conduit, image="<registry>/resoluto-sandbox-base:0.1.0",
+    store_env=store_env,
+    resources=Resources.from_quantities(memory="16Gi", cpu="4", disk="40Gi"),  # default: 4Gi / 2 cpu
+))
+```
+
+`Resources.from_quantities` takes human quantity strings (`"16Gi"`, `"4"`, `"40Gi"`). The disk-backed docker image graph (`graph_backend="block"`, `dind_graph=...`) is a dind-only knob on the direct `drive_node` path — see [Concurrency & direct control](https://deepbluecoding.github.io/resoluto-sandbox/0.1.0-rc1/concurrency/#advanced-the-direct-drive_node-path).
+
+## local
+
+`backend="local"` runs the program in a Kata microVM launched via `nerdctl` against a dedicated, standalone containerd on this host (its own socket/root at `/run/resoluto-local/containerd/containerd.sock`), via `KataNerdctlSandboxRuntime`. It never assumes k3s and never touches Docker's or k3s's containerd. The host and microVM share a `LocalConduit` over a bind-mounted directory (`/conduit`). No cluster, no S3 — everything stays on your machine:
+
+```text
+Sandbox(backend="local").run(argv, workspace, output_paths)
+   └─ SubstrateBackend (KataNerdctlSandboxRuntime + LocalConduit)
+        nerdctl run --rm -v <conduit>:/conduit <image>   # Kata microVM, standalone containerd
+          runner_main stages workspace → /workspace
+          runs argv
+          ships spans + heartbeat to /conduit
+          writes result.json + outbox to /conduit
+   → RunResult(output, exit_code, artifacts)     # no k8s, no S3
+```
+
+Egress is enforced host-side on the CNI bridge and is default-deny (secure by default): a fresh sandbox reaches only DNS + its store, and you opt in to what the workload needs at provision time (`RESOLUTO_EGRESS_ALLOW` for specific destinations, `RESOLUTO_EGRESS_PUBLIC_HTTPS=1` for all outbound :443). IMDS `169.254.169.254` + RFC1918 private ranges are always rejected, so it is immune to in-guest root. The egress canary runs fail-closed before your workload; there is no trusted-local bypass.
+
+### What you need
+
+- A standalone containerd + nerdctl + Kata on this machine. Provision with `scripts/local-backend-up.sh` (ends with a green Kata-microVM canary).
+- An image with python + the resoluto-sandbox wheel + your program's deps. Default: `resoluto-sandbox-base:<installed wheel version>` (`client.default_local_image()`) — computed dynamically from the running `resoluto-sandbox` package version, never a hardcoded floating tag — held in this host's containerd; the local backend never pulls from a registry. Override with `Sandbox(backend="local", image="your-image:tag")`.
+- If you built that image with plain `docker build` (including `resoluto-sandbox image build`), it landed in your regular Docker daemon — a **different** image store than the dedicated containerd this backend reads from. Transfer it once with `docker save <tag> | sudo "$RESOLUTO_LOCAL_NERDCTL" --address /run/resoluto-local/containerd/containerd.sock --namespace resoluto-local load` (see the README's [Prebuilt provider images](https://deepbluecoding.github.io/resoluto-sandbox/0.1.0-rc1/README.md#prebuilt-provider-images) section).
+
+## k8s
+
+Each `run()` call launches one short-lived Kata microVM pod. The host and pod exchange data through a `Conduit` (an S3-compatible object store); there is no long-lived connection between them.
+
+```text
+   host (your process)            Conduit  (S3 / minio / …)        Kata microVM pod (k8s)
+   ───────────────────           ───────────────────────         ──────────────────────
+   put_dir(workspace) ─────────────▶  inbox/ *.tar.gz ───────────▶  stage inputs -> /workspace
+   drive_node: launch pod ───────────────────────────────────────▶  run argv (RESOLUTO_WORKLOAD_ARGV)
+   tail ChunkReader  ◀───────────── events-000001.jsonl ◀──────────  ship spans + heartbeat
+   read result.json  ◀───────────── result.json ◀─────────────────  write verdict
+   fetch_outputs     ◀───────────── outbox/ *.tar.gz ◀────────────  collect output_paths
+   reap pod
+   → RunResult(output reconstructed from chunks, exit_code, artifacts)
+```
+
+Dependencies must be baked into the image — the pod has no package-manager access at runtime.
+
+### Usage
+
+The image is not a `Sandbox` concern — inject a configured `SubstrateBackend`:
+
+```python
+import os
+from resoluto.sandbox import Sandbox
+from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto.sandbox.conduit.factory import store_from_env
+from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
+
+runtime = K8sSandboxRuntime(
+    namespace=os.environ.get("RESOLUTO_SANDBOX_NAMESPACE", "resoluto-sandboxes"),
+    context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
+)
+sb = Sandbox(backend=SubstrateBackend(
+    runtime=runtime,
+    conduit=store_from_env(),
+    image="<registry>/resoluto-sandbox-base:0.1.0",
+    store_env=store_env_for_pod(os.environ),
+))
+result = sb.run(["bash", "-lc", "echo hi"], workspace="./proj", output_paths=["*.txt"])
+print(result.output)   # "hi"
+print(result.ok)       # True
+```
+
+Or use the convenience shortcut (reads `RESOLUTO_SANDBOX_IMAGE` and `RESOLUTO_STORE_KIND` from env):
+
+```python
+Sandbox(backend="k8s", image="<registry>/resoluto-sandbox-base:0.1.0").run(...)
+```
+
+### Optional: egress lockdown
+
+By default Kata provides kernel isolation but places no restriction on network egress. For untrusted code, add `EgressConfig` to apply a default-deny `NetworkPolicy` that permits only: the object store (`store_cidr:store_port`), public HTTPS (TCP/443 to anywhere — covers the LLM API + git, no fragile FQDN→/32 pinning), and DNS. IMDS (`169.254.169.254`) and everything else are denied.
+
+Same wiring as [Usage](#usage) above — just pass `egress=` to the runtime:
+
+```python
+from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
+
+# EgressConfig.from_store_env() builds this from RESOLUTO_STORE_ENDPOINT.
+runtime = K8sSandboxRuntime(
+    namespace="resoluto-sandboxes",
+    context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
+    egress=EgressConfig(store_cidr="10.0.0.5/32", store_port=9000),  # store; port default 443
+)
+# ...then inject it into SubstrateBackend exactly as in Usage.
+```
+
+> NetworkPolicy is evaluated post-DNAT. If the store is reached via DNAT (a dockerized minio published on the node, a NodePort), allowlist the *real backend* IP:port, not the published endpoint — set `RESOLUTO_STORE_EGRESS_CIDR` (+ `RESOLUTO_STORE_EGRESS_PORT`) and `from_store_env()` honors it. The policy is created before the pod, and the in-guest egress canary briefly retries to absorb the NetworkPolicy controller's programming lag.
+
+`store_cidr` must be `x.x.x.x/nn` — `NetworkPolicy` `ipBlock` does not accept hostnames; resolve FQDNs yourself. IMDS (`169.254.169.254/32`) is always blocked regardless of the allowlist. See `docs/networking.md` for the full egress reference.
+
+## Installing the k8s stack
+
+The k8s backend works on any Kubernetes distribution — self-hosted (k3s, kind, microk8s) or managed (EKS, GKE, AKS). Follow these steps in order.
+
+### 1. A Kubernetes cluster
+
+- Self-hosted (local/dev): [k3s](https://k3s.io), [kind](https://kind.sigs.k8s.io), [minikube](https://minikube.sigs.k8s.io), [microk8s](https://microk8s.io)
+- Managed (production): EKS (AWS), GKE (GCP), AKS (Azure)
+
+The cluster must be reachable from your host via `kubectl`. Confirm:
+
+```bash
+kubectl cluster-info
+```
+
+### 2. Kata Containers (hardware isolation)
+
+Install the Kata Containers runtime on each node: https://katacontainers.io/docs/
+
+Then create a `RuntimeClass` named `kata`:
+
+```yaml
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: kata
+handler: kata
+```
+
+```bash
+kubectl apply -f kata-runtimeclass.yaml
+```
+
+Verify:
+
+```bash
+kubectl get runtimeclass kata
+```
+
+> Some managed clusters offer Kata as an optional add-on (e.g. GKE Sandbox). Check your provider's documentation before installing from scratch.
+
+### 3. A NetworkPolicy-enforcing CNI (optional)
+
+Only needed if you plan to use `EgressConfig`. Common choices: Calico, Cilium, or Flannel with the NetworkPolicy controller. Many managed clusters (EKS with VPC CNI + Network Policy, GKE Dataplane V2, AKS with Azure CNI) support NetworkPolicy natively — check whether it needs to be enabled first.
+
+> Without a NetworkPolicy-capable CNI the policy manifest is applied but silently not enforced. The egress canary (run in-guest before your workload) detects this.
+
+### 4. An S3-compatible object store
+
+The host and pods exchange data through a shared object store reachable from both your host machine and the pods inside the cluster.
+
+Option A — minio (local/dev):
+
+```bash
+docker run -d --name minio \
+  -p 9000:9000 -p 9001:9001 \
+  -e MINIO_ROOT_USER=minioadmin \
+  -e MINIO_ROOT_PASSWORD=minioadmin \
+  quay.io/minio/minio server /data --console-address ":9001"
+```
+
+Create a bucket named `resoluto`:
+
+```bash
+# with the mc CLI (https://min.io/docs/minio/linux/reference/minio-mc.html):
+mc alias set local http://localhost:9000 minioadmin minioadmin
+mc mb local/resoluto
+```
+
+> The endpoint must be routable from the pods. `localhost` from the host is not reachable inside pods — use the host's LAN IP or a cluster-internal service address.
+
+Option B — cloud S3: create a bucket on AWS S3 (or any S3-compatible provider) and set the bucket policy to allow the credentials you export below.
+
+### 5. Build and push a provider image
+
+`image build` tags by the pinned SDK package + version, e.g. `resoluto-sandbox:claude-agent-sdk-0.2.110` (see `images.py:SDK_VERSION`). Retag to your registry path before pushing:
+
+```bash
+tag=$(resoluto-sandbox image build --provider claude)
+docker tag "$tag" <registry>/resoluto-sandbox-base:0.1.0
+docker push <registry>/resoluto-sandbox-base:0.1.0
+```
+
+Set the image in the environment:
+
+```bash
+export RESOLUTO_SANDBOX_IMAGE=<registry>/resoluto-sandbox-base:0.1.0
+```
+
+### 6. Export environment variables
+
+```bash
+# Pin the kube context (required — backend refuses to launch without this)
+export RESOLUTO_SANDBOX_KUBECONTEXT=<your-context-name>
+
+# Namespace for sandbox pods (default: resoluto-sandboxes)
+export RESOLUTO_SANDBOX_NAMESPACE=resoluto-sandboxes
+
+# Image to run inside each pod
+export RESOLUTO_SANDBOX_IMAGE=<registry>/resoluto-sandbox-base:0.1.0
+
+# Conduit: S3-compatible store
+export RESOLUTO_STORE_KIND=s3
+export RESOLUTO_STORE_ENDPOINT=http://<minio-host>:9000   # omit for AWS S3
+export RESOLUTO_STORE_BUCKET=resoluto
+export RESOLUTO_STORE_REGION=us-east-1
+
+# Store credentials — use a scoped token (preferred) or ambient AWS creds:
+export AWS_ACCESS_KEY_ID=<your-key-id>
+export AWS_SECRET_ACCESS_KEY=<your-secret>
+```
+
+Replace all `<placeholders>` with your real values. Do not commit secrets.
+
+`RESOLUTO_SANDBOX_KUBECONTEXT` is required — the backend fails closed if it is unset, to prevent accidentally targeting the wrong cluster. Use `RESOLUTO_SANDBOX_ALLOW_AMBIENT_CONTEXT=1` only in carefully controlled environments.
+
+### 7. Smoke test
+
+Wire `sb` exactly as in [Usage](#usage) (here reading `image=os.environ["RESOLUTO_SANDBOX_IMAGE"]`), then:
+
+```python
+result = sb.run(["bash", "-lc", "echo hi from kata"])
+print(result.output)   # "hi from kata"
+assert result.ok
+```
+
+If the run hangs, check that the pod can reach the store endpoint (`kubectl logs -n resoluto-sandboxes <pod-name>`) and that `RESOLUTO_SANDBOX_KUBECONTEXT` points at the right cluster.
+
+## Adding another backend
+
+To add a new isolation target, implement `SandboxRuntime` (the isolation/placement seam) and wire it into `SubstrateBackend`:
+
+```python
+from resoluto.sandbox.backends.substrate import SubstrateBackend
+from resoluto.sandbox.conduit import LocalConduit
+
+sb = Sandbox(backend=SubstrateBackend(
+    runtime=MyRuntime(...),
+    conduit=LocalConduit("/tmp/conduit"),
+    image="my-image:tag",
+    store_env={"RESOLUTO_STORE_KIND": "localfs", "RESOLUTO_STORE_ROOT": "/conduit"},
+))
+```
+
+For a completely new run approach (not store-mediated), implement the `Backend` ABC (one method: `run(...) -> RunResult`) and inject it:
+
+```python
+from resoluto.sandbox.backends.base import Backend, RunResult
+
+class MyBackend(Backend):
+    def run(self, argv, *, workspace=None, stdin=None, env=None, env_file=None,
+            secrets=None, output_paths=None, stream=None, egress=None) -> RunResult:
+        ...
+
+Sandbox(backend=MyBackend(...)).run(argv, ...)
+```
+
+No facade changes are needed — `Sandbox` holds any `Backend` instance. For a full guide including `Conduit` and `SandboxRuntime` extension points, see [`../.claude/skills/resoluto-sandbox-dev/references/extending.md`](https://deepbluecoding.github.io/resoluto-sandbox/0.1.0-rc1/.claude/skills/resoluto-sandbox-dev/references/extending.md).
+
+# Networking
+
+## Local backend — Kata isolation + host-side egress policy
+
+The local backend runs the program in a Kata microVM launched via `nerdctl` against a standalone containerd on this host — full Kata isolation, on a single host with no cluster. Egress is enforced host-side on its CNI bridge and is **default-deny (secure by default)**: a fresh sandbox reaches only DNS and its store. You opt in to what the workload needs at PROVISION time via the env knobs (`RESOLUTO_EGRESS_ALLOW` for specific destinations, `RESOLUTO_EGRESS_PUBLIC_HTTPS=1` for all outbound :443). IMDS `169.254.169.254` and RFC1918 private ranges are always rejected, so the policy is immune to in-guest root. The egress canary always runs fail-closed before any workload, the Kata runtime-class guard is unconditional, and host AWS creds are never forwarded (a scoped store token only).
+
+Provision the local backend with `scripts/local-backend-up.sh` (ends with a green Kata-microVM canary). To open egress, set the env before running it, e.g.:
+
+```bash
+RESOLUTO_EGRESS_ALLOW=api.anthropic.com,registry.npmjs.org scripts/local-backend-up.sh   # least privilege
+RESOLUTO_EGRESS_PUBLIC_HTTPS=1 scripts/local-backend-up.sh             # escape hatch: all :443
+```
+
+Use `backend="local"` for single-host development. For cluster-scale placement, use `backend="k8s"`.
+
+## k8s backend — Kata isolation + egress NetworkPolicy
+
+### `egress=None` — the opt-OUT (no NetworkPolicy)
+
+`egress=None` on `K8sSandboxRuntime` is an explicit opt-OUT of network isolation: NO NetworkPolicy is created, so the sandbox pod has **unrestricted egress**. The pod still runs inside a Kata microVM (separate OS kernel, no host process namespace), but nothing restricts which hosts the workload can reach. This is DIFFERENT from `EgressConfig()`, which is deny-by-default (see below). Use `egress=None` only for trusted workloads where kernel isolation alone is acceptable; for untrusted code always pass an `EgressConfig`.
+
+### `EgressConfig` — deny by default (secure)
+
+`EgressConfig()` is **secure by default**: it DENIES all egress except DNS and the object store — a fresh sandbox cannot reach the internet, the LLM, or registries. You opt IN to exactly what the workload needs. Pass it to `K8sSandboxRuntime` and it applies a default-deny egress NetworkPolicy to the sandbox pod (created before the pod) so egress is enforced from the first packet:
+
+```python
+import os
+from resoluto.sandbox import Sandbox
+from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
+from resoluto.sandbox.conduit.factory import store_from_env
+from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
+
+# The ONE shared builder — resolves RESOLUTO_STORE_ENDPOINT to the store CIDR:port (honoring the
+# RESOLUTO_STORE_EGRESS_CIDR/PORT override for a DNAT'd store; NetworkPolicy is evaluated POST-DNAT).
+egress = EgressConfig.from_store_env()
+# ...or construct it explicitly (deny-by-default; open what you need):
+egress = EgressConfig(store_cidr="192.168.1.197/32", store_port=9000,
+                      allow=["api.anthropic.com", "registry.npmjs.org", "pypi.org"])  # least privilege; store port default 443
+runtime = K8sSandboxRuntime(
+    namespace="resoluto-sandboxes",
+    context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
+    egress=egress,
+)
+sb = Sandbox(backend=SubstrateBackend(
+    runtime=runtime,
+    conduit=store_from_env(),
+    image="<registry>/resoluto-sandbox-base:0.1.0",
+    store_env=store_env_for_pod(os.environ),
+))
+```
+
+`EgressConfig` is imported from `resoluto.sandbox.runtime.k8s`. Do not add it to the top-level `resoluto.sandbox` import — that would pull in `kubernetes_asyncio` eagerly.
+
+### What the NetworkPolicy allows
+
+The generated policy is default-deny egress. It ALWAYS allows the store and DNS; the other rows are opt-in:
+
+| Destination                        | Port                       | Protocol  | When                          |
+| ---------------------------------- | -------------------------- | --------- | ----------------------------- |
+| `store_cidr`                       | `store_port`               | TCP       | always                        |
+| `0.0.0.0/0` (DNS)                  | 53                         | UDP + TCP | always                        |
+| each `allow` entry (hostname/CIDR) | `allow_port` (443 default) | TCP       | when `allow=[...]` is set     |
+| `0.0.0.0/0` (public HTTPS)         | 443                        | TCP       | ONLY when `public_https=True` |
+
+The broad `0.0.0.0/0` rules include `except: ["169.254.169.254/32"]` so the cloud metadata endpoint (IMDS) is unreachable; the `store_cidr` rule is a specific host so it carries no `except` (k8s requires `except ⊂ cidr`). Prefer `allow=[...]` (least privilege) for untrusted code; on the **local** backend the preferred way to open egress is per-run `Sandbox.run(egress=["api.anthropic.com"])` (enforced by DOMAIN via the built-in SNI proxy, so it never goes stale for CDN-backed hosts); use `public_https=True` only as a deliberate escape hatch for trusted workloads.
+
+### CIDR-only: no FQDNs for the store
+
+Kubernetes `NetworkPolicy` `ipBlock` does not accept hostnames, so `store_cidr` must be a CIDR (`EgressConfig.__post_init__` rejects anything without `/`). Hostname entries in `allow` resolve to CIDRs at render time. Build the config from the env with `EgressConfig.from_store_env()`, which resolves `RESOLUTO_STORE_ENDPOINT` (or honors the `RESOLUTO_STORE_EGRESS_CIDR/PORT` override for a DNAT'd store — NetworkPolicy is evaluated post-DNAT).
+
+```python
+EgressConfig(store_cidr="api.anthropic.com")  # raises ValueError — no '/'
+```
+
+### CNI requirement
+
+NetworkPolicy enforcement requires a NetworkPolicy-capable CNI (e.g. Calico, Cilium, Flannel with NetworkPolicy support). Some distributions (e.g. k3s) ship with Flannel + the NetworkPolicy controller enabled by default; managed clusters (EKS, GKE, AKS) may need it enabled separately. On a cluster without a NetworkPolicy controller the manifested policy is silently **not enforced** — the in-guest egress canary (see below) is the empirical backstop.
+
+### Egress canary
+
+Before the workload runs, the pod self-verifies isolation with three probes:
+
+1. **Non-allowlisted external TCP** — must be blocked (NetworkPolicy enforced).
+1. **IMDS TCP `169.254.169.254:80`** — must be blocked (no cloud-metadata leakage).
+1. **Store PUT sentinel** — must succeed (the only permitted egress channel).
+
+If any probe returns an unexpected result the sandbox aborts with a reason string naming every failed probe. This catch fires when the CNI enforces the policy incorrectly, or when the policy was not applied before the pod started.
+
+The canary always runs and is fail-closed. Host AWS credentials are never forwarded to the pod; a scoped store token is the only credential it receives. The `evaluate_verdict` pure function (the pass/fail logic) is unit-tested in `tests/test_egress_canary.py`; the in-guest execution is the live check.
+
+## Modifying the egress allowlist — ONE config, both backends
+
+Egress is configured by a single backend-neutral value object, `resoluto.sandbox.egress.EgressConfig`, which each backend renders to its own mechanism (k8s → NetworkPolicy, local → host `iptables`). It is **deny-by-default**: `EgressConfig()` allows ONLY the store + DNS; IMDS (and on local, RFC1918) are always denied. So github, api.anthropic.com, package mirrors, etc. do NOT work until you open them. You opt in with `allow=[...]` (least privilege) or, for trusted code, `public_https=True` (all :443).
+
+Three simple knobs (no CIDRs or code edits needed):
+
+| Knob           | Meaning                                                                                                                                                      |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `allow=[...]`  | extra destinations — **hostnames** OR **CIDRs** — allowed on `allow_port`. Hostnames resolve to CIDRs when rendered. The least-privilege way to open egress. |
+| `allow_port`   | port for `allow` (default 443; e.g. **22** for git-over-SSH, or a private service port)                                                                      |
+| `public_https` | `False` (default) = deny all outbound except store + `allow` + DNS; set **`True`** to allow ALL `:443` (escape hatch for trusted code)                       |
+
+So a sandbox that needs the LLM + npm/pypi reads `EgressConfig(allow=["api.anthropic.com", "registry.npmjs.org", "pypi.org"])` (or `RESOLUTO_EGRESS_ALLOW="api.anthropic.com,registry.npmjs.org"`). Hostname entries resolve to **current** IPs when the policy is rendered; these APIs are CDN-backed (rotating IPs), so a pinned allowlist is best-effort and needs periodic re-resolve. On the **local** backend prefer per-run `Sandbox.run(egress=["api.anthropic.com"])` (enforced by DOMAIN via the built-in SNI proxy, so it never goes stale for CDN-backed hosts); `EgressConfig(allow=[...])` (CIDR-based) is the k8s per-runtime path. When you need reliable access from otherwise-restricted code, `public_https=True` (all :443, trusted code) is the pragmatic escape hatch.
+
+### Allow by DOMAIN, PER STEP — `run(egress=[...])` (the primary knob)
+
+`allow=[...]` (below) is CIDR-based (resolves hostnames to IPs at render time), so it goes stale for CDN-backed APIs (rotating IPs) and can never match a URL path — TLS encrypts everything but the destination IP:port and the **SNI** hostname. For a domain allowlist that scales AND is set per step, pass `egress=[domains]` to each `run()`:
+
+```python
+Sandbox(backend="local").run(argv, egress=["api.anthropic.com"])    # this step reaches ONLY Anthropic
+Sandbox(backend="local").run(argv, egress=["registry.npmjs.org"])   # this step reaches ONLY the npm registry
+Sandbox(backend="local").run(argv)                                  # egress=None → deny all (secure default)
+```
+
+Each `run()` sets that step's allowed domains on the fly and clears them after — **no re-provision**. Under the hood the built-in **SNI proxy** (`resoluto.sandbox.egress_proxy`) reads the step's allowlist LIVE (from a file each run rewrites) and splices the (still-encrypted) stream to the original destination ONLY if the TLS SNI matches — exact (`api.anthropic.com`) or `*.wildcard` (`*.openai.com`). No IP pinning, no CA/MITM, works under any CNI; it refuses internal/IMDS destinations even on an SNI match (no SSRF). The mechanism is `KataNerdctlSandboxRuntime.apply_egress()` writing the proxy's live allowlist file; `SubstrateBackend.run` applies it before the sandbox and clears it after.
+
+One-time setup runs the proxy + the static `:443` redirect: `scripts/local-backend-up.sh` (it also seeds the file from `RESOLUTO_EGRESS_DOMAINS` if set — a default, overridden per run).
+
+Verified end-to-end, back-to-back with NO re-provision: `run(egress=["registry.npmjs.org"])` → a sandbox's `pnpm add is-odd` installs from the registry; `run(egress=["api.anthropic.com"])` → the same install is blocked (ECONNRESET) while a real Claude agent answers. A URL *path* still can't be enforced at this layer (that needs a MITM proxy). DNS and the CIDR FORWARD chain handle everything else; `allow=[...]` (below) remains for non-443 ports / explicit CIDRs. NOTE: `egress=` is applied by the `local` backend today; on `k8s` use `EgressConfig` (per-runtime).
+
+**In code (k8s):**
+
+```python
+from resoluto.sandbox.egress import EgressConfig
+EgressConfig(store_cidr="10.0.0.5/32", store_port=9100,
+             allow=["github.com"], allow_port=22)        # least privilege: + git-over-SSH
+EgressConfig(store_cidr="10.0.0.5/32", public_https=True)  # escape hatch: all outbound :443
+```
+
+**Via env (works for BOTH backends — k8s reads these in `from_store_env()`, the local provisioner reads them too):**
+
+```bash
+export RESOLUTO_EGRESS_ALLOW="github.com,198.51.100.0/24"   # comma list of hostnames/CIDRs
+export RESOLUTO_EGRESS_ALLOW_PORT=22                        # default 443
+export RESOLUTO_EGRESS_PUBLIC_HTTPS=1                       # opt IN to all :443 (default 0 = deny)
+```
+
+- **local**: `scripts/local-backend-up.sh` renders the firewall from these env knobs via the SAME renderer (`python -m resoluto.sandbox.egress local-iptables`). Set them and re-run the script; the Kata canary re-verifies enforcement.
+- **k8s**: pass an `EgressConfig` to `K8sSandboxRuntime(egress=...)`, or `EgressConfig.from_store_env()` (which reads the same env). `egress=None` = opt OUT of isolation entirely (no NetworkPolicy, unrestricted egress) — distinct from `EgressConfig()`, which denies by default.
+
+There is no per-rule *blacklist* primitive (the model is default-deny; IMDS/RFC1918 are hardcoded denies). "Blacklist a host" = enumerate the hosts you DO want in `allow=[...]` and leave `public_https=False`. To add a NEW backend, write a renderer that maps `EgressConfig` to its mechanism (see `src/resoluto/sandbox/egress.py`).
+
+## What you can manage
+
+| Knob             | Local backend                                                                                                          | k8s backend                                                                                                                                                                                     |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Egress allowlist | host-side iptables on the CNI bridge (default-deny; DNS + store; opt-in `allow`/`public_https`; REJECT IMDS + RFC1918) | `EgressConfig.from_store_env()` → default-deny NetworkPolicy (store + DNS always; opt-in `allow`/public-443; IMDS denied), enforced by the cluster's NetworkPolicy controller (k3s kube-router) |
+| IMDS block       | always on (host-side REJECT of `169.254.169.254`)                                                                      | always on when `EgressConfig` is passed                                                                                                                                                         |
+| Egress canary    | on by default, fail-closed                                                                                             | on by default, fail-closed                                                                                                                                                                      |
+| Runtime class    | Kata (pinned, unconditional)                                                                                           | Kata (pinned, unconditional)                                                                                                                                                                    |
+| Kubecontext      | not applicable                                                                                                         | `RESOLUTO_SANDBOX_KUBECONTEXT` (fails closed if unset)                                                                                                                                          |
+
+# Concurrency & direct control
+
+The `Sandbox` facade runs ONE program per `run()`. To launch MANY sandboxes under a bounded RAM/slot budget, or to reach knobs the facade never exposes (docker-in-docker, a disk-backed image graph, per-launch egress on the spec), drop to the building blocks the facade is built on — `SandboxPool`, `SandboxLaunchSpec`, and `drive_node`. All three are exported from `resoluto.sandbox`.
+
+Both snippets assume a `runtime` (a `SandboxRuntime` — e.g. `KataNerdctlSandboxRuntime.from_env(...)` for local or `K8sSandboxRuntime(...)` for k8s) and, for `drive_node`, a `conduit` (a `Conduit` — e.g. `store_from_env()`), wired exactly as the [`local`](https://deepbluecoding.github.io/resoluto-sandbox/0.1.0-rc1/backends/#local) / [`k8s`](https://deepbluecoding.github.io/resoluto-sandbox/0.1.0-rc1/backends/#k8s) backends build them.
+
+## Bounded concurrency — `SandboxPool`
+
+`SandboxPool` admits launches FIFO under two independent limits: a slot count (`max_concurrent`) and an optional RAM budget (`mem_budget_bytes`, summed from each spec's `resources.memory_bytes`). A held lease occupies a slot plus its RAM until closed; closing the lease destroys the sandbox.
+
+```python
+import asyncio
+from resoluto.sandbox.contracts import Resources, SandboxLaunchSpec
+from resoluto.sandbox.pool import SandboxPool
+
+pool = SandboxPool(runtime, max_concurrent=4, mem_budget_bytes=16 * 1024**3)  # ≤4 at once, ≤16 GiB total
+
+async def one(prefix: str) -> None:
+    spec = SandboxLaunchSpec(
+        image="<registry>/resoluto-sandbox-base:0.1.0",
+        store_prefix=prefix,
+        resources=Resources.from_quantities(memory="4Gi", cpu="2"),
+    )
+    async with await pool.acquire(spec) as lease:   # parks here until a slot + budget free up
+        ...  # work against lease.handle (e.g. drive_node below); the sandbox is destroyed on exit
+
+await asyncio.gather(*(one(f"run/demo/nodes/n{i}/sandbox-0") for i in range(10)))  # 10 queued, 4 run at once
+```
+
+- `pool.available` / `pool.live_count` report free slots / live sandboxes.
+- `acquire(spec, *, on_wait=None)` — `on_wait(amount, available)` fires once if the caller parks on the RAM budget.
+- `SandboxPool` also satisfies the `Admission` protocol, so you can hand it straight to `drive_node(..., admit=pool)` to pool-admit a driven node (below).
+
+> The pool bounds SUBSTRATE admission (how many sandboxes exist at once), NOT workload liveness. A slow-but-alive sandbox holds its slot as long as it keeps emitting — there is no wall-clock cap.
+
+## Advanced: the direct `drive_node` path
+
+`Sandbox` / `SubstrateBackend` always launch a single `flavor="plain"` step. Three capabilities live ONLY on the raw `SandboxLaunchSpec` + `drive_node` path and are **NOT reachable through the facade**:
+
+- **`flavor="dind"` + `privileged=True`** — docker-in-docker inside the Kata guest (privileged is guest-scoped under Kata, not a host escape).
+- **`graph_backend="block"` + `dind_graph=...`** — put the inner docker image graph on a disk-backed volume instead of tmpfs, so image layers stay off RAM. `graph_backend` is ignored by non-dind steps.
+- **`egress_allow` / `egress_public_https` ON THE SPEC** — per-launch egress the `k8s` runtime renders into the pod's NetworkPolicy. Distinct from `Sandbox.run(egress=...)` (the `local` SNI-proxy path) and from a runtime-level `EgressConfig`.
+
+```python
+import asyncio
+from resoluto.sandbox.contracts import Resources, SandboxLaunchSpec
+from resoluto.sandbox.driver import drive_node
+
+spec = SandboxLaunchSpec(
+    image="<registry>/resoluto-sandbox-base:0.1.0",
+    flavor="dind", privileged=True,                       # docker-in-docker under Kata
+    store_prefix="run/demo/nodes/build/sandbox-0",
+    resources=Resources.from_quantities(
+        memory="8Gi", cpu="4",
+        dind_graph="30Gi", graph_backend="block",         # image graph on a 30 GiB disk-backed volume, not RAM
+    ),
+    egress_allow=["registry.npmjs.org"],                  # this launch reaches only npm (+ DNS + store)
+    egress_public_https=False,
+    args=["python", "-m", "resoluto.sandbox.runner_main"],
+)
+result = asyncio.run(drive_node(runtime, conduit, spec))  # NodeResult; tails chunks, reaps the sandbox
+```
+
+`drive_node(runtime, store, spec, *, admit=None, on_event=None, dead_after_s=120.0)` launches, tails the Conduit chunks, and returns a `NodeResult`. Pass `admit=pool` to admit through a `SandboxPool`; pass `on_event=` to receive each `SpanEvent` live.
+
+> These are the substrate's own building blocks — a host that drives many sandboxes builds on exactly this surface. Prefer the `Sandbox` facade for single-shot runs; reach here only when you need pooling, dind, a disk-backed graph, or per-spec egress.
+
+# Credentials: giving your program its secrets
+
+**The sandbox never handles credentials.** It runs your program and forwards whatever you hand it — via `env=`, `env_file=`, `secrets=`, or a mount — into the guest, untouched. It never reads, parses, or knows the format of any provider's credential file. Auth is the *program's* concern: its SDK/CLI resolves the credential from the environment you passed.
+
+## Which credential each provider image needs
+
+Each prebuilt provider image runs a program that talks to that provider's API; supply its credential:
+
+| Provider image                            | Credential env var                                                  | How to obtain                                 |
+| ----------------------------------------- | ------------------------------------------------------------------- | --------------------------------------------- |
+| `resoluto-sandbox:claude-agent-sdk-<ver>` | `CLAUDE_CODE_OAUTH_TOKEN` (subscription) **or** `ANTHROPIC_API_KEY` | `claude setup-token`, or an Anthropic API key |
+| `resoluto-sandbox:langchain-<ver>`        | `ANTHROPIC_API_KEY`                                                 | an Anthropic API key                          |
+| `resoluto-sandbox:openai-agents-<ver>`    | `OPENAI_API_KEY`                                                    | an OpenAI API key                             |
+
+## How to pass it
+
+The guest does NOT inherit your host environment — deliver the credential explicitly:
+
+```python
+import os
+from resoluto.sandbox import Sandbox
+
+# local or k8s — the plain, universal path: forward the env var you already hold
+Sandbox(backend="local", image="<provider-image>").run(
+    ["python", "openai_agent.py", "Say hi"],
+    workspace="examples/payloads",
+    env={"OPENAI_API_KEY": os.environ["OPENAI_API_KEY"]},
+)
+```
+
+- **`env=`** — simplest; the value lands as a literal env entry in the guest (and, on k8s, in the pod spec — prefer `secrets=` there).
+- **`secrets=`** — the production path on k8s: `run(secrets={"OPENAI_API_KEY": SecretKeyRef("openai", "key")})` references an existing Kubernetes Secret via `valueFrom.secretKeyRef`, so the value never appears in the pod spec or any log. See [README: Secrets](https://deepbluecoding.github.io/resoluto-sandbox/0.1.0-rc1/README.md#secrets).
+- **`env_file=`** — a dotenv file merged host-side (convenience, not a security boundary).
+- **mount** — bind a credential file read-only into the guest (see the subscription note below).
+
+## Claude subscription auth — LOCAL DEV ONLY
+
+> ⚠️ **The Claude Max/Pro subscription path is a local-dev convenience — do NOT use it in cloud or production.** A subscription OAuth token (`CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`, or the `~/.claude/.credentials.json` login file) is a **personal, single-user, long-lived** credential: it cannot be scoped or rotated per workload, it bills one human's subscription, and mounting a personal credential file into shared/cloud pods is a credential-leak anti-pattern. For cloud or production, give each workload a **provider API key** delivered via `secrets=` (above).
+
+For local iteration on a Max/Pro plan, forward a token (or mount the login file) and keep `ANTHROPIC_API_KEY` **unset** so the `claude` CLI bills your subscription instead of the API:
+
+```bash
+export CLAUDE_CODE_OAUTH_TOKEN=$(claude setup-token)   # long-lived token; keep ANTHROPIC_API_KEY unset
+uv run python examples/run_agent_in_sandbox.py claude "Say hello in five words"
+```
+
+Or mount the single login file read-only (not the whole `~/.claude` dir — the CLI writes cache into its config dir and would fail against a read-only mount of the entire directory):
+
+```bash
+docker run --rm \
+  -v "$HOME/.claude/.credentials.json:/root/.claude/.credentials.json:ro" \
+  -v "$PWD/examples/payloads:/workspace" \
+  resoluto-sandbox:claude-agent-sdk-<ver> python claude_agent.py "Say hello in five words"
+```
+
+### Gotcha: `-e CLAUDE_CODE_OAUTH_TOKEN` with nothing exported
+
+`docker run -e CLAUDE_CODE_OAUTH_TOKEN` (no `=value`) forwards the host's value — empty if you never exported it. The container then has no auth and the CLI returns `Not logged in`, which the SDK rethrows as the confusing `Claude Code returned an error result: success`. Either `export` the token first, or use the credentials-file mount above.
+# API
+
+# Conduit
+
+The durable key/value rendezvous between host and sandbox — the only channel between the two halves.
+
+## resoluto.sandbox.Conduit
+
+Bases: `ABC`
+
+Durable key/value rendezvous (localfs, S3, GCS).
+
+### copy_prefix
+
+```python
+copy_prefix(src_prefix, dst_prefix)
+```
+
+Copy every object under src_prefix to dst_prefix, returning the count copied.
+
+Source code in `src/resoluto/sandbox/contracts.py`
+
+```python
+async def copy_prefix(self, src_prefix: str, dst_prefix: str) -> int:
+    """Copy every object under src_prefix to dst_prefix, returning the count copied."""
+    src, dst = src_prefix.rstrip("/"), dst_prefix.rstrip("/")
+    objs = await self.list_prefix(src)
+    for o in objs:
+        rel = o.key[len(src):].lstrip("/")
+        await self.put(f"{dst}/{rel}", await self.get(o.key))
+    return len(objs)
+```
+
+### aclose
+
+```python
+aclose()
+```
+
+Release any cached client/session. Default no-op; override where there's something to release (a cached HTTP session, connection pool, etc). One name across every Conduit.
+
+Source code in `src/resoluto/sandbox/contracts.py`
+
+```python
+async def aclose(self) -> None:
+    """Release any cached client/session. Default no-op; override where there's something to
+    release (a cached HTTP session, connection pool, etc). One name across every Conduit."""
+```
+
+## resoluto.sandbox.LocalConduit
+
+```python
+LocalConduit(root, *, world_writable=False)
+```
+
+Bases: `Conduit`
+
+Source code in `src/resoluto/sandbox/conduit/local.py`
+
+```python
+def __init__(self, root: str | Path, *, world_writable: bool = False) -> None:
+    self._root = Path(root)
+    self._world_writable = world_writable
+    self._root.mkdir(parents=True, exist_ok=True)
+    if world_writable:
+        self._chmod_world(self._root)
+```
+
+## resoluto.sandbox.StdoutConduit
+
+```python
+StdoutConduit(*, sink=None)
+```
+
+Bases: `Conduit`
+
+Source code in `src/resoluto/sandbox/conduit/stdout.py`
+
+```python
+def __init__(self, *, sink: IO[str] | None = None) -> None:
+    self._sink = sink if sink is not None else sys.stdout
+```
+
+# Pool
+
+Bounded concurrency over sandbox slots: acquire a lease, run inside it, release it back.
+
+## resoluto.sandbox.SandboxPool
+
+```python
+SandboxPool(
+    runtime,
+    *,
+    max_concurrent,
+    acquire_timeout_s=600.0,
+    admission_gate=None,
+    mem_budget_bytes=None,
+    mem_budget_provider=None,
+)
+```
+
+Bounded, FIFO-ordered admission over a runtime with an optional cross-replica `admission_gate` and byte budget.
+
+Source code in `src/resoluto/sandbox/pool.py`
+
+```python
+def __init__(
+    self,
+    runtime: SandboxRuntime,
+    *,
+    max_concurrent: int,
+    acquire_timeout_s: float = 600.0,
+    admission_gate=None,
+    mem_budget_bytes: int | None = None,
+    mem_budget_provider=None,
+) -> None:
+    if max_concurrent < 1:
+        raise ValueError("max_concurrent must be >= 1")
+    self._runtime = runtime
+    self._sem = asyncio.Semaphore(max_concurrent)
+    self._admit = asyncio.Lock()
+    self._acquire_timeout_s = acquire_timeout_s
+    self._admission_gate = admission_gate
+    self._live: set[str] = set()
+    self._max = max_concurrent
+    self._mem_sem = ResourceSemaphore(mem_budget_bytes) if mem_budget_bytes else None
+    self._mem_budget_provider = mem_budget_provider
+    self._budget_resolved = mem_budget_bytes is not None or mem_budget_provider is None
+    self._budget_lock = asyncio.Lock()
+    self._handle_mem: dict[str, int] = {}
+```
+
+### acquire
+
+```python
+acquire(spec, *, on_wait=None)
+```
+
+Reserve RAM budget and a count slot, then launch; `on_wait(amount, available)` fires once if the caller parks on the budget.
+
+Source code in `src/resoluto/sandbox/pool.py`
+
+```python
+async def acquire(self, spec: SandboxLaunchSpec, *, on_wait=None) -> SandboxLease:
+    """Reserve RAM budget and a count slot, then launch; `on_wait(amount, available)` fires once if the caller parks on the budget."""
+    await self._resolve_budget()
+    spec_mem = spec.resources.memory_bytes if self._mem_sem is not None else 0
+    if self._mem_sem is not None:
+        await self._mem_sem.acquire(spec_mem, on_wait=on_wait)
+    try:
+        async with self._admit:
+            if self._admission_gate is not None:
+                loop = asyncio.get_event_loop()
+                deadline = loop.time() + self._acquire_timeout_s
+                while (await self._admission_gate()) >= self._max:
+                    if loop.time() >= deadline:
+                        raise self._starvation_error()
+                    await asyncio.sleep(_ADMISSION_POLL_INTERVAL)
+            else:
+                try:
+                    await asyncio.wait_for(self._sem.acquire(), timeout=self._acquire_timeout_s)
+                except asyncio.TimeoutError as exc:
+                    raise self._starvation_error() from exc
+        try:
+            handle = await self._runtime.launch(spec)
+        except BaseException:
+            if self._admission_gate is None:
+                self._sem.release()
+            raise
+    except BaseException:
+        if self._mem_sem is not None:
+            self._mem_sem.release(spec_mem)
+        raise
+    self._live.add(handle.id)
+    self._handle_mem[handle.id] = spec_mem
+    return SandboxLease(self, handle)
+```
+
+## resoluto.sandbox.SandboxLease
+
+```python
+SandboxLease(pool, handle)
+```
+
+Async-context handle to an acquired sandbox; closing destroys it.
+
+Source code in `src/resoluto/sandbox/pool.py`
+
+```python
+def __init__(self, pool: "SandboxPool", handle: SandboxHandle) -> None:
+    self._pool = pool
+    self.handle = handle
+    self._released = False
+```
+
+# Runtime & Contracts
+
+The isolation/placement seam (`SandboxRuntime`), the backend that drives the stage → run → collect flow, and the platform-neutral launch spec.
+
+## resoluto.sandbox.SandboxRuntime
+
+Bases: `ABC`
+
+The platform-specific surface that launches, polls, and destroys a sandbox.
+
+### sweep
+
+```python
+sweep(labels)
+```
+
+Destroy every sandbox whose labels include all given pairs; return count destroyed.
+
+Source code in `src/resoluto/sandbox/contracts.py`
+
+```python
+@abstractmethod
+async def sweep(self, labels: dict[str, str]) -> int:
+    """Destroy every sandbox whose labels include all given pairs; return count destroyed."""
+```
+
+### logs
+
+```python
+logs(handle, *, tail=200)
+```
+
+Return tail lines of substrate-side logs for forensics.
+
+Source code in `src/resoluto/sandbox/contracts.py`
+
+```python
+async def logs(self, handle: SandboxHandle, *, tail: int = 200) -> str:
+    """Return tail lines of substrate-side logs for forensics."""
+    raise NotImplementedError
+```
+
+## resoluto.sandbox.SubstrateBackend
+
+```python
+SubstrateBackend(
+    *,
+    runtime,
+    conduit,
+    image,
+    store_env,
+    resources=None,
+    dead_after_s=600.0,
+)
+```
+
+Bases: `Backend`
+
+Runs a program in a sandbox via an injected runtime, conduit, image, and store env.
+
+Source code in `src/resoluto/sandbox/backends/substrate.py`
+
+```python
+def __init__(
+    self,
+    *,
+    runtime: SandboxRuntime,
+    conduit: Conduit,
+    image: str,
+    store_env: dict[str, str],
+    resources: Resources | None = None,
+    dead_after_s: float = 600.0,
+) -> None:
+    if not image:
+        raise ValueError("SubstrateBackend requires image=...")
+    self._runtime = runtime
+    self._conduit = conduit
+    self._image = image
+    self._store_env = store_env
+    self._resources = resources or Resources.from_quantities(memory="4Gi", cpu="2")
+    self._dead_after_s = dead_after_s
+```
+
+## resoluto.sandbox.SandboxLaunchSpec
+
+Bases: `BaseModel`
+
+Platform-neutral spec the caller hands a runtime to launch one sandbox.
+
+# Sandbox
+
+The single public entrypoint and the outcome it returns.
+
+## resoluto.sandbox.Sandbox
+
+```python
+Sandbox(*, backend='local', image=None)
+```
+
+Run a program in a sandbox. Holds a Backend (selected by name or injected).
+
+Source code in `src/resoluto/sandbox/client.py`
+
+```python
+def __init__(self, *, backend: "Backend | str" = "local", image: str | None = None) -> None:
+    if isinstance(backend, Backend):
+        self._backend = backend
+    elif backend == "local":
+        self._backend = _build_local_backend(image)
+    elif backend == "k8s":
+        self._backend = _build_k8s_backend(image)
+    else:
+        raise ValueError(f"unknown backend {backend!r} (expected 'local', 'k8s', or a Backend)")
+```
+
+### run
+
+```python
+run(
+    argv,
+    *,
+    workspace=None,
+    stdin=None,
+    env=None,
+    env_file=None,
+    secrets=None,
+    output_paths=None,
+    stream=None,
+    egress=None,
+)
+```
+
+Run `argv` in the sandbox with `workspace` cwd, `env` overlay, `output_paths` globs collected into `RunResult.artifacts`, and live output to `stream`; returns a `RunResult`.
+
+`env_file` parses a dotenv-format file host-side and merges it under `env` (`env` wins on conflict) — a convenience for literal config, NOT a security mechanism: values still land as literal env entries, same as `env`.
+
+`secrets` maps an env var name to either a `SecretKeyRef` (k8s-native — references an existing Kubernetes Secret's key via `valueFrom.secretKeyRef`, zero guest-side code; ignored on the `local` backend) or a plain `str` (a provider-specific ref resolved GUEST-SIDE by the configured `SecretProvider` — see `secrets.py` — so the plaintext value never touches the host, the pod spec, or any log).
+
+`egress` is THIS run's allowed-domain list (e.g. `["api.anthropic.com"]`) — per-step networking set up on the fly and torn down after, with no re-provisioning. `None`/`[]` = deny all outbound (secure default). Currently applied by the `local` backend's SNI proxy.
+
+Source code in `src/resoluto/sandbox/client.py`
+
+```python
+def run(
+    self,
+    argv: Sequence[str],
+    *,
+    workspace: str | None = None,
+    stdin: str | bytes | None = None,
+    env: dict[str, str] | None = None,
+    env_file: str | None = None,
+    secrets: "dict[str, str | SecretKeyRef] | None" = None,
+    output_paths: Sequence[str] | None = None,
+    stream: IO[str] | None = None,
+    egress: Sequence[str] | None = None,
+) -> RunResult:
+    """Run ``argv`` in the sandbox with ``workspace`` cwd, ``env`` overlay, ``output_paths`` globs
+    collected into ``RunResult.artifacts``, and live output to ``stream``; returns a ``RunResult``.
+
+    ``env_file`` parses a dotenv-format file host-side and merges it under ``env`` (``env`` wins
+    on conflict) — a convenience for literal config, NOT a security mechanism: values still land
+    as literal env entries, same as ``env``.
+
+    ``secrets`` maps an env var name to either a ``SecretKeyRef`` (k8s-native — references an
+    existing Kubernetes Secret's key via ``valueFrom.secretKeyRef``, zero guest-side code; ignored
+    on the ``local`` backend) or a plain ``str`` (a provider-specific ref resolved GUEST-SIDE by
+    the configured ``SecretProvider`` — see ``secrets.py`` — so the plaintext value never touches
+    the host, the pod spec, or any log).
+
+    ``egress`` is THIS run's allowed-domain list (e.g. ``["api.anthropic.com"]``) — per-step
+    networking set up on the fly and torn down after, with no re-provisioning. ``None``/``[]`` =
+    deny all outbound (secure default). Currently applied by the ``local`` backend's SNI proxy.
+    """
+    return self._backend.run(argv, workspace=workspace, stdin=stdin, env=env, env_file=env_file,
+                             secrets=secrets, output_paths=output_paths, stream=stream, egress=egress)
+```
+
+## resoluto.sandbox.RunResult
+
+Bases: `BaseModel`
+
+Outcome of one `run()`: exit code, output/errors, collected `artifacts` paths, parsed `result`, and a substrate `reason`.
