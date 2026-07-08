@@ -12,7 +12,7 @@ Two kinds of file live here — keep them straight:
 
 | Driver | Shows |
 |--------|-------|
-| `run_agent_in_sandbox.py <claude\|langchain\|openai>` | Run a provider's agent isolated in a Kata microVM — **symmetric across all three provider images**. The provider you name selects the matching prebuilt image, payload, credential env, and egress host; nothing privileges one provider. |
+| `run_agent_in_sandbox.py <claude\|langchain\|openai\|openrouter>` | Run a provider's agent isolated in a Kata microVM — **symmetric across the provider images**. The provider you name selects the matching prebuilt image, payload, credential env, and egress host; nothing privileges one provider. `openrouter` is OpenAI-compatible: it reuses the `openai` image + payload, forwarding `OPENROUTER_API_KEY` as `OPENAI_API_KEY` with `OPENAI_BASE_URL=https://openrouter.ai/api/v1` (default model `mistralai/mistral-small-3.2-24b-instruct`; override with `OPENROUTER_MODEL`). |
 | `run_hello_in_sandbox.py` | The bare mechanics — stage a plain program (`payloads/hello.py`) into the guest and run it on the base image. |
 
 ```bash
@@ -26,6 +26,8 @@ export ANTHROPIC_API_KEY=...
 uv run python examples/run_agent_in_sandbox.py langchain "why isolate agents?"
 export CLAUDE_CODE_OAUTH_TOKEN=$(claude setup-token)
 uv run python examples/run_agent_in_sandbox.py claude "why isolate agents?"
+export OPENROUTER_API_KEY=sk-or-...                              # OpenAI-compatible; reuses the openai image
+uv run python examples/run_agent_in_sandbox.py openrouter "why isolate agents?"
 ```
 
 `run_hello_in_sandbox.py` reads `RESOLUTO_SANDBOX_IMAGE` (the base image); `run_agent_in_sandbox.py`

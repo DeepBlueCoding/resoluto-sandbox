@@ -12,6 +12,10 @@ This script is plain — it imports `agents` (the `openai-agents` package), neve
 
 Needs OPENAI_API_KEY (pay-as-you-go API billing — there is no subscription auth path for
 this provider). Model defaults to gpt-4.1-mini; override with OPENAI_MODEL.
+
+Any OpenAI-COMPATIBLE endpoint works by setting OPENAI_BASE_URL (e.g. OpenRouter's
+https://openrouter.ai/api/v1) — the SDK is pointed at that host via the Chat Completions
+API (what compatible providers implement), and OPENAI_API_KEY carries that host's key.
 """
 import os
 import sys
@@ -32,7 +36,24 @@ def main() -> int:
         )
         return 1
 
-    agent = Agent(name="assistant", model=os.environ.get("OPENAI_MODEL", "gpt-4.1-mini"))
+    base_url = os.environ.get("OPENAI_BASE_URL")
+    if base_url:
+        # OpenAI-compatible endpoint (e.g. OpenRouter): drive it via the Chat Completions API
+        # with an explicit client, and disable tracing (its uploads target api.openai.com, which
+        # egress locks out). Model is that host's id, e.g. "mistralai/mistral-small-3.2-24b-instruct".
+        from agents import OpenAIChatCompletionsModel, set_tracing_disabled
+        from openai import AsyncOpenAI
+
+        set_tracing_disabled(True)
+        client = AsyncOpenAI(base_url=base_url, api_key=os.environ["OPENAI_API_KEY"])
+        model = OpenAIChatCompletionsModel(
+            model=os.environ.get("OPENAI_MODEL", "mistralai/mistral-small-3.2-24b-instruct"),
+            openai_client=client,
+        )
+    else:
+        model = os.environ.get("OPENAI_MODEL", "gpt-4.1-mini")
+
+    agent = Agent(name="assistant", model=model)
     try:
         result = Runner.run_sync(agent, prompt)
     except Exception as exc:
