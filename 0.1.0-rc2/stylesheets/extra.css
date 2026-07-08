@@ -1,0 +1,76 @@
+/* Resoluto docs — elevated Material theme.
+   Brand: indigo/violet on near-black slate. */
+
+:root {
+  --md-primary-fg-color: #6d5efc;
+  --md-accent-fg-color: #8b7cff;
+  --rz-grad: linear-gradient(120deg, #6d5efc 0%, #a855f7 55%, #ec4899 100%);
+}
+
+[data-md-color-scheme="slate"] {
+  --md-default-bg-color: #0d0f1a;
+  --md-code-bg-color: #141726;
+  --md-typeset-a-color: #9d8bff;
+}
+
+/* Tighter, more editorial typography. */
+.md-typeset {
+  font-feature-settings: "kern", "liga", "calt";
+  line-height: 1.65;
+}
+.md-typeset h1,
+.md-typeset h2 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* Gradient title on the home hero (wrap an h1 in .hero). */
+.hero h1 {
+  background: var(--rz-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-size: 2.6rem;
+  margin-bottom: 0.2em;
+}
+.hero p.tagline {
+  font-size: 1.05rem;
+  opacity: 0.85;
+  max-width: 42rem;
+}
+
+/* Feature grid built from a Markdown list under .grid.cards (md_in_html). */
+.grid.cards > ul > li,
+.grid.cards > :is(ul, ol) > li {
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 12px;
+  padding: 1rem 1.2rem;
+  transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+.grid.cards > :is(ul, ol) > li:hover {
+  border-color: var(--md-accent-fg-color);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px -12px rgba(109, 94, 252, 0.4);
+}
+
+/* Buttons with brand fill. */
+.md-typeset .md-button--primary {
+  background: var(--rz-grad);
+  border: none;
+  color: #fff;
+}
+
+/* Code blocks: subtle brand-tinted border. */
+.md-typeset pre > code {
+  border-radius: 10px;
+}
+.md-typeset .highlight {
+  border-radius: 10px;
+  border: 1px solid var(--md-default-fg-color--lightest);
+}
+
+/* API autodoc symbols get a brand left-rule. */
+.md-typeset .doc-heading {
+  border-left: 3px solid var(--md-primary-fg-color);
+  padding-left: 0.6rem;
+}
