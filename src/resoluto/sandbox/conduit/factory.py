@@ -44,6 +44,12 @@ def store_from_env(env: dict[str, str] | None = None) -> Conduit:
     if kind == "gcs":
         from resoluto.sandbox.conduit.gcs import GcsConduit
 
+        if env.get("RESOLUTO_STORE_WRITE_TOKEN"):
+            raise RuntimeError(
+                "RESOLUTO_STORE_KIND=gcs cannot honor a prefix-scoped RESOLUTO_STORE_WRITE_TOKEN "
+                "(that is the s3 STS path) — GcsConduit is a single-tenant host-side store. "
+                "Refusing rather than silently granting whole-service-account access."
+            )
         return GcsConduit(
             env["RESOLUTO_STORE_BUCKET"],
             service_file=env.get("RESOLUTO_GCS_SERVICE_FILE"),

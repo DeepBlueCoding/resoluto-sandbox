@@ -102,7 +102,7 @@ def test_network_policy_default_deny_egress():
 def test_network_policy_exact_peers_store_https_dns():
     # public_https is graph-declared → carried on the SPEC; the runtime holds only the store base.
     rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32", store_port=9100))
-    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n", egress_public_https=True)
+    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n", egress_public_https=True, labels={"resoluto.run_id": "r", "resoluto.node_id": "n"})
     policy = rt._network_policy(spec, "sbx-test", "fake-uid")
     rules = policy["spec"]["egress"]
     assert len(rules) == 3
@@ -124,7 +124,7 @@ def test_network_policy_imds_blocked_in_broad_rules():
     # IMDS excepted on the broad 0.0.0.0/0 rules; the store rule (specific /32) carries no except
     # (k8s rejects an except that isn't a strict subset of the cidr).
     rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32"))
-    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n", egress_public_https=True)
+    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n", egress_public_https=True, labels={"resoluto.run_id": "r", "resoluto.node_id": "n"})
     rules = rt._network_policy(spec, "sbx-test", "fake-uid")["spec"]["egress"]
     assert "except" not in rules[0]["to"][0]["ipBlock"]
     for rule in rules[1:]:
@@ -133,12 +133,12 @@ def test_network_policy_imds_blocked_in_broad_rules():
 
 def test_network_policy_config_driven():
     rt1 = K8sSandboxRuntime(egress=EgressConfig(store_cidr="192.168.1.100/32"))
-    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n")
+    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n", labels={"resoluto.run_id": "r", "resoluto.node_id": "n"})
     p1 = rt1._network_policy(spec, "sbx", "uid-1")
     assert p1["spec"]["egress"][0]["to"][0]["ipBlock"]["cidr"] == "192.168.1.100/32"
 
     rt2 = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32", store_port=9100))
-    spec2 = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n", egress_public_https=True)
+    spec2 = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n", egress_public_https=True, labels={"resoluto.run_id": "r", "resoluto.node_id": "n"})
     p2 = rt2._network_policy(spec2, "sbx", "uid-2")
     assert p2["spec"]["egress"][0]["ports"] == [{"port": 9100, "protocol": "TCP"}]
     assert len(p2["spec"]["egress"]) == 3
@@ -152,6 +152,7 @@ def test_network_policy_egress_policy_comes_from_the_spec():
     spec = SandboxLaunchSpec(
         image="img:0.1.0", store_prefix="run/r/nodes/n",
         egress_allow=["10.20.30.40/32"], egress_public_https=False,
+        labels={"resoluto.run_id": "r", "resoluto.node_id": "n"},
     )
     rules = rt._network_policy(spec, "sbx", "uid")["spec"]["egress"]
     cidrs = [r["to"][0]["ipBlock"]["cidr"] for r in rules]
@@ -164,7 +165,7 @@ def test_network_policy_egress_policy_comes_from_the_spec():
 
 def test_network_policy_owner_reference():
     rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32"))
-    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n")
+    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n", labels={"resoluto.run_id": "r", "resoluto.node_id": "n"})
     policy = rt._network_policy(spec, "my-pod", "my-pod-uid-456")
     refs = policy["metadata"]["ownerReferences"]
     assert len(refs) == 1
@@ -172,6 +173,15 @@ def test_network_policy_owner_reference():
     assert refs[0]["name"] == "my-pod"
     assert refs[0]["uid"] == "my-pod-uid-456"
     assert refs[0]["blockOwnerDeletion"] is True
+
+
+def test_network_policy_refuses_empty_labels():
+    # An empty podSelector would apply this pod's egress rules to EVERY pod in the namespace —
+    # refuse rather than silently widen egress. The launcher always sets run_id/node_id labels.
+    rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32"))
+    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n")  # no labels
+    with pytest.raises(RuntimeError, match="no labels"):
+        rt._network_policy(spec, "sbx", "uid")
 
 
 def test_egress_config_requires_cidr():
@@ -218,7 +228,7 @@ def test_manifest_always_carries_sandbox_label():
 
 def test_network_policy_with_configmap_owner():
     rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32"))
-    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n")
+    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n", labels={"resoluto.run_id": "r", "resoluto.node_id": "n"})
     policy = rt._network_policy(
         spec, "my-pod", "pod-uid",
         owner_name="run-owner-abc", owner_uid="cm-uid-123",

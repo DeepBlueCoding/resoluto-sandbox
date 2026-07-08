@@ -2,9 +2,24 @@
 that otherwise has no coverage. The gcloud Storage client is stubbed at the _client() seam, so no
 gcloud dep and no network. Pins list_prefix pagination (nextPageToken) and copy_prefix's
 suffix-relativization — the off-by-one logic that breaks silently."""
+import asyncio
+
 import pytest
 
 from resoluto.sandbox.conduit.gcs import GcsConduit
+from resoluto.sandbox.contracts import ConduitError
+
+
+class _HttpError(Exception):
+    """Stand-in for a gcloud-aio / aiohttp error carrying an HTTP status."""
+
+    def __init__(self, status: int) -> None:
+        super().__init__(f"HTTP {status}")
+        self.status = status
+
+
+async def _nosleep(_delay) -> None:
+    return None
 
 
 class _FakeStorage:
@@ -97,3 +112,42 @@ async def test_copy_prefix_handles_trailing_slash_on_prefixes():
 
     assert n == 1
     assert storage.copies == [("src/only", "dst/only")]
+
+
+async def test_io_retries_transient_then_succeeds(monkeypatch):
+    # A 503 is transient — retry (with backoff) until it clears, mirroring S3's standard-mode retry.
+    monkeypatch.setattr(asyncio, "sleep", _nosleep)
+    calls = {"n": 0}
+
+    async def flaky():
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise _HttpError(503)
+        return "ok"
+
+    result = await GcsConduit("b")._io("get", flaky)
+
+    assert result == "ok"
+    assert calls["n"] == 3
+
+
+async def test_io_auth_error_propagates_raw(monkeypatch):
+    # 403 is a permanent denial (e.g. a cross-prefix write) — it must NOT be masked as ConduitError.
+    monkeypatch.setattr(asyncio, "sleep", _nosleep)
+
+    async def denied():
+        raise _HttpError(403)
+
+    with pytest.raises(_HttpError):
+        await GcsConduit("b")._io("put", denied)
+
+
+async def test_io_terminal_transport_error_becomes_conduit_error(monkeypatch):
+    # A transport error that never clears is surfaced as a typed ConduitError after retries exhaust.
+    monkeypatch.setattr(asyncio, "sleep", _nosleep)
+
+    async def broken():
+        raise ConnectionError("connection reset")
+
+    with pytest.raises(ConduitError, match="object store I/O failed"):
+        await GcsConduit("b")._io("get", broken)

@@ -271,6 +271,12 @@ class K8sSandboxRuntime(SandboxRuntime):
     ) -> dict:
         """Build the default-deny egress NetworkPolicy manifest for a sandbox pod: store on store_port, public 443, DNS; IMDS excepted on the broad rules."""
         assert self._egress is not None
+        if not spec.labels:
+            raise RuntimeError(
+                "refusing to build an egress NetworkPolicy for a pod with no labels — an empty "
+                "podSelector would apply this pod's egress rules to EVERY pod in the namespace. "
+                "The launcher must set unique pod labels (e.g. resoluto.run_id/resoluto.node_id)."
+            )
 
         # The store connectivity (store_cidr/store_port) is THIS runtime's infra concern; the
         # ALLOW policy (hosts + public-HTTPS) is graph-declared and travels on the spec. Merge:
@@ -541,3 +547,5 @@ class K8sSandboxRuntime(SandboxRuntime):
     async def close(self) -> None:
         if self._api is not None:
             await self._api.api_client.close()
+        self._api = None
+        self._net_api = None

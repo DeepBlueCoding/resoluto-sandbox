@@ -61,6 +61,32 @@ def test_store_from_env_falls_back_to_aws_creds_when_no_token(monkeypatch):
     assert store._client_kwargs.get("aws_session_token") is None
 
 
+def test_store_from_env_gcs_rejects_scoped_write_token(monkeypatch):
+    """gcs cannot honor a prefix-scoped RESOLUTO_STORE_WRITE_TOKEN — refuse loudly rather than
+    silently granting whole-service-account access."""
+    monkeypatch.setenv("RESOLUTO_STORE_KIND", "gcs")
+    monkeypatch.setenv("RESOLUTO_STORE_BUCKET", "gcs-bucket")
+    monkeypatch.setenv("RESOLUTO_STORE_WRITE_TOKEN", json.dumps(TOKEN_DICT))
+
+    with pytest.raises(RuntimeError, match="cannot honor a prefix-scoped"):
+        store_from_env()
+
+
+def test_store_from_env_gcs_builds_without_token(monkeypatch):
+    """Without a write token, gcs builds a GcsConduit from bucket + service file (lazy gcloud
+    import — no extra needed to construct)."""
+    from resoluto.sandbox.conduit.gcs import GcsConduit
+
+    monkeypatch.setenv("RESOLUTO_STORE_KIND", "gcs")
+    monkeypatch.setenv("RESOLUTO_STORE_BUCKET", "gcs-bucket")
+    monkeypatch.delenv("RESOLUTO_STORE_WRITE_TOKEN", raising=False)
+
+    store = store_from_env()
+
+    assert isinstance(store, GcsConduit)
+    assert store._bucket == "gcs-bucket"
+
+
 def test_store_from_env_localfs_unaffected(monkeypatch, tmp_path):
     """localfs backend is not affected by the RESOLUTO_STORE_WRITE_TOKEN logic."""
     from resoluto.sandbox.conduit import LocalConduit
