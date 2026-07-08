@@ -8,9 +8,9 @@
 This script is plain — it imports `claude_agent_sdk`, never `resoluto.sandbox`.
 It runs identically on your machine and inside the sandbox:
 
-    uv run examples/claude_agent.py "Say hello in five words"          # local
+    uv run examples/payloads/claude_agent.py "Say hello in five words"          # local
     python -c "from resoluto.sandbox import Sandbox; \
-        print(Sandbox().run(['uv','run','examples/claude_agent.py','Say hi']).output)"
+        print(Sandbox().run(['uv','run','examples/payloads/claude_agent.py','Say hi']).output)"
 
 Auth is handled entirely by the `claude` CLI the SDK forks — see docs/auth.md.
 With a Claude Max/Pro subscription, log in once (`claude` / `claude setup-token`)

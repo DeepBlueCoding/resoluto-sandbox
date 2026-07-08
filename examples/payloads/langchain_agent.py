@@ -8,7 +8,7 @@
 This script is plain — it imports `langchain_anthropic`, never `resoluto.sandbox`. It runs
 identically on your machine and inside the sandbox — via `uv run`:
 
-    uv run examples/langchain_agent.py "Say hello in five words"
+    uv run examples/payloads/langchain_agent.py "Say hello in five words"
 
 IMPORTANT: the prebuilt `resoluto-sandbox:langchain-<ver>` image ships ONLY bare `langchain` +
 `langgraph` — LangChain itself is provider-agnostic and does NOT bundle any LLM integration.

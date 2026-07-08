@@ -246,7 +246,7 @@ runtime = K8sSandboxRuntime(
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
     conduit=store_from_env(),       # needs RESOLUTO_STORE_KIND
-    image="<registry>/resoluto-lane:2026-07",
+    image="<registry>/resoluto-lane:0.1.0",
     store_env=store_env_for_pod(os.environ),
 ))
 result = sb.run(["python", "agent.py"], workspace="/path/to/ws", output_paths=["out/*.json"])

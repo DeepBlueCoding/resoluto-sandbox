@@ -80,7 +80,7 @@ runtime = K8sSandboxRuntime(
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
     conduit=store_from_env(),                    # needs RESOLUTO_STORE_KIND
-    image="registry.local/resoluto-lane:dev",   # REQUIRED — no default
+    image="registry.local/resoluto-lane:0.1.0",   # REQUIRED — no default
     store_env=store_env_for_pod(os.environ),
 ))
 ```

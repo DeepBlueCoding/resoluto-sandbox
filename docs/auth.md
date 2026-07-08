@@ -37,7 +37,7 @@ Or pass the credential via `env=` in `Sandbox.run()`:
 
 ```python
 Sandbox(backend="local").run(
-    ["uv", "run", "examples/claude_agent.py", "Say hello in five words"],
+    ["uv", "run", "examples/payloads/claude_agent.py", "Say hello in five words"],
     env={"CLAUDE_CODE_OAUTH_TOKEN": "<your-token>"},
 )
 ```
@@ -66,7 +66,7 @@ claude setup-token                       # prints an OAuth token; copy it
 export CLAUDE_CODE_OAUTH_TOKEN=...        # the value from above
 
 docker run --rm -e CLAUDE_CODE_OAUTH_TOKEN \
-  -v "$PWD/examples:/workspace" \
+  -v "$PWD/examples/payloads:/workspace" \
   resoluto-sandbox:claude-agent-sdk-0.2.110 python claude_agent.py "Say hello in five words"
 ```
 
@@ -75,7 +75,7 @@ docker run --rm -e CLAUDE_CODE_OAUTH_TOKEN \
 ```bash
 docker run --rm \
   -v "$HOME/.claude/.credentials.json:/root/.claude/.credentials.json:ro" \
-  -v "$PWD/examples:/workspace" \
+  -v "$PWD/examples/payloads:/workspace" \
   resoluto-sandbox:claude-agent-sdk-0.2.110 python claude_agent.py "Say hello in five words"
 ```
 

@@ -13,7 +13,7 @@ Auth is the `claude` CLI's job (see docs/auth.md): with a Max/Pro subscription, 
 CLAUDE_CONFIG_DIR at a dir holding .credentials.json and do NOT set ANTHROPIC_API_KEY (so usage
 bills your subscription, not the API).
 
-    uv run examples/llm_agent.py "In five words, why do sandboxes matter?"
+    uv run tests/smoke/llm_agent.py "In five words, why do sandboxes matter?"
 """
 import asyncio
 import json

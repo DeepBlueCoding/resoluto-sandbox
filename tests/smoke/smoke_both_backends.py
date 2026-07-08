@@ -16,9 +16,9 @@ For each backend it asserts the documented program contract (references/agents.m
 Run from resoluto-sandbox/ with the backends provisioned:
     set -a; source store.env; set +a      # k8s: minio + s3 + STS + lane image + kube context
     set -a; source local.env; set +a      # local: RESOLUTO_LOCAL_* knobs (or rely on defaults)
-    uv run python examples/smoke_both_backends.py            # both
-    uv run python examples/smoke_both_backends.py --local-only
-    uv run python examples/smoke_both_backends.py --k8s-only
+    uv run python tests/smoke/smoke_both_backends.py            # both
+    uv run python tests/smoke/smoke_both_backends.py --local-only
+    uv run python tests/smoke/smoke_both_backends.py --k8s-only
 """
 import asyncio
 import json
@@ -76,7 +76,7 @@ def _egress_unenforced(res) -> bool:
 
 def run_local() -> str:
     """local backend: Sandbox(backend='local') — the documented one-liner. Returns GREEN/RED."""
-    image = os.environ.get("RESOLUTO_LOCAL_LANE_IMAGE", "localhost:5000/resoluto-lane:dev")
+    image = os.environ["RESOLUTO_LANE_IMAGE"]
     res = Sandbox(backend="local", image=image).run(
         ["python", "echo_agent.py", PROMPT],
         workspace=_staged_workspace(),

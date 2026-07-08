@@ -55,7 +55,7 @@ from resoluto.sandbox import Sandbox
 
 r = Sandbox(backend="local").run(
     ["uv", "run", "claude_agent.py", "Say hello in five words"],   # relative to workspace, NOT "examples/..."
-    workspace="examples",
+    workspace="examples/payloads",
     env={"CLAUDE_CODE_OAUTH_TOKEN": "..."},  # or bake credentials into the image
 )
 print(r.output)
@@ -84,12 +84,12 @@ runtime = K8sSandboxRuntime(
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
     conduit=store_from_env(),
-    image="<registry>/resoluto-lane:2026-07",
+    image="<registry>/resoluto-lane:0.1.0",
     store_env=store_env_for_pod(os.environ),
 ))
 r = sb.run(
     ["python", "claude_agent.py", "Say hello in five words"],
-    workspace="/abs/path/to/examples",     # staged into the pod at /workspace
+    workspace="/abs/path/to/examples/payloads",     # staged into the pod at /workspace
 )
 print(r.output, r.reason)
 ```
@@ -146,7 +146,7 @@ runtime = K8sSandboxRuntime(
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
     conduit=store_from_env(),
-    image="<registry>/resoluto-lane:2026-07",
+    image="<registry>/resoluto-lane:0.1.0",
     store_env=store_env_for_pod(os.environ),
 ))
 ```
@@ -177,7 +177,7 @@ runtime = K8sSandboxRuntime(
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
     conduit=store_from_env(),
-    image="myregistry/my-lane:2026-06",
+    image="myregistry/my-lane:0.1.0",
     store_env=store_env_for_pod(os.environ),
 ))
 ```

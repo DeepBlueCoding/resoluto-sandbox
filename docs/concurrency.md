@@ -25,7 +25,7 @@ pool = SandboxPool(runtime, max_concurrent=4, mem_budget_bytes=16 * 1024**3)  # 
 
 async def one(prefix: str) -> None:
     spec = SandboxLaunchSpec(
-        image="<registry>/resoluto-lane:2026-07",
+        image="<registry>/resoluto-lane:0.1.0",
         store_prefix=prefix,
         resources=Resources.from_quantities(memory="4Gi", cpu="2"),
     )
@@ -63,7 +63,7 @@ from resoluto.sandbox.contracts import Resources, SandboxLaunchSpec
 from resoluto.sandbox.driver import drive_node
 
 spec = SandboxLaunchSpec(
-    image="<registry>/resoluto-lane:2026-07",
+    image="<registry>/resoluto-lane:0.1.0",
     flavor="dind", privileged=True,                       # docker-in-docker under Kata
     store_prefix="run/demo/nodes/build/lane-0",
     resources=Resources.from_quantities(

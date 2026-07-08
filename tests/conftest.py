@@ -21,8 +21,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 DIND_DOCKER = "docker:27-dind"
 DIND_CTR = "docker.io/library/docker:27-dind"
-RUNNER_DOCKER = "resoluto-sandbox-runner:dev"
-RUNNER_CTR = "docker.io/library/resoluto-sandbox-runner:dev"
+RUNNER_DOCKER = "resoluto-sandbox-runner:0.1.0"
+RUNNER_CTR = "docker.io/library/resoluto-sandbox-runner:0.1.0"
 
 
 def _run(cmd: list[str], **kw) -> subprocess.CompletedProcess:

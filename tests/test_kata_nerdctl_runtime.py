@@ -10,7 +10,7 @@ _NS = "resoluto-local"
 
 def _spec(**kw) -> SandboxLaunchSpec:
     base = dict(
-        image="img:dev",
+        image="img:0.1.0",
         env={"RESOLUTO_STORE_KIND": "localfs", "K": "V"},
         args=["python", "-m", "resoluto.sandbox.runner_main"],
         labels={"resoluto.run_id": "r1", "resoluto.node_id": "n1"},
@@ -83,7 +83,7 @@ async def test_launch_builds_kata_run_argv(monkeypatch):
     assert "--label" in argv and "resoluto.run_id=r1" in argv
     assert "-e" in argv and "RESOLUTO_STORE_KIND=localfs" in argv and "K=V" in argv
     assert argv[argv.index("-v") + 1] == "/host/store:/conduit"
-    img_idx = argv.index("img:dev")
+    img_idx = argv.index("img:0.1.0")
     assert argv[img_idx + 1:] == ["python", "-m", "resoluto.sandbox.runner_main"]
     # plain step: no inner dockerd, default uid, no dind graph
     assert "--privileged" not in argv and "--user" not in argv and "--tmpfs" not in argv

@@ -6,7 +6,7 @@ import pytest
 
 from resoluto.sandbox import Sandbox
 
-_IMAGE = "localhost:5000/resoluto-lane:dev"
+_IMAGE = "localhost:5000/resoluto-lane:0.1.0"
 _CONTAINERD_SOCK = "/run/resoluto-local/containerd/containerd.sock"
 
 

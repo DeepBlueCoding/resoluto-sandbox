@@ -45,7 +45,7 @@ from resoluto.sandbox.contracts import Resources
 from resoluto.sandbox.backends.substrate import SubstrateBackend
 
 sb = Sandbox(backend=SubstrateBackend(
-    runtime=runtime, conduit=conduit, image="<registry>/resoluto-lane:2026-07",
+    runtime=runtime, conduit=conduit, image="<registry>/resoluto-lane:0.1.0",
     store_env=store_env,
     resources=Resources.from_quantities(memory="16Gi", cpu="4", disk="40Gi"),  # default: 4Gi / 2 cpu
 ))
@@ -136,7 +136,7 @@ runtime = K8sSandboxRuntime(
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
     conduit=store_from_env(),
-    image="<registry>/resoluto-lane:2026-07",
+    image="<registry>/resoluto-lane:0.1.0",
     store_env=store_env_for_pod(os.environ),
 ))
 result = sb.run(["bash", "-lc", "echo hi"], workspace="./proj", output_paths=["*.txt"])
@@ -147,7 +147,7 @@ print(result.ok)       # True
 Or use the convenience shortcut (reads `RESOLUTO_LANE_IMAGE` and `RESOLUTO_STORE_KIND` from env):
 
 ```python
-Sandbox(backend="k8s", image="<registry>/resoluto-lane:2026-07").run(...)
+Sandbox(backend="k8s", image="<registry>/resoluto-lane:0.1.0").run(...)
 ```
 
 ### Optional: egress lockdown
@@ -273,14 +273,14 @@ the bucket policy to allow the credentials you export below.
 
 ```bash
 tag=$(resoluto-sandbox image build --provider claude)
-docker tag "$tag" <registry>/resoluto-lane:2026-07
-docker push <registry>/resoluto-lane:2026-07
+docker tag "$tag" <registry>/resoluto-lane:0.1.0
+docker push <registry>/resoluto-lane:0.1.0
 ```
 
 Set the image in the environment:
 
 ```bash
-export RESOLUTO_LANE_IMAGE=<registry>/resoluto-lane:2026-07
+export RESOLUTO_LANE_IMAGE=<registry>/resoluto-lane:0.1.0
 ```
 
 ### 6. Export environment variables
@@ -293,7 +293,7 @@ export RESOLUTO_SANDBOX_KUBECONTEXT=<your-context-name>
 export RESOLUTO_SANDBOX_NAMESPACE=resoluto-sandboxes
 
 # Image to run inside each pod
-export RESOLUTO_LANE_IMAGE=<registry>/resoluto-lane:2026-07
+export RESOLUTO_LANE_IMAGE=<registry>/resoluto-lane:0.1.0
 
 # Conduit: S3-compatible store
 export RESOLUTO_STORE_KIND=s3

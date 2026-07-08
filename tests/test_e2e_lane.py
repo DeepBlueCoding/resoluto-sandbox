@@ -8,7 +8,7 @@ collects the result, and reaps the pod. This is the store-mediated loop that the
 RES-236 wedge made impossible — proven against the substrate, not a fake.
 
 Run:  uv run pytest -m integration tests/test_e2e_lane.py
-Needs: live k3s+Kata, the resoluto-sandbox-runner:dev image imported into k3s
+Needs: live k3s+Kata, the resoluto-sandbox-runner:0.1.0 image imported into k3s
 containerd, and spike-minio on the host (0.0.0.0:9100, minioadmin/minioadmin).
 """
 import os
@@ -36,7 +36,7 @@ from resoluto.sandbox.runtime.k8s import EgressConfig, K8sSandboxRuntime
 # Run these on an egress-enforcing cluster (Calico/Cilium).
 pytestmark = pytest.mark.skip(reason="needs a CNI that enforces egress NetworkPolicy (this k3s+Flannel box does not)")
 
-RUNNER_IMAGE = "docker.io/library/resoluto-sandbox-runner:dev"
+RUNNER_IMAGE = "docker.io/library/resoluto-sandbox-runner:0.1.0"
 NS = "resoluto-e2e"
 HOST_ENDPOINT = "http://localhost:9100"       # host-side reader → minio
 POD_ENDPOINT = "http://192.168.1.197:9100"    # in-pod runner → minio (k3s node IP)

@@ -8,7 +8,7 @@
 This script is plain — it imports `agents` (the `openai-agents` package), never
 `resoluto.sandbox`. It runs identically on your machine and inside the sandbox:
 
-    uv run examples/openai_agent.py "Say hello in five words"
+    uv run examples/payloads/openai_agent.py "Say hello in five words"
 
 Needs OPENAI_API_KEY (pay-as-you-go API billing — there is no subscription auth path for
 this provider). Model defaults to gpt-4.1-mini; override with OPENAI_MODEL.

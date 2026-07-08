@@ -21,9 +21,9 @@ PROVISION time, so provision it with the LLM opened first:
 
 Run from resoluto-sandbox/ (lane image present; backends provisioned):
     set -a; source store.env; source local.env; set +a
-    uv run python examples/smoke_llm.py                       # local backend
-    uv run python examples/smoke_llm.py --k8s-only            # k8s backend
-    uv run python examples/smoke_llm.py "your own prompt"
+    uv run python tests/smoke/smoke_llm.py                       # local backend
+    uv run python tests/smoke/smoke_llm.py --k8s-only            # k8s backend
+    uv run python tests/smoke/smoke_llm.py "your own prompt"
 """
 import io
 import json
@@ -87,7 +87,7 @@ def _egress_unenforced(res) -> bool:
 
 
 def run_local(prompt: str, token: str) -> str:
-    image = os.environ.get("RESOLUTO_LOCAL_LANE_IMAGE", "localhost:5000/resoluto-lane:dev")
+    image = os.environ["RESOLUTO_LANE_IMAGE"]
     res = Sandbox(backend="local", image=image).run(
         ["python", "llm_agent.py", prompt],
         workspace=_staged_workspace(),

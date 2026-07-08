@@ -5,10 +5,10 @@
 """A minimal standalone program that prints a greeting.
 
 Run directly:
-    uv run examples/01_local_hello.py
+    uv run examples/payloads/hello.py
 
-Run via Sandbox (from the repo root):
-    uv run python examples/02_run_via_sandbox.py
+Run via Sandbox (from resoluto-sandbox/):
+    uv run python examples/run_hello_in_sandbox.py
 """
 import sys
 

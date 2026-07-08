@@ -85,10 +85,10 @@ Dependencies are your program's concern — put `uv run`/`pip install` in your a
 `argv[0]` is just an executable. None of these touch the sandbox SDK:
 
 ```python
-Sandbox().run(["uv", "run", "agent.py", "Say hi"], workspace="examples")        # python
-Sandbox().run(["node", "agent.js", "Say hi"], workspace="examples")             # node
-Sandbox().run(["./agent", "Say hi"], workspace="examples")                      # compiled binary
-Sandbox().run(["bash", "-c", "echo hi && ls"], workspace="examples")            # shell
+Sandbox().run(["uv", "run", "agent.py", "Say hi"], workspace="examples/payloads")   # python
+Sandbox().run(["node", "agent.js", "Say hi"], workspace="examples/payloads")        # node
+Sandbox().run(["./agent", "Say hi"], workspace="examples/payloads")                 # compiled binary
+Sandbox().run(["bash", "-c", "echo hi && ls"], workspace="examples/payloads")       # shell
 ```
 
 LangChain / LangGraph / OpenAI-Agents are libraries your program imports — there is
@@ -111,7 +111,7 @@ The wheel version (must match the running `resoluto-sandbox` package) travels as
 
 **`langchain` needs a provider integration added before it can call any LLM.** `FROM
 resoluto-sandbox:langchain-<ver>` and `RUN pip install langchain-anthropic` (or `langchain-openai`,
-etc.) — one line, no other changes. `examples/langchain_agent.py` demonstrates the Anthropic case
+etc.) — one line, no other changes. `examples/payloads/langchain_agent.py` demonstrates the Anthropic case
 and will `ImportError` against the plain image until extended this way.
 
 To extend any image: copy a Dockerfile, `FROM ${BASE_IMAGE}`, add your `pip install`/`npm install -g`,
@@ -141,7 +141,7 @@ pass the credentials explicitly:
 claude
 
 python -c "from resoluto.sandbox import Sandbox; \
-  print(Sandbox().run(['uv','run','examples/claude_agent.py','Say hello in five words']).output)"
+  print(Sandbox().run(['uv','run','examples/payloads/claude_agent.py','Say hello in five words']).output)"
 ```
 
 ### Container image — supply auth at `docker run`
@@ -220,7 +220,7 @@ sb = Sandbox(backend=SubstrateBackend(
     image=os.environ["RESOLUTO_LANE_IMAGE"],   # REQUIRED, and present in the cluster's containerd
     store_env=store_env,
 ))
-res = sb.run(["python", "echo_agent.py", "ping-42"], workspace="examples",
+res = sb.run(["python", "echo_agent.py", "ping-42"], workspace="tests/smoke",
              output_paths=["result.json"], env={"SMOKE_TAG": "x"})
 ```
 
@@ -235,24 +235,24 @@ Workspace is staged into the store and extracted back into your `workspace` dir 
 
 ### Verify both backends — the smoke test
 
-`examples/smoke_both_backends.py` runs the minimal `examples/echo_agent.py` through BOTH
+`tests/smoke/smoke_both_backends.py` runs the minimal `tests/smoke/echo_agent.py` through BOTH
 backends and asserts the full input→agent→output contract (argv + env in; stdout + `result.json`
 out). Run it from `resoluto-sandbox/`:
 
 ```bash
 set -a; source store.env; source local.env; set +a     # store + local-Kata config
-uv run python examples/smoke_both_backends.py              # both  (--local-only / --k8s-only)
+uv run python tests/smoke/smoke_both_backends.py              # both  (--local-only / --k8s-only)
 ```
 
 `local` is GREEN when its bootstrap is up; `k8s` is GREEN when the CNI enforces egress in time,
 else `BLOCKED` (a clearly-reported environment limit, not a code failure).
 
-**See a REAL LLM call's input and output** with `examples/smoke_llm.py` — it runs
-`examples/llm_agent.py` (a real claude-agent-sdk program) through the sandbox and prints the
+**See a REAL LLM call's input and output** with `tests/smoke/smoke_llm.py` — it runs
+`tests/smoke/llm_agent.py` (a real claude-agent-sdk program) through the sandbox and prints the
 prompt (input) and Claude's answer (output):
 
 ```bash
-uv run python examples/smoke_llm.py "In five words, why do sandboxes matter?"
+uv run python tests/smoke/smoke_llm.py "In five words, why do sandboxes matter?"
 #   INPUT  (prompt to the LLM): 'In five words, why do sandboxes matter?'
 #   OUTPUT (the LLM's answer) : 'They prevent untrusted code escaping containment.'
 ```

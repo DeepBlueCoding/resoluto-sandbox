@@ -66,7 +66,7 @@ def _backend(store_env=None) -> SubstrateBackend:
     return SubstrateBackend(
         runtime=_FakeRuntime(),
         conduit=_FakeConduit(),
-        image="img:dev",
+        image="img:0.1.0",
         store_env=store_env or {"RESOLUTO_STORE_KIND": "s3", "RESOLUTO_STORE_BUCKET": "b"},
     )
 
@@ -194,7 +194,7 @@ def test_conduit_aclose_called_when_run_finishes(monkeypatch):
     _patch_drive(monkeypatch)
     conduit = _FakeConduit()
     backend = SubstrateBackend(
-        runtime=_FakeRuntime(), conduit=conduit, image="img:dev",
+        runtime=_FakeRuntime(), conduit=conduit, image="img:0.1.0",
         store_env={"RESOLUTO_STORE_KIND": "s3", "RESOLUTO_STORE_BUCKET": "b"},
     )
     backend.run(["true"])
@@ -210,7 +210,7 @@ def test_conduit_aclose_called_even_on_failure(monkeypatch):
     import resoluto.sandbox.driver as driver
     monkeypatch.setattr(driver, "drive_node", failing_drive_node)
     backend = SubstrateBackend(
-        runtime=_FakeRuntime(), conduit=conduit, image="img:dev",
+        runtime=_FakeRuntime(), conduit=conduit, image="img:0.1.0",
         store_env={"RESOLUTO_STORE_KIND": "s3", "RESOLUTO_STORE_BUCKET": "b"},
     )
     with pytest.raises(RuntimeError, match="boom"):
@@ -236,7 +236,7 @@ def test_resources_and_dead_after_s_are_overridable(monkeypatch):
     backend = SubstrateBackend(
         runtime=_FakeRuntime(),
         conduit=_FakeConduit(),
-        image="img:dev",
+        image="img:0.1.0",
         store_env={"RESOLUTO_STORE_KIND": "s3", "RESOLUTO_STORE_BUCKET": "b"},
         resources=Resources.from_quantities(memory="8Gi", cpu="4"),
         dead_after_s=120.0,

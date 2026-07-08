@@ -9,7 +9,7 @@ references/agents.md): it receives its task on argv (and an optional SMOKE_TAG v
 'reasons' over the input, prints the answer to stdout, and writes result.json. It NEVER
 imports resoluto.sandbox — it is a plain program, identical on your host and in the sandbox.
 
-    uv run examples/echo_agent.py "ping-42"
+    uv run tests/smoke/echo_agent.py "ping-42"
 """
 import json
 import os

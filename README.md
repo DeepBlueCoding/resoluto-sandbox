@@ -41,23 +41,20 @@ The result captures the output, the exit code, and any files you asked to collec
 > never a floating tag; build it from `Dockerfile.base` or `resoluto-sandbox image build`). Run argv with
 > the **guest's** `python` and paths relative to `workspace`, not host absolute paths.
 
-**Verify both backends end to end** with the smoke test — it runs a minimal agent through `local`
-(Kata via nerdctl) and `k8s` (Kata pod) and asserts input (argv + env) → output (stdout +
-`result.json`):
+**Run a real agent, isolated** — the reason this project exists. `run_agent_in_sandbox.py` runs a
+plain Claude agent (`examples/payloads/claude_agent.py`, which never imports the library) inside a
+Kata microVM with egress locked to the LLM, then prints its input → output:
 
 ```bash
-set -a; source store.env; source local.env; set +a
-uv run python examples/smoke_both_backends.py        # or --local-only / --k8s-only
+set -a; source local.env; set +a          # exports RESOLUTO_LANE_IMAGE (provision the backend first)
+uv run python examples/run_agent_in_sandbox.py "In five words, why isolate an agent?"
+#   INPUT  (prompt) : 'In five words, why isolate an agent?'
+#   OUTPUT (answer) : 'Untrusted code cannot escape containment.'
 ```
 
-To see a **real LLM call's** input and output through the sandbox (subscription auth via
-`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY` unset):
-
-```bash
-uv run python examples/smoke_llm.py "In five words, why do sandboxes matter?"
-#   INPUT  (prompt to the LLM): 'In five words, why do sandboxes matter?'
-#   OUTPUT (the LLM's answer) : 'They prevent untrusted code escaping containment.'
-```
+For the bare mechanics without an LLM, see `examples/run_hello_in_sandbox.py`. The end-to-end
+verification harnesses that drive a minimal agent through BOTH backends (local + k8s) live in
+`tests/smoke/` (`smoke_both_backends.py`, `smoke_llm.py`).
 
 ---
 
@@ -286,9 +283,9 @@ resoluto-sandbox image build --provider all         # builds the base once, then
 
 | Provider | Bakes | Example agent | Auth |
 |---|---|---|---|
-| `claude` | `@anthropic-ai/claude-code` + `claude-agent-sdk` | `examples/claude_agent.py` | Claude Max/Pro subscription (`claude setup-token`) or `ANTHROPIC_API_KEY` — see [`docs/auth.md`](docs/auth.md) |
-| `langchain` | bare `langchain` + `langgraph` — **no LLM integration** | `examples/langchain_agent.py` | Depends which integration you add — see below |
-| `openai` | `openai-agents` | `examples/openai_agent.py` | `OPENAI_API_KEY` — pay-as-you-go API only, `OPENAI_MODEL` override |
+| `claude` | `@anthropic-ai/claude-code` + `claude-agent-sdk` | `examples/payloads/claude_agent.py` | Claude Max/Pro subscription (`claude setup-token`) or `ANTHROPIC_API_KEY` — see [`docs/auth.md`](docs/auth.md) |
+| `langchain` | bare `langchain` + `langgraph` — **no LLM integration** | `examples/payloads/langchain_agent.py` | Depends which integration you add — see below |
+| `openai` | `openai-agents` | `examples/payloads/openai_agent.py` | `OPENAI_API_KEY` — pay-as-you-go API only, `OPENAI_MODEL` override |
 
 > **The `langchain` image is bare on purpose.** LangChain itself is provider-agnostic — it has no
 > built-in way to call an LLM. To actually use it, extend the image with the matching integration
@@ -297,7 +294,7 @@ resoluto-sandbox image build --provider all         # builds the base once, then
 > FROM resoluto-sandbox:langchain-1.3.11
 > RUN pip install --break-system-packages langchain-anthropic   # or langchain-openai, etc.
 > ```
-> `examples/langchain_agent.py` demonstrates the Anthropic integration specifically (needs
+> `examples/payloads/langchain_agent.py` demonstrates the Anthropic integration specifically (needs
 > `langchain-anthropic` + `ANTHROPIC_API_KEY`, model override `ANTHROPIC_MODEL`) — it will
 > `ImportError` against the plain prebuilt `langchain` image until you extend it this way.
 
@@ -316,16 +313,16 @@ resoluto-sandbox image build --provider all         # builds the base once, then
 
 Verified end to end against the real Kata sandbox (all three: canary passes, workspace stages, the
 script runs and reaches its auth check). `claude` and `openai` run against the plain prebuilt image;
-`langchain` needs the one-line extended image from above (built as `my-langchain-anthropic:2026-07` here):
+`langchain` needs the one-line extended image from above (built as `my-langchain-anthropic:0.1.0` here):
 
 ```python
 from resoluto.sandbox import Sandbox
 
-# workspace="examples" stages that DIRECTORY'S CONTENTS at /workspace — argv paths are relative
-# to that root, never prefixed with "examples/" again.
-r = Sandbox(backend="local", image="my-langchain-anthropic:2026-07").run(
+# workspace="examples/payloads" stages that DIRECTORY'S CONTENTS at /workspace — argv paths are
+# relative to that root, never prefixed with the directory again.
+r = Sandbox(backend="local", image="my-langchain-anthropic:0.1.0").run(
     ["python3", "langchain_agent.py", "Say hello in five words"],
-    workspace="examples",
+    workspace="examples/payloads",
     env={"ANTHROPIC_API_KEY": "..."},
 )
 print(r.output)
@@ -335,11 +332,11 @@ Swap the `image=` tag + example script + env var to switch providers — everyth
 
 ```python
 Sandbox(backend="local", image="resoluto-sandbox:claude-agent-sdk-0.2.110").run(
-    ["python3", "claude_agent.py", "Say hello in five words"], workspace="examples",
+    ["python3", "claude_agent.py", "Say hello in five words"], workspace="examples/payloads",
     env={"CLAUDE_CODE_OAUTH_TOKEN": "..."},   # never set ANTHROPIC_API_KEY alongside this
 )
 Sandbox(backend="local", image="resoluto-sandbox:openai-agents-0.17.7").run(
-    ["python3", "openai_agent.py", "Say hello in five words"], workspace="examples",
+    ["python3", "openai_agent.py", "Say hello in five words"], workspace="examples/payloads",
     env={"OPENAI_API_KEY": "..."},
 )
 ```
@@ -348,7 +345,7 @@ Or via the CLI (`--workspace` is REQUIRED to stage anything — without it `/wor
 your script won't be found; run from the repo root so `.` stages `examples/` alongside it):
 
 ```bash
-resoluto-sandbox run --workspace . --image resoluto-sandbox:openai-agents-0.17.7 -- python3 examples/openai_agent.py "hi"
+resoluto-sandbox run --workspace examples/payloads --image resoluto-sandbox:openai-agents-0.17.7 -- python3 openai_agent.py "hi"
 ```
 
 On `k8s`, retag + push to your registry (`docs/backends.md`), then inject the same tag through
@@ -376,6 +373,7 @@ On `k8s`, retag + push to your registry (`docs/backends.md`), then inject the sa
 - `docs/networking.md` — egress isolation (the canary + per-backend enforcement)
 - `docs/auth.md` — Claude Max/Pro subscription auth (no API key needed)
 - `spec/PROTOCOL.md` — the language-neutral host ↔ sandbox wire protocol
-- `examples/` — `01_local_hello.py` (no sandbox) → `02_run_via_sandbox.py` (same program, sandboxed)
-  → `claude_agent.py` / `langchain_agent.py` / `openai_agent.py` (one plain agent per prebuilt
-  provider image — see [Prebuilt provider images](#prebuilt-provider-images))
+- `examples/` — start at `run_agent_in_sandbox.py` (a real Claude agent isolated in a Kata microVM)
+  or `run_hello_in_sandbox.py` (the bare mechanics); `payloads/` holds the plain programs run inside
+  (`hello.py`, `claude_agent.py`, `langchain_agent.py`, `openai_agent.py`, one per prebuilt provider
+  image). See [`examples/README.md`](examples/README.md).

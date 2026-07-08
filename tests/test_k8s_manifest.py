@@ -13,7 +13,7 @@ def _never_touch_a_real_cluster(monkeypatch):
     """These are UNIT tests of manifest/guard/preflight logic — they must never reach a
     real k8s API. Several call `await rt.launch(...)` expecting it to fail "because there's
     no cluster", but on a dev box with k3s reachable that assumption is false and launch
-    leaks real `img:dev` pods (ImagePullBackOff forever). Stub `_client` so any API call
+    leaks real `img:0.1.0` pods (ImagePullBackOff forever). Stub `_client` so any API call
     raises instead of hitting the cluster — the guard/preflight asserts still hold."""
     async def _no_api(self):
         raise RuntimeError("unit test: k8s API access is stubbed out")
@@ -28,7 +28,7 @@ def test_dind_tmpfs_emits_memory_medium():
     # is a neutral resource. tmpfs → medium:Memory emptyDir, sizeLimit = the graph bytes.
     rt = K8sSandboxRuntime()
     spec = SandboxLaunchSpec(
-        image="img:dev", store_prefix="run/r/nodes/n", flavor="dind",
+        image="img:0.1.0", store_prefix="run/r/nodes/n", flavor="dind",
         resources=Resources.from_quantities(memory="20Gi", cpu="2", dind_graph="16Gi",
                                              graph_backend="tmpfs"),
     )
@@ -42,7 +42,7 @@ def test_dind_tmpfs_omits_sizelimit_when_graph_unset():
     # A dind spec with no dind_graph size must NOT render sizeLimit:"None" (the literal string),
     # which k8s rejects as an invalid quantity (BadRequest). Omit it instead.
     rt = K8sSandboxRuntime()
-    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n", flavor="dind")
+    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n", flavor="dind")
     graph_vol = next(v for v in rt._manifest(spec, "sbx")["spec"]["volumes"] if v["name"] == "docker-graph")
     assert graph_vol["emptyDir"]["medium"] == "Memory"
     assert "sizeLimit" not in graph_vol["emptyDir"]  # never the string "None"
@@ -53,7 +53,7 @@ def test_dind_block_emits_no_medium():
     # disk-backed emptyDir (no medium:Memory); sizeLimit = the graph DISK size from the spec.
     rt = K8sSandboxRuntime()
     spec = SandboxLaunchSpec(
-        image="img:dev", store_prefix="run/r/nodes/n", flavor="dind",
+        image="img:0.1.0", store_prefix="run/r/nodes/n", flavor="dind",
         resources=Resources.from_quantities(memory="6Gi", cpu="2", dind_graph="20Gi",
                                              graph_backend="block"),
     )
@@ -65,7 +65,7 @@ def test_dind_block_emits_no_medium():
 
 def test_plain_flavor_has_no_docker_graph_volume():
     rt = K8sSandboxRuntime()
-    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n", flavor="plain")
+    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n", flavor="plain")
     manifest = rt._manifest(spec, "sbx-test")
     graph_vols = [v for v in manifest["spec"]["volumes"] if v["name"] == "docker-graph"]
     assert graph_vols == []
@@ -73,11 +73,11 @@ def test_plain_flavor_has_no_docker_graph_volume():
 
 def test_manifest_omits_active_deadline_when_none():
     rt = K8sSandboxRuntime()
-    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
+    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n")
     manifest = rt._manifest(spec, "sbx-test")
     assert "activeDeadlineSeconds" not in manifest["spec"]
 
-    capped = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n", deadline_seconds=900)
+    capped = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n", deadline_seconds=900)
     manifest_capped = rt._manifest(capped, "sbx-test")
     assert manifest_capped["spec"]["activeDeadlineSeconds"] == 900
 
@@ -87,7 +87,7 @@ def test_manifest_omits_active_deadline_when_none():
 
 def test_network_policy_default_deny_egress():
     rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32"))
-    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n", labels={"app": "lane"})
+    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n", labels={"app": "lane"})
     policy = rt._network_policy(spec, "sbx-test", "fake-uid-123")
     assert policy["spec"]["policyTypes"] == ["Egress"]
     assert policy["kind"] == "NetworkPolicy"
@@ -102,7 +102,7 @@ def test_network_policy_default_deny_egress():
 def test_network_policy_exact_peers_store_https_dns():
     # public_https is graph-declared → carried on the SPEC; the runtime holds only the store base.
     rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32", store_port=9100))
-    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n", egress_public_https=True)
+    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n", egress_public_https=True)
     policy = rt._network_policy(spec, "sbx-test", "fake-uid")
     rules = policy["spec"]["egress"]
     assert len(rules) == 3
@@ -124,7 +124,7 @@ def test_network_policy_imds_blocked_in_broad_rules():
     # IMDS excepted on the broad 0.0.0.0/0 rules; the store rule (specific /32) carries no except
     # (k8s rejects an except that isn't a strict subset of the cidr).
     rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32"))
-    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n", egress_public_https=True)
+    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n", egress_public_https=True)
     rules = rt._network_policy(spec, "sbx-test", "fake-uid")["spec"]["egress"]
     assert "except" not in rules[0]["to"][0]["ipBlock"]
     for rule in rules[1:]:
@@ -133,12 +133,12 @@ def test_network_policy_imds_blocked_in_broad_rules():
 
 def test_network_policy_config_driven():
     rt1 = K8sSandboxRuntime(egress=EgressConfig(store_cidr="192.168.1.100/32"))
-    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
+    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n")
     p1 = rt1._network_policy(spec, "sbx", "uid-1")
     assert p1["spec"]["egress"][0]["to"][0]["ipBlock"]["cidr"] == "192.168.1.100/32"
 
     rt2 = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32", store_port=9100))
-    spec2 = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n", egress_public_https=True)
+    spec2 = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n", egress_public_https=True)
     p2 = rt2._network_policy(spec2, "sbx", "uid-2")
     assert p2["spec"]["egress"][0]["ports"] == [{"port": 9100, "protocol": "TCP"}]
     assert len(p2["spec"]["egress"]) == 3
@@ -150,7 +150,7 @@ def test_network_policy_egress_policy_comes_from_the_spec():
     rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32", store_port=9100))
     # spec opts into a specific host on 443 (no public_https)
     spec = SandboxLaunchSpec(
-        image="img:dev", store_prefix="run/r/nodes/n",
+        image="img:0.1.0", store_prefix="run/r/nodes/n",
         egress_allow=["10.20.30.40/32"], egress_public_https=False,
     )
     rules = rt._network_policy(spec, "sbx", "uid")["spec"]["egress"]
@@ -164,7 +164,7 @@ def test_network_policy_egress_policy_comes_from_the_spec():
 
 def test_network_policy_owner_reference():
     rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32"))
-    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
+    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n")
     policy = rt._network_policy(spec, "my-pod", "my-pod-uid-456")
     refs = policy["metadata"]["ownerReferences"]
     assert len(refs) == 1
@@ -184,7 +184,7 @@ def test_egress_config_requires_cidr():
 
 def test_manifest_with_owner_has_configmap_owner_reference():
     rt = K8sSandboxRuntime()
-    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
+    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n")
     manifest = rt._manifest(spec, "sbx-test", owner_name="run-owner-abc", owner_uid="cm-uid-123")
     refs = manifest["metadata"]["ownerReferences"]
     assert len(refs) == 1
@@ -197,7 +197,7 @@ def test_manifest_with_owner_has_configmap_owner_reference():
 
 def test_manifest_without_owner_has_no_owner_references():
     rt = K8sSandboxRuntime()
-    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
+    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n")
     manifest = rt._manifest(spec, "sbx-test")
     assert "ownerReferences" not in manifest["metadata"]
 
@@ -205,7 +205,7 @@ def test_manifest_without_owner_has_no_owner_references():
 def test_manifest_always_carries_sandbox_label():
     rt = K8sSandboxRuntime()
     spec = SandboxLaunchSpec(
-        image="img:dev", store_prefix="run/r/nodes/n",
+        image="img:0.1.0", store_prefix="run/r/nodes/n",
         labels={"resoluto.run_id": "abc", "resoluto.node_id": "n1"},
     )
     manifest = rt._manifest(spec, "sbx-test")
@@ -218,7 +218,7 @@ def test_manifest_always_carries_sandbox_label():
 
 def test_network_policy_with_configmap_owner():
     rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32"))
-    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
+    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n")
     policy = rt._network_policy(
         spec, "my-pod", "pod-uid",
         owner_name="run-owner-abc", owner_uid="cm-uid-123",
@@ -285,7 +285,7 @@ async def test_launch_always_refuses_non_kata(rc, monkeypatch):
     # No bypass: a non-Kata runtime class is ALWAYS refused (RESOLUTO_TRUSTED_LOCAL is gone).
     monkeypatch.setenv("RESOLUTO_TRUSTED_LOCAL", "1")  # even a stale flag must not permit a downgrade
     rt = K8sSandboxRuntime(runtime_class=rc)  # runtime_class is the runtime's own config now
-    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
+    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n")
     with pytest.raises(RuntimeError, match="Isolation downgrade refused"):
         await rt.launch(spec)
 
@@ -320,7 +320,7 @@ def test_parse_k8s_memory_invalid():
 def _dind_spec(*, memory="24Gi", docker_graph_size="18Gi", **kwargs):
     # graph_backend (tmpfs default) is the K8s runtime's config; memory/graph are neutral resources.
     return SandboxLaunchSpec(
-        image="img:dev", store_prefix="run/r/nodes/n", flavor="dind",
+        image="img:0.1.0", store_prefix="run/r/nodes/n", flavor="dind",
         resources=Resources.from_quantities(memory=memory, cpu="2", dind_graph=docker_graph_size),
         **kwargs,
     )
@@ -444,7 +444,7 @@ def test_manifest_no_gates_by_default_normal_scheduling():
 def test_manifest_renders_k8s_secret_refs_as_valuefrom():
     rt = K8sSandboxRuntime()
     spec = SandboxLaunchSpec(
-        image="img:dev", store_prefix="run/r/nodes/n",
+        image="img:0.1.0", store_prefix="run/r/nodes/n",
         env={"PLAIN": "value"},
         k8s_secret_refs={"ANTHROPIC_API_KEY": ("anthropic-key", "api_key")},
     )
@@ -461,6 +461,6 @@ def test_manifest_renders_k8s_secret_refs_as_valuefrom():
 
 def test_manifest_omits_secret_refs_when_none_declared():
     rt = K8sSandboxRuntime()
-    spec = SandboxLaunchSpec(image="img:dev", store_prefix="run/r/nodes/n")
+    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n")
     env = rt._manifest(spec, "sbx-test")["spec"]["containers"][0]["env"]
     assert all("valueFrom" not in e for e in env)
