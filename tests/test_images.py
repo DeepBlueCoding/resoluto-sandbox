@@ -74,6 +74,34 @@ def test_build_unknown_provider_raises():
         build("bogus", ver="1.0.0", runner=FakeRunner())
 
 
+def test_push_bare_tag_tags_then_pushes_to_registry():
+    from resoluto.sandbox.images import push
+    fake = FakeRunner()
+    ref = push("my-agent:1.0", runner=fake)
+    assert ref == pullable("my-agent:1.0")
+    assert ["docker", "tag", "my-agent:1.0", pullable("my-agent:1.0")] in fake.calls
+    assert ["docker", "push", pullable("my-agent:1.0")] in fake.calls
+
+
+def test_push_registry_qualified_tag_pushes_as_is():
+    from resoluto.sandbox.images import push
+    fake = FakeRunner()
+    ref = push("localhost:5000/my-agent:1.0", runner=fake)
+    assert ref == "localhost:5000/my-agent:1.0"
+    # no re-tag (no double prefix), just a single push of the given ref
+    assert fake.calls == [["docker", "push", "localhost:5000/my-agent:1.0"]]
+
+
+def test_cli_image_push(monkeypatch, capsys):
+    calls = []
+    monkeypatch.setattr(__import__("subprocess"), "run", lambda cmd, **k: calls.append(cmd))
+    from resoluto.sandbox.cli import main
+    rc = main(["image", "push", "my-agent:1.0"])
+    assert rc == 0
+    assert ["docker", "push", pullable("my-agent:1.0")] in calls
+    assert f"pushed {pullable('my-agent:1.0')}" in capsys.readouterr().out
+
+
 def test_image_tags_shape():
     tags = image_tags("1.2")
     assert tags["base"] == "resoluto-sandbox-base:1.2"

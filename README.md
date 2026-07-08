@@ -344,6 +344,34 @@ resoluto-sandbox image build --provider all      # base once, then every overlay
 >       --namespace resoluto-local load
 > ```
 
+### Bring your own image
+
+The registry bridge is **not** provider-specific — any image the backend can pull works, so **your own
+Dockerfile is a first-class citizen**. Build it, publish it with `image push`, and pass the reference
+as `image=` (Python) / `--image` (CLI):
+
+```bash
+cat > Dockerfile <<'DOCKER'
+FROM localhost:5000/resoluto-sandbox:langchain-1.3.11     # or the base, or any image
+RUN pip install --break-system-packages langchain-anthropic
+DOCKER
+
+docker build -t my-langchain-agent:1.0 .
+resoluto-sandbox image push my-langchain-agent:1.0        # -> pushed localhost:5000/my-langchain-agent:1.0
+
+resoluto-sandbox run --image localhost:5000/my-langchain-agent:1.0 -- python my_agent.py
+```
+```python
+Sandbox(backend="local", image="localhost:5000/my-langchain-agent:1.0").run([...])
+```
+
+`image push` tags the local image for the configured registry (`RESOLUTO_SANDBOX_REGISTRY`, default
+`localhost:5000`) and pushes it; an already registry-qualified tag is pushed as-is. Equivalently, skip
+it by building straight to the registry tag (`docker build -t localhost:5000/my-agent:1.0 . && docker
+push …`). Either way the backend pulls it on first `run`. (`FROM` a provider tag needs that image in
+your Docker store first — `resoluto-sandbox image build --provider langchain` — or `FROM
+localhost:5000/…` to pull the base from the registry.)
+
 Verified end to end against the real Kata sandbox (all three: canary passes, workspace stages, the
 script runs and reaches its auth check). `claude` and `openai` run against the plain prebuilt image;
 `langchain` needs the one-line extended image from above (built as `my-langchain-anthropic:0.1.0` here):

@@ -38,6 +38,14 @@ def main(argv: list[str] | None = None) -> int:
         help="Docker build context path — defaults to this repo's own root (standalone).",
     )
 
+    push_p = image_sub.add_parser(
+        "push",
+        help="Publish a locally-built image (e.g. your OWN Dockerfile) to the registry the local "
+             "backend pulls from, so it's usable with no manual containerd load.",
+    )
+    push_p.add_argument("tag", metavar="TAG",
+                        help="local docker image tag — bare (my-agent:1.0) or registry-qualified.")
+
     args, rest = parser.parse_known_args(argv)
 
     if args.cmd == "run":
@@ -106,11 +114,20 @@ def _cmd_doctor() -> int:
 
 def _cmd_image(args: argparse.Namespace) -> int:
     """Handle `image` subcommand. Returns exit code."""
-    if not hasattr(args, "image_cmd") or args.image_cmd != "build":
-        print("error: use `resoluto-sandbox image build`", file=sys.stderr)
-        return 2
     import subprocess
-    from resoluto.sandbox.images import PROVIDERS, build, build_base, pullable, registry
+    from resoluto.sandbox.images import PROVIDERS, build, build_base, pullable, push, registry
+
+    cmd = getattr(args, "image_cmd", None)
+    if cmd == "push":
+        ref = push(args.tag, runner=subprocess.run)
+        print(f"pushed {ref}")
+        print(f"  run it:  resoluto-sandbox run --image {ref} -- <program>")
+        print(f"           Sandbox(backend='local', image='{ref}').run(...)")
+        return 0
+    if cmd != "build":
+        print("error: use `resoluto-sandbox image build` or `image push <tag>`", file=sys.stderr)
+        return 2
+
     providers = list(PROVIDERS) if args.provider == "all" else [args.provider]
     context = getattr(args, "context", ".")
 

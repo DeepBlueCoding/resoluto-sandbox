@@ -41,6 +41,29 @@ def _tag_and_push(tag: str, runner) -> str:
         runner(["docker", "push", ref], check=True)
     return ref
 
+
+def _is_registry_qualified(tag: str) -> bool:
+    """True if `tag` already names a registry host (e.g. localhost:5000/foo:bar, ghcr.io/x/y)."""
+    first = tag.split("/", 1)[0]
+    return "/" in tag and ("." in first or ":" in first or first == "localhost")
+
+
+def push(tag: str, *, runner=subprocess.run) -> str:
+    """Publish a locally-built image (e.g. a user's OWN Dockerfile) to the registry the local backend
+    pulls from, so `Sandbox(backend='local', image=<ref>)` can run it with no manual containerd load.
+    If `tag` is already registry-qualified it's pushed as-is; otherwise it's tagged for the configured
+    registry (RESOLUTO_SANDBOX_REGISTRY, default localhost:5000) first. Inputs: a local docker image
+    tag, injectable runner. Output: the pull reference to pass as `image=`."""
+    if _is_registry_qualified(tag):
+        runner(["docker", "push", tag], check=True)
+        return tag
+    if not registry():
+        raise RuntimeError(
+            "no registry configured (RESOLUTO_SANDBOX_REGISTRY is empty) — set it, or pass an "
+            "already registry-qualified tag like localhost:5000/<name>:<ver>."
+        )
+    return _tag_and_push(tag, runner)
+
 # The pip package that anchors each overlay's tag, and the version pinned into its Dockerfile.
 # Bump SDK_VERSION (and rebuild) to move to a newer SDK release — never a floating install.
 SDK_PACKAGE = {"claude": "claude-agent-sdk", "langchain": "langchain", "openai": "openai-agents"}
