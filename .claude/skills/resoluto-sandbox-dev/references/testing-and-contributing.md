@@ -55,7 +55,7 @@ from resoluto.sandbox.conduit.factory import store_from_env
 sb = Sandbox(backend=SubstrateBackend(
     runtime=K8sSandboxRuntime(context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"), egress=None),
     conduit=store_from_env(),      # needs RESOLUTO_STORE_KIND
-    image="<lane-image>",          # REQUIRED; .run() raises ValueError if None
+    image="<sandbox-image>",          # REQUIRED; .run() raises ValueError if None
     store_env=store_env_for_pod(os.environ),
 ))
 ```
@@ -89,13 +89,13 @@ Config lives in `pyproject.toml` `[tool.pytest.ini_options]`: `asyncio_mode = "a
 uv run pytest
 
 # INTEGRATION — opt in explicitly; needs a LIVE Kubernetes cluster (k3s, kind, EKS, …) + Kata + minio:
-RESOLUTO_LANE_IMAGE=<lane-image> uv run pytest -m integration
+RESOLUTO_SANDBOX_IMAGE=<sandbox-image> uv run pytest -m integration
 ```
 
-`-m integration` tests round-trip a real substrate: `tests/test_client_k8s.py::test_k8s_run_roundtrips` runs `Sandbox(backend="k8s", image=...).run()` through a real Kata pod, and `tests/test_local_kata_integration.py::test_local_kata_roundtrips` runs `Sandbox(backend="local", image=...).run()` through a real Kata microVM. They read `RESOLUTO_LANE_IMAGE` (k8s) / a local image from env. Without the box / a local Kata containerd they fail or skip — that is correct; do not stub them green.
+`-m integration` tests round-trip a real substrate: `tests/test_client_k8s.py::test_k8s_run_roundtrips` runs `Sandbox(backend="k8s", image=...).run()` through a real Kata pod, and `tests/test_local_kata_integration.py::test_local_kata_roundtrips` runs `Sandbox(backend="local", image=...).run()` through a real Kata microVM. They read `RESOLUTO_SANDBOX_IMAGE` (k8s) / a local image from env. Without the box / a local Kata containerd they fail or skip — that is correct; do not stub them green.
 
 ### Green-canary preflight (run BEFORE any `-m integration`)
-Integration tests require a live Kubernetes cluster (k3s, kind, EKS, or any distribution) with Kata + minio. Export `RESOLUTO_LANE_IMAGE` and the `RESOLUTO_STORE_*` variables before running. Unit tests need none of this — they run against stubs and the default `addopts` deselects `@integration` automatically.
+Integration tests require a live Kubernetes cluster (k3s, kind, EKS, or any distribution) with Kata + minio. Export `RESOLUTO_SANDBOX_IMAGE` and the `RESOLUTO_STORE_*` variables before running. Unit tests need none of this — they run against stubs and the default `addopts` deselects `@integration` automatically.
 
 RED canary (store unreachable / image missing) → fix infra first, do not run integration tests.
 
@@ -135,6 +135,6 @@ Liveness is substrate-silence + heartbeat, not a clock. `drive_node(..., dead_af
 
 - Branch off `main`; never commit directly to `main`. One concern per branch.
 - Conventional commits, e.g. `feat(backend): ...`, `fix(conduit): ...`, `test(k8s): ...`.
-- A change to in-pod code (anything the lane image bakes) needs an **image rebuild + republish** — the host runs live source while pods run a baked image; they drift silently otherwise. Bump `version` in `pyproject.toml` when you cut a new wheel/image.
+- A change to in-pod code (anything the sandbox image bakes) needs an **image rebuild + republish** — the host runs live source while pods run a baked image; they drift silently otherwise. Bump `version` in `pyproject.toml` when you cut a new wheel/image.
 - Optional-dep changes: keep them in the right extra (`[k8s]`/`[s3]`/`[gcs]`) and confirm `uv run pytest tests/test_core_import_is_light.py` still passes (no leak into the light surface).
 - Before opening a PR: `set -o pipefail; uv run pytest` green (units), and if you touched k8s/conduit paths, run the green-canary preflight + `uv run pytest -m integration` on the live box.

@@ -5,7 +5,7 @@ which goes stale for CDN-backed hosts (rotating IPs) and can never match a URL p
 filters by the TLS **SNI** (the hostname in the ClientHello), so the allowlist is DOMAINS
 (`api.anthropic.com`, `*.openai.com`) — no IP resolution, survives rotation, works under any CNI.
 
-Deployment (transparent): the lane's egress firewall REDIRECTs outbound TCP :443 to this proxy. For
+Deployment (transparent): the sandbox's egress firewall REDIRECTs outbound TCP :443 to this proxy. For
 each connection it reads the original destination (SO_ORIGINAL_DST), peeks the TLS ClientHello for the
 SNI, and — if the SNI matches the allowlist — splices the bytes to the real `<origIP>:443`. No TLS
 termination, no CA: the client's encrypted stream is forwarded untouched. Non-matching SNI (or no SNI)

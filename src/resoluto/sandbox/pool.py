@@ -88,7 +88,7 @@ class SandboxPool:
     def _starvation_error(self) -> RuntimeError:
         return RuntimeError(
             f"sandbox pool acquire timed out after {self._acquire_timeout_s}s "
-            "(substrate starvation — distinct from agent-work liveness)"
+            "(substrate starvation — distinct from workload liveness)"
         )
 
     async def acquire(self, spec: SandboxLaunchSpec, *, on_wait=None) -> SandboxLease:

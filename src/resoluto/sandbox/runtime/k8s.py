@@ -80,7 +80,7 @@ class K8sSandboxRuntime(SandboxRuntime):
                 "RESOLUTO_SANDBOX_ALLOW_AMBIENT_CONTEXT"
             ) != "1":
                 raise RuntimeError(
-                    "refusing to launch lane pods on the ambient kube-context — set "
+                    "refusing to launch sandbox pods on the ambient kube-context — set "
                     "RESOLUTO_SANDBOX_KUBECONTEXT, or RESOLUTO_SANDBOX_ALLOW_AMBIENT_CONTEXT=1 "
                     "to override"
                 )
@@ -94,7 +94,7 @@ class K8sSandboxRuntime(SandboxRuntime):
             else:
                 logger.warning(
                     "[k8s-runtime] no kube-context pinned — using the AMBIENT current-context → %s "
-                    "(RESOLUTO_SANDBOX_ALLOW_AMBIENT_CONTEXT=1). An unpinned context can launch lane "
+                    "(RESOLUTO_SANDBOX_ALLOW_AMBIENT_CONTEXT=1). An unpinned context can launch sandbox "
                     "pods on the wrong (even production) cluster.", host,
                 )
             await self._ensure_namespace()
@@ -197,7 +197,7 @@ class K8sSandboxRuntime(SandboxRuntime):
         if res.disk_bytes is not None:
             resource_qty["ephemeral-storage"] = str(res.disk_bytes)
         container: dict = {
-            "name": "lane",
+            "name": "sandbox",
             "image": spec.image,
             "imagePullPolicy": self._ipp,
             "securityContext": self._security_context(spec),
@@ -269,7 +269,7 @@ class K8sSandboxRuntime(SandboxRuntime):
         owner_name: str | None = None,
         owner_uid: str | None = None,
     ) -> dict:
-        """Build the default-deny egress NetworkPolicy manifest for a lane pod: store on store_port, public 443, DNS; IMDS excepted on the broad rules."""
+        """Build the default-deny egress NetworkPolicy manifest for a sandbox pod: store on store_port, public 443, DNS; IMDS excepted on the broad rules."""
         assert self._egress is not None
 
         # The store connectivity (store_cidr/store_port) is THIS runtime's infra concern; the
@@ -361,7 +361,7 @@ class K8sSandboxRuntime(SandboxRuntime):
                 f"graph {_gib(graph_mem)} >= pod memory {_gib(pod_mem)}; "
                 f"a medium:Memory emptyDir is counted within the pod cgroup so the graph must be "
                 f"smaller than pod memory to leave room for dockerd and build processes. "
-                f"Fix: lower RESOLUTO_LANE_DIND_GRAPH to less than RESOLUTO_LANE_DIND_MEMORY, "
+                f"Fix: lower the dind graph size below the pod memory, "
                 f"or switch to a block-backed docker graph."
             )
 
@@ -371,7 +371,7 @@ class K8sSandboxRuntime(SandboxRuntime):
                 f"dind tmpfs preflight: pod does not fit on node — "
                 f"pod memory {_gib(pod_mem)} > node allocatable {_gib(node_ram)}, "
                 f"over by {_gib(over)}. "
-                f"Fix: lower RESOLUTO_LANE_DIND_MEMORY to at most {_gib(node_ram)}, or provision a larger node."
+                f"Fix: lower the dind pod memory to at most {_gib(node_ram)}, or provision a larger node."
             )
 
     async def launch(self, spec: SandboxLaunchSpec) -> SandboxHandle:

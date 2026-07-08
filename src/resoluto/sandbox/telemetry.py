@@ -1,4 +1,4 @@
-"""Store-mediated telemetry: the sandbox ships immutable JSONL chunks, the orchestrator tails them in index order."""
+"""Store-mediated telemetry: the sandbox ships immutable JSONL chunks, the host tails them in index order."""
 from __future__ import annotations
 
 import asyncio
@@ -97,7 +97,7 @@ class ChunkShipper:
 
 
 class ChunkReader:
-    """Orchestrator-side tail of a run's chunk objects in contiguous index order, with a silence-based death signal."""
+    """Host-side tail of a run's chunk objects in contiguous index order, with a silence-based death signal."""
 
     def __init__(
         self,

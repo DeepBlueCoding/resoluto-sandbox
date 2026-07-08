@@ -59,7 +59,7 @@ async def put_dir(
     """Tar `local_dir` and put it under `inbox/`; returns the object key.
 
     `paths` (each relative to `local_dir`) scopes the archive to just those subtrees. Pass the
-    task's repo paths so a lane only ever stages the repos it uses — never the surrounding
+    caller's paths so a run only ever stages the inputs it uses — never the surrounding
     workspace (deps, sibling repos, or the object store itself). `None` = the whole dir."""
     key = f"{prefix.rstrip('/')}/{INBOX}/{name}.tar.gz"
     await store.put(key, _archive(Path(local_dir), paths, exclude, protect))

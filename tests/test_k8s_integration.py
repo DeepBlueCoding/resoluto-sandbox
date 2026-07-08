@@ -16,7 +16,7 @@ from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
 IMAGE = "docker.io/library/docker:27-dind"
 NS = "resoluto-itest"
 # Pin the local k3s context — the runtime refuses the ambient context (which may be a remote
-# AKS cluster) to avoid launching adversarial lane pods on the wrong cluster.
+# AKS cluster) to avoid launching adversarial sandbox pods on the wrong cluster.
 KUBECONTEXT = os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT", "default")
 
 

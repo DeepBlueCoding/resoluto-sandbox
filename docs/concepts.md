@@ -50,7 +50,7 @@ never pulled from a registry. Pass `image=` to override.
 
 Each run executes in a short-lived Kata microVM pod via the `drive_node` primitive and a
 `Conduit` object store. The sandbox reports progress as append-only JSONL chunks to the
-store; the orchestrator tails and reaps the pod when done. No long-lived connection between the halves.
+store; the host tails and reaps the pod when done. No long-lived connection between the halves.
 
 Inject a configured `SubstrateBackend` — the image is not a `Sandbox` constructor concern. See
 [Getting started → The k8s backend](getting-started.md#the-k8s-backend) for the full wiring.

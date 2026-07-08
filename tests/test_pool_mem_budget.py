@@ -63,12 +63,12 @@ def _pool(rt: _FakeRuntime, budget_gib: int, *, timeout=5.0) -> SandboxPool:
 async def test_oversized_spec_parks_then_launches_on_release() -> None:
     rt = _FakeRuntime()
     pool = _pool(rt, 12)                         # 12Gi budget
-    first = await pool.acquire(_spec("lane", "8Gi"))
+    first = await pool.acquire(_spec("pool_a", "8Gi"))
     assert rt.launched == ["pod-1"]              # launched
     queued: list = []
 
     async def second():
-        await pool.acquire(_spec("lane", "8Gi"), on_wait=lambda a, av: queued.append((a, av)))
+        await pool.acquire(_spec("pool_a", "8Gi"), on_wait=lambda a, av: queued.append((a, av)))
 
     t = asyncio.create_task(second())
     await asyncio.sleep(0.1)
@@ -82,15 +82,15 @@ async def test_oversized_spec_parks_then_launches_on_release() -> None:
 
 @pytest.mark.asyncio
 async def test_per_kind_pools_are_independent_no_deadlock() -> None:
-    # RES-287 guard: separate pools (lane/gate) own separate semaphores, so a FULL
-    # lane budget cannot block a gate acquire.
+    # RES-287 guard: separate pools (pool_a/pool_b) own separate semaphores, so a FULL
+    # pool_a budget cannot block a pool_b acquire.
     rt = _FakeRuntime()
-    lane_pool = _pool(rt, 8)
-    gate_pool = _pool(rt, 12)
-    await lane_pool.acquire(_spec("lane", "4Gi"))
-    await lane_pool.acquire(_spec("lane", "4Gi"))   # lane budget now full
-    lease = await asyncio.wait_for(gate_pool.acquire(_spec("gate", "12Gi")), timeout=2)
-    assert lease.handle.id in rt.live               # gate admitted despite lanes full
+    pool_a = _pool(rt, 8)
+    pool_b = _pool(rt, 12)
+    await pool_a.acquire(_spec("pool_a", "4Gi"))
+    await pool_a.acquire(_spec("pool_a", "4Gi"))   # pool_a budget now full
+    lease = await asyncio.wait_for(pool_b.acquire(_spec("pool_b", "12Gi")), timeout=2)
+    assert lease.handle.id in rt.live               # pool_b admitted despite pool_a full
 
 
 @pytest.mark.asyncio
@@ -98,7 +98,7 @@ async def test_oversized_beyond_budget_fails_loud() -> None:
     rt = _FakeRuntime()
     pool = _pool(rt, 8, timeout=30)
     with pytest.raises(RuntimeError, match="can never be admitted"):
-        await pool.acquire(_spec("gate", "12Gi"))
+        await pool.acquire(_spec("pool_b", "12Gi"))
     assert rt.launched == []                         # never launched
 
 
@@ -107,7 +107,7 @@ async def test_no_budget_admits_freely() -> None:
     rt = _FakeRuntime()
     pool = SandboxPool(rt, max_concurrent=99)        # no mem budget → gate off
     for _ in range(3):
-        await pool.acquire(_spec("lane", "8Gi"))
+        await pool.acquire(_spec("pool_a", "8Gi"))
     assert len(rt.live) == 3
 
 
@@ -123,8 +123,8 @@ async def test_lazy_budget_provider_resolved_once_on_first_acquire() -> None:
         return 12 * GiB
 
     pool = SandboxPool(rt, max_concurrent=99, mem_budget_provider=provider)
-    a = await pool.acquire(_spec("lane", "8Gi"))     # resolves budget=12Gi, fits
-    blocked = asyncio.create_task(pool.acquire(_spec("lane", "8Gi")))  # 8+8>12 → parks
+    a = await pool.acquire(_spec("pool_a", "8Gi"))     # resolves budget=12Gi, fits
+    blocked = asyncio.create_task(pool.acquire(_spec("pool_a", "8Gi")))  # 8+8>12 → parks
     await asyncio.sleep(0.1)
     assert len(rt.live) == 1                          # provider budget is enforced
     assert len(calls) == 1                            # resolved exactly once
@@ -140,7 +140,7 @@ async def test_lazy_provider_zero_means_gate_off() -> None:
     rt = _FakeRuntime()
     pool = SandboxPool(rt, max_concurrent=99, mem_budget_provider=lambda: _zero())
     for _ in range(3):
-        await pool.acquire(_spec("lane", "99Gi"))    # huge, but gate is off
+        await pool.acquire(_spec("pool_a", "99Gi"))    # huge, but gate is off
     assert len(rt.live) == 3
 
 

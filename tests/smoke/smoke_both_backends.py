@@ -14,7 +14,7 @@ For each backend it asserts the documented program contract (references/agents.m
   artifact: result.json is collected (RunResult.artifacts) and parsed (RunResult.result)
 
 Run from resoluto-sandbox/ with the backends provisioned:
-    set -a; source store.env; set +a      # k8s: minio + s3 + STS + lane image + kube context
+    set -a; source store.env; set +a      # k8s: minio + s3 + STS + sandbox image + kube context
     set -a; source local.env; set +a      # local: RESOLUTO_LOCAL_* knobs (or rely on defaults)
     uv run python tests/smoke/smoke_both_backends.py            # both
     uv run python tests/smoke/smoke_both_backends.py --local-only
@@ -64,7 +64,7 @@ def _verify(label: str, res) -> bool:
 
 
 def _egress_unenforced(res) -> bool:
-    """True when the lane failed ONLY because the cluster didn't enforce egress isolation.
+    """True when the sandbox failed ONLY because the cluster didn't enforce egress isolation.
 
     The in-guest canary is fail-closed: if the CNI can't enforce the egress NetworkPolicy it
     refuses to run the workload. That is an ENVIRONMENT limitation (needs an enforcing CNI like
@@ -76,7 +76,7 @@ def _egress_unenforced(res) -> bool:
 
 def run_local() -> str:
     """local backend: Sandbox(backend='local') — the documented one-liner. Returns GREEN/RED."""
-    image = os.environ["RESOLUTO_LANE_IMAGE"]
+    image = os.environ["RESOLUTO_SANDBOX_IMAGE"]
     res = Sandbox(backend="local", image=image).run(
         ["python", "echo_agent.py", PROMPT],
         workspace=_staged_workspace(),
@@ -123,7 +123,7 @@ def run_k8s() -> str:
     sb = Sandbox(backend=SubstrateBackend(
         runtime=runtime,
         conduit=store_from_env(),
-        image=os.environ["RESOLUTO_LANE_IMAGE"],
+        image=os.environ["RESOLUTO_SANDBOX_IMAGE"],
         store_env=store_env,
     ))
     res = sb.run(
@@ -137,7 +137,7 @@ def run_k8s() -> str:
     if _egress_unenforced(res):
         print("    -> BLOCKED: this cluster does not enforce egress NetworkPolicy (Flannel). The "
               "agent contract is proven by the local backend and would pass here on an enforcing "
-              "CNI (Cilium/Calico). Use RESOLUTO_LANE_BACKEND=local on this box.")
+              "CNI (Cilium/Calico). Use the local backend on this box.")
         return "BLOCKED"
     return "RED"
 

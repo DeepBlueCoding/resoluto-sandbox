@@ -51,7 +51,7 @@ configured k8s backend (image, conduit, egress) MUST be injected as an instance.
   microVM (hardware-virtualized) via `nerdctl` against a dedicated, standalone containerd
   (own socket/root `/run/resoluto-local/containerd/`) on this host — VM-grade isolation at parity with
   k8s, single host, no cluster. The egress canary RUNS (fail-closed); local egress is enforced HOST-SIDE
-  on the lane CNI bridge (default-deny). Needs `/dev/kvm`, `nerdctl`, the dedicated containerd up
+  on the sandbox CNI bridge (default-deny). Needs `/dev/kvm`, `nerdctl`, the dedicated containerd up
   (`scripts/local-backend-up.sh`) + an image (default `resoluto-sandbox-base:<installed wheel version>` (`default_local_image()`), never a floating tag).
   `stdin` raises `NotImplementedError`. `RunResult.errors` is always `""`.
 - **`k8s`** — `SubstrateBackend(K8sSandboxRuntime + store_from_env())`: **fully implemented**:
@@ -340,14 +340,14 @@ runtime = K8sSandboxRuntime(
 backend = SubstrateBackend(
     runtime=runtime,
     conduit=store_from_env(),    # needs RESOLUTO_STORE_KIND
-    image="registry/lane:tag",   # REQUIRED
+    image="registry/sandbox:tag",   # REQUIRED
     store_env=store_env_for_pod(os.environ),
 )
 ```
 
 Pod placement reads env: `RESOLUTO_SANDBOX_NAMESPACE` (default
 `resoluto-sandboxes`), `RESOLUTO_SANDBOX_KUBECONTEXT`,
-`RESOLUTO_LANE_IMAGE_PULL_POLICY` (default `IfNotPresent`). Pods run
+`RESOLUTO_SANDBOX_IMAGE_PULL_POLICY` (default `IfNotPresent`). Pods run
 `runtime_class="kata"`; `check_runtime_class_guard` refuses ANY non-Kata `runtime_class`
 UNCONDITIONALLY — VM-grade isolation is required, there is no trusted-local bypass. Host
 `AWS_*` creds are NOT forwarded to the untrusted pod — production uses the prefix-scoped

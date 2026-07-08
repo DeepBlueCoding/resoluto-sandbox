@@ -7,7 +7,7 @@ destinations (`allow=[...]`). IMDS is always denied. Each
 here, so the policy is written once and reused everywhere:
 
   - k8s   → `k8s_egress_rules()`       — NetworkPolicy `ipBlock` egress rules
-  - local → `local_egress_iptables()`  — host `iptables` rules on the lane CNI bridge
+  - local → `local_egress_iptables()`  — host `iptables` rules on the sandbox CNI bridge
 
 To support a NEW provider (firecracker, gVisor, a cloud sandbox, …), add a renderer that maps
 `EgressConfig` to that provider's mechanism — no change to callers or to the config.
@@ -83,7 +83,7 @@ class EgressConfig:
       backend, prefer per-run `Sandbox.run(egress=[domains])` — enforced by domain via the SNI proxy, so
       it never goes stale for CDN-backed hosts.)
     - store_cidr/store_port: the k8s object-store endpoint (REQUIRED for the k8s backend; the local
-      backend reaches its store over a file mount, so it ignores these). Always allowed — the lane
+      backend reaches its store over a file mount, so it ignores these). Always allowed — the sandbox
       must return results.
 
     IMDS (169.254.169.254) is ALWAYS denied; the local renderer also denies RFC1918 (no lateral
@@ -170,7 +170,7 @@ def k8s_egress_rules(cfg: EgressConfig) -> list[dict]:
 
 def local_egress_iptables(cfg: EgressConfig, *, chain: str) -> list[list[str]]:
     """Render `cfg` to ordered `iptables` rule args (each list is the args AFTER `iptables`) for the
-    local lane bridge's egress `chain`. The caller creates/flushes the chain and hooks it into
+    the sandbox bridge's egress `chain`. The caller creates/flushes the chain and hooks it into
     FORWARD for the bridge subnet. The local store is a file mount, so store_cidr is not used here.
 
     Order (first match wins): keep established, DNS, deny IMDS, then explicit `allow` (may be private,

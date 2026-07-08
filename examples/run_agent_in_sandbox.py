@@ -2,17 +2,18 @@
 # /// script
 # requires-python = ">=3.12"
 # ///
-"""Run a REAL Claude agent INSIDE an isolated Kata microVM — the whole point of resoluto-sandbox.
+"""Run an untrusted program isolated in a Kata microVM — here, a Claude agent as the sample workload.
 
-`payloads/claude_agent.py` is a PLAIN program: it makes a live LLM call via claude-agent-sdk and
-never imports `resoluto.sandbox`. This driver wraps it from the OUTSIDE — it runs the agent
-hardware-isolated in a Kata microVM (local backend), with network egress locked to the LLM endpoint
-ONLY, and its prompt/answer round-tripped through the store. Swap the payload for any untrusted
-program to run THAT isolated instead — that is the capability the sandbox exists to provide.
+The sandbox itself knows nothing about agents; it runs whatever program you hand it, isolated.
+`payloads/claude_agent.py` is just such a program: a PLAIN script that makes a live LLM call via
+claude-agent-sdk and never imports `resoluto.sandbox`. This driver wraps it from the OUTSIDE — runs it
+hardware-isolated in a Kata microVM (local backend), with network egress locked to one endpoint, and
+its input/output round-tripped through the store. Swap the payload for any other program to run THAT
+isolated instead — that is all the sandbox does.
 
 Prereqs — from resoluto-sandbox/, local Kata backend provisioned:
     bash scripts/local-backend-up.sh                 # provision the local Kata backend
-    set -a; source local.env; set +a                 # exports RESOLUTO_LANE_IMAGE (the lane image)
+    set -a; source local.env; set +a                 # exports RESOLUTO_SANDBOX_IMAGE (the sandbox image)
     claude setup-token                               # or `claude` login -> ~/.claude/.credentials.json
 
     uv run python examples/run_agent_in_sandbox.py "In five words, why isolate an agent?"
@@ -51,9 +52,9 @@ def _oauth_token() -> str | None:
 def main() -> int:
     prompt = " ".join(sys.argv[1:]).strip() or DEFAULT_PROMPT
 
-    image = os.environ.get("RESOLUTO_LANE_IMAGE")
+    image = os.environ.get("RESOLUTO_SANDBOX_IMAGE")
     if not image:
-        print("set RESOLUTO_LANE_IMAGE first (the provisioned lane image):  "
+        print("set RESOLUTO_SANDBOX_IMAGE first (the provisioned sandbox image):  "
               "set -a; source local.env; set +a", file=sys.stderr)
         return 1
     token = _oauth_token()

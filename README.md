@@ -34,19 +34,20 @@ print(result.ok)       # True
 The result captures the output, the exit code, and any files you asked to collect (`output_paths`).
 `stdin` is not supported — pass inputs via argv, env, or workspace files.
 
-> The local backend runs in a Kata microVM and needs a lane image present in its **dedicated**
+> The local backend runs in a Kata microVM and needs a sandbox image present in its **dedicated**
 > containerd (not your regular Docker daemon — see [Prebuilt provider
 > images](#prebuilt-provider-images) for the transfer step) — pass `Sandbox(backend="local",
 > image="…")` (default `resoluto-sandbox-base:<installed wheel version>` — `default_local_image()`,
 > never a floating tag; build it from `Dockerfile.base` or `resoluto-sandbox image build`). Run argv with
 > the **guest's** `python` and paths relative to `workspace`, not host absolute paths.
 
-**Run a real agent, isolated** — the reason this project exists. `run_agent_in_sandbox.py` runs a
-plain Claude agent (`examples/payloads/claude_agent.py`, which never imports the library) inside a
-Kata microVM with egress locked to the LLM, then prints its input → output:
+**Run an arbitrary program, isolated** — the sandbox runs any untrusted program; a real LLM agent is
+just one example. `run_agent_in_sandbox.py` runs a plain Claude agent (`examples/payloads/claude_agent.py`,
+which never imports the library) inside a Kata microVM with egress locked to the LLM, then prints its
+input → output:
 
 ```bash
-set -a; source local.env; set +a          # exports RESOLUTO_LANE_IMAGE (provision the backend first)
+set -a; source local.env; set +a          # exports RESOLUTO_SANDBOX_IMAGE (provision the backend first)
 uv run python examples/run_agent_in_sandbox.py "In five words, why isolate an agent?"
 #   INPUT  (prompt) : 'In five words, why isolate an agent?'
 #   OUTPUT (answer) : 'Untrusted code cannot escape containment.'
@@ -80,11 +81,11 @@ sandbox is a microVM next to you or a pod in a cluster, and a network blip can't
 |---|---|---|
 | **Your program** | Any script/binary — plain | Reads `argv`/env, writes `stdout`/files, exits. Never imports `resoluto.sandbox`. |
 | **`Sandbox`** | Thin Python facade | `Sandbox(backend=...).run(argv, ...)` — one call, identical for every backend. |
-| **`SubstrateBackend`** | The one orchestration impl | Drives the 3-phase flow (stage → run → collect). Holds one `SandboxRuntime` + one `Conduit`. |
+| **`SubstrateBackend`** | The one backend impl | Drives the 3-phase flow (stage → run → collect). Holds one `SandboxRuntime` + one `Conduit`. |
 | **`SandboxRuntime`** (ABC) | The isolation/placement seam | Launches, checks status, destroys the isolated sandbox. Impls: `KataNerdctlSandboxRuntime` (local), `K8sSandboxRuntime` (k8s). |
 | **`Conduit`** (ABC) | The durable exchange seam | `put` / `get` / `list_prefix` on a key/value store — the ONLY channel between host and sandbox. Impls: `LocalConduit` (bind-mounted dir), `S3Conduit` (minio/S3), `StdoutConduit`, `GcsConduit` (unverified). |
 | **`runner_main`** | The in-guest entrypoint | Runs inside the sandbox only — your program never sees it. Verifies the egress canary, stages inputs from the Conduit, execs your `argv`, ships spans/heartbeat/result back to the Conduit. |
-| **lane image** | The OCI image the sandbox boots | Must contain your program's runtime + the `resoluto-sandbox` wheel. Prebuilt overlays: `resoluto-sandbox:claude-agent-sdk-<ver>`, `:langchain-<ver>`, `:openai-agents-<ver>` (see [Images](#prebuilt-provider-images) below). |
+| **sandbox image** | The OCI image the sandbox boots | Must contain your program's runtime + the `resoluto-sandbox` wheel. Prebuilt overlays: `resoluto-sandbox:claude-agent-sdk-<ver>`, `:langchain-<ver>`, `:openai-agents-<ver>` (see [Images](#prebuilt-provider-images) below). |
 
 ### Architecture — local vs. k8s
 
@@ -167,14 +168,14 @@ A sandbox for untrusted code is locked down at every layer, outside-in:
 
 | Layer | What it does |
 |---|---|
-| **1. Network** | Default-deny egress — host CNI bridge (`local`) or `NetworkPolicy` (`k8s`). A fresh lane reaches only DNS + its own Conduit; you open exactly the domains a step needs, per `run()`. |
+| **1. Network** | Default-deny egress — host CNI bridge (`local`) or `NetworkPolicy` (`k8s`). A fresh sandbox reaches only DNS + its own Conduit; you open exactly the domains a step needs, per `run()`. |
 | **2. Isolation** | The program runs in a Kata microVM — a real, separate guest kernel, not a namespace/cgroup container. In-guest root cannot escape it or see the host's devices. |
 | **3. Verification** | An in-guest egress canary runs fail-closed before your program does — if isolation can't be proven, the run refuses to start rather than silently running unprotected. |
 | **4. Blocked destinations** | Cloud IMDS (`169.254.169.254`) and RFC1918 private ranges are rejected even on an allowlist match — an opened domain can never pivot into the host's private network. |
 
 ### Egress — DENY by default (secure)
 
-A sandbox for untrusted code is **locked down by default**: a fresh lane can reach **only DNS and its
+A sandbox for untrusted code is **locked down by default**: a fresh sandbox can reach **only DNS and its
 object store** — no internet, no LLM, no registries. It cannot phone home. You **opt in** to exactly
 the **domains** each step needs, **per `run()`** — no re-provision between steps:
 

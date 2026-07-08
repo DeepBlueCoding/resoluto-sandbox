@@ -30,7 +30,7 @@ def __init__(self, *, backend: Backend | str = "local", image: str | None = None
 ```
 
 - `backend="local"` → builds `SubstrateBackend(runtime=KataNerdctlSandboxRuntime, conduit=LocalConduit, image=default_local_image(), ...)` (default) — `image` defaults to `resoluto-sandbox-base:<installed wheel version>`, computed dynamically, never a hardcoded floating tag.
-- `backend="k8s"`   → builds `SubstrateBackend(runtime=K8sSandboxRuntime, conduit=store_from_env(), ...)` (needs `RESOLUTO_LANE_IMAGE` and `RESOLUTO_STORE_KIND`).
+- `backend="k8s"`   → builds `SubstrateBackend(runtime=K8sSandboxRuntime, conduit=store_from_env(), ...)` (needs `RESOLUTO_SANDBOX_IMAGE` and `RESOLUTO_STORE_KIND`).
 - `backend=<Backend instance>` → injected as-is (the supported way to configure k8s with egress, custom conduit, etc.).
 - anything else → `ValueError("unknown backend ...")`.
 
@@ -135,7 +135,7 @@ Sandbox(backend=SubstrateBackend(
         ),
     ),
     conduit=store_from_env(),               # or inject a Conduit instance
-    image="registry.example/lane:0.1.0",
+    image="registry.example/resoluto-sandbox-base:0.1.0",
     store_env=store_env_for_pod(os.environ),
 ))
 ```
@@ -223,7 +223,7 @@ runtime = K8sSandboxRuntime(
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
     conduit=store_from_env(),
-    image="registry.example/lane:0.1.0",
+    image="registry.example/resoluto-sandbox-base:0.1.0",
     store_env=store_env_for_pod(os.environ),
 ))
 r = sb.run(["agent.py", "--task", "..."], workspace="/abs/repo", output_paths=["**/*.patch"])

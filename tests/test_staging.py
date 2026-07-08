@@ -37,7 +37,7 @@ async def test_put_then_stage_round_trips_a_worktree_including_dotgit(store, tmp
 
 
 async def test_paths_scopes_seed_to_task_repos_only(store, tmp_path):
-    # A lane must see ONLY the repos its task touches — never sibling repos, deps, or the object
+    # A run must see ONLY the repos its task touches — never sibling repos, deps, or the object
     # store that lives alongside them in the workspace root (the umbrella-seeding OOM bug).
     root = tmp_path / "workspace"
     (root / "repoA" / ".git").mkdir(parents=True)

@@ -14,7 +14,7 @@ def _spec(**kw) -> SandboxLaunchSpec:
         env={"RESOLUTO_STORE_KIND": "localfs", "K": "V"},
         args=["python", "-m", "resoluto.sandbox.runner_main"],
         labels={"resoluto.run_id": "r1", "resoluto.node_id": "n1"},
-        store_prefix="run/r1/nodes/n1/lane-0",
+        store_prefix="run/r1/nodes/n1/sbx-0",
     )
     base.update(kw)
     return SandboxLaunchSpec(**base)
@@ -44,7 +44,7 @@ def test_non_kata_runtime_is_hard_error():
 
 
 def test_sudo_prefixes_nerdctl_calls():
-    # A non-root worker escalates per call: every nerdctl invocation is prefixed with `sudo -n`.
+    # A non-root host escalates per call: every nerdctl invocation is prefixed with `sudo -n`.
     base = _rt(sudo=True)._base()
     assert base[:2] == ["sudo", "-n"]
     assert base[2] == "nerdctl"  # the binary follows the sudo prefix
@@ -112,7 +112,7 @@ async def test_launch_dind_is_privileged_with_tmpfs_graph(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_plain_launch_is_not_privileged_and_has_no_host_device_opt(monkeypatch):
-    # A plain agent step never requests privilege — so no --privileged and no host-device security-opt.
+    # A plain sandbox step never requests privilege — so no --privileged and no host-device security-opt.
     rt = _rt()
     calls = _stub_run_seq_none(monkeypatch, rt)
     await rt.launch(_spec())

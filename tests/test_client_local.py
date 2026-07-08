@@ -89,8 +89,8 @@ def test_stdin_raises_not_implemented(monkeypatch):
 
 def test_local_conduit_base_is_user_private_0700():
     # The conduit leaf stays world-writable (the Kata guest writes as a different uid), so the
-    # parent MUST be 0o700 and user-owned — otherwise another local user could read/tamper lane
-    # data. This guards the host→lane bind-mount permission invariant.
+    # parent MUST be 0o700 and user-owned — otherwise another local user could read/tamper sandbox
+    # data. This guards the host→sandbox bind-mount permission invariant.
     import os
     import stat
 

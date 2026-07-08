@@ -6,10 +6,10 @@ from resoluto.sandbox import Sandbox
 
 @pytest.mark.integration
 @pytest.mark.skip(
-    reason="The k8s facade's s3 store requires a worker-minted, per-prefix scoped write token "
+    reason="The k8s facade's s3 store requires a host-minted, per-prefix scoped write token "
     "(host AWS creds are never forwarded — by design). Sandbox(backend='k8s').run() generates its "
-    "prefix internally and cannot self-mint one, so this convenience path can't drive an s3 lane. "
-    "The real store-mediated k8s loop is proven by test_e2e_lane + scripts/store-backend-canary.py."
+    "prefix internally and cannot self-mint one, so this convenience path can't drive an s3 sandbox. "
+    "The real store-mediated k8s loop is proven by test_e2e + scripts/store-backend-canary.py."
 )
 def test_k8s_run_roundtrips(tmp_path):
     sb = Sandbox(backend="k8s")

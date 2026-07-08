@@ -56,7 +56,7 @@ microVM (hardware-virtualized) via `nerdctl` against a dedicated, standalone con
 socket/root at `/run/resoluto-local/containerd/`). It requires `/dev/kvm`, the `nerdctl` client, and
 that dedicated containerd up (run `scripts/local-backend-up.sh`), plus an image that contains python
 + the resoluto-sandbox wheel + your program's deps (default `resoluto-sandbox-base:<installed wheel version>` (`default_local_image()`), never a floating tag; override
-with `image=`). The egress canary RUNS fail-closed; local egress is enforced host-side on the lane
+with `image=`). The egress canary RUNS fail-closed; local egress is enforced host-side on the sandbox
 CNI bridge (default-deny; allow DNS + HTTPS-443-public; REJECT IMDS + RFC1918 private) — immune to
 in-guest root. `backend="k8s"` enforces the same egress as a default-deny `NetworkPolicy` at the CNI.
 
@@ -71,10 +71,10 @@ CLAUDE_CODE_OAUTH_TOKEN=...` first, or use the `~/.claude/.credentials.json` mou
 `claude` CLI uses it and bills the API instead of your Max/Pro subscription. Leave it unset to
 use subscription billing.
 
-**`backend="k8s"` needs a `SubstrateBackend` injection or sets `RESOLUTO_LANE_IMAGE`.**
+**`backend="k8s"` needs a `SubstrateBackend` injection or sets `RESOLUTO_SANDBOX_IMAGE`.**
 `Sandbox(backend="k8s")` without an image raises `ValueError` immediately at construction (not
 at `run()`). Inject a configured
-`SubstrateBackend` or set `RESOLUTO_LANE_IMAGE`. Also requires a Kubernetes cluster (k3s, kind,
+`SubstrateBackend` or set `RESOLUTO_SANDBOX_IMAGE`. Also requires a Kubernetes cluster (k3s, kind,
 EKS, or any distribution) with Kata Containers, `RESOLUTO_STORE_KIND` set, and
 `RESOLUTO_SANDBOX_KUBECONTEXT` pinned (fails closed otherwise). `stdin` raises
 `NotImplementedError` on both backends — deps must be baked into the image. `RunResult.errors`

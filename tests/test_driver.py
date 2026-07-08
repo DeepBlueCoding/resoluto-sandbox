@@ -240,7 +240,7 @@ async def test_drive_node_raw_unstartable_fast_fail(tmp_path):
 
 
 async def test_drive_node_raw_completes_on_result_ready_before_terminal(tmp_path):
-    # A caller whose work product lands BEFORE the pod reports terminal (the worker's
+    # A caller whose work product lands BEFORE the pod reports terminal (the caller's
     # result.json) finishes as soon as result_ready() is true — the pod may still be running.
     from resoluto.sandbox.driver import drive_node_raw
     store = LocalConduit(tmp_path)
@@ -359,7 +359,7 @@ class _VanishingRuntime(SandboxRuntime):
 
 async def test_drive_node_raw_external_disposition_on_vanished_pod(tmp_path):
     # Sustained 'unknown' phase + telemetry silence (after the watchdog armed at running) ==
-    # the pod was terminated externally. The worker keys on this disposition.
+    # the pod was terminated externally. The host keys on this disposition.
     from resoluto.sandbox.driver import drive_node_raw
     store = LocalConduit(tmp_path)
     state = {"polls": 0}

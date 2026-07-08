@@ -1,4 +1,4 @@
-# Bring your own agent (any language) + auth
+# Bring your own program (any language) + auth
 
 The sandbox runs a **plain program**. Your program reads argv and writes
 stdout/files; it NEVER imports `resoluto.sandbox`. What runs as
@@ -6,7 +6,7 @@ stdout/files; it NEVER imports `resoluto.sandbox`. What runs as
 unchanged under `Sandbox().run(...)`. On `backend="local"` it runs in a Kata
 microVM via nerdctl; on `backend="k8s"` it runs in a Kata microVM pod.
 
-This is the agent-author view. For the wire protocol see [`spec/PROTOCOL.md`](../../../../spec/PROTOCOL.md);
+This is the program-author view (an LLM agent is one example of such a program). For the wire protocol see [`spec/PROTOCOL.md`](../../../../spec/PROTOCOL.md);
 for host→pod config/credential flow see `operations.md` (this dir) and the parent `SKILL.md`.
 
 ## The program contract
@@ -42,8 +42,8 @@ If your program writes `result.json` into its workspace (cwd), the host parses i
 into `RunResult.result`. Schema: [`spec/result.schema.json`](../../../../spec/result.schema.json).
 The self-report fields you may write: `node_id`, `status` (`"success"|"failure"`),
 `exit_code`, `output_archive`. The `observed_*`/`reason`/`substrate_logs` fields are
-filled by the ORCHESTRATOR from out-of-guest signals — do NOT write them. Carries no
-gate/lane/git vocabulary by design. `result.json` is optional; absence ⇒ `RunResult.result is None`.
+filled by the HOST from out-of-guest signals — do NOT write them. Carries no
+host-side vocabulary by design. `result.json` is optional; absence ⇒ `RunResult.result is None`.
 
 ## The API
 
@@ -217,7 +217,7 @@ runtime = K8sSandboxRuntime(
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
     conduit=store_from_env(),              # host keeps full creds for staging; needs RESOLUTO_STORE_KIND
-    image=os.environ["RESOLUTO_LANE_IMAGE"],   # REQUIRED, and present in the cluster's containerd
+    image=os.environ["RESOLUTO_SANDBOX_IMAGE"],   # REQUIRED, and present in the cluster's containerd
     store_env=store_env,
 ))
 res = sb.run(["python", "echo_agent.py", "ping-42"], workspace="tests/smoke",
@@ -229,7 +229,7 @@ Workspace is staged into the store and extracted back into your `workspace` dir 
 
 > **Egress enforcement is the CNI's job.** `EgressConfig` is a default-deny NetworkPolicy, but it
 > only blocks traffic if your CNI enforces NetworkPolicy (Cilium/Calico — **not** stock Flannel).
-> The in-guest egress canary is fail-closed, so on a non-enforcing CNI a lane will refuse to run
+> The in-guest egress canary is fail-closed, so on a non-enforcing CNI a sandbox will refuse to run
 > (and there can be a brief startup window where a fast pod out-races policy programming). On a
 > single host, prefer `backend="local"`, which enforces egress host-side on its own bridge.
 

@@ -62,7 +62,7 @@ def check_runtime_class_guard(runtime_class: str) -> None:
 
 
 class SandboxLaunchSpec(BaseModel):
-    """Platform-neutral spec the orchestrator hands a runtime to launch one sandbox."""
+    """Platform-neutral spec the caller hands a runtime to launch one sandbox."""
 
     image: str
     flavor: Literal["dind", "plain"] = "plain"

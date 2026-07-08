@@ -40,7 +40,7 @@ async def test_reconnect_resumes_at_index(tmp_path):
     await ship.emit(_ev("a")); await ship.flush()
     await ship.emit(_ev("b")); await ship.flush()
 
-    # a fresh reader (simulating orchestrator restart) replays from the store
+    # a fresh reader (simulating host restart) replays from the store
     r1 = ChunkReader(store, prefix)
     assert [e.name for e in await r1.poll()] == ["a", "b"]
     # a second reader sees the same — durability through reader death
@@ -101,7 +101,7 @@ async def test_finished_run_is_never_dead(tmp_path):
 
 @pytest.mark.asyncio
 async def test_emit_line_poll_lines_carry_opaque_jsonl(tmp_path):
-    # the transport is payload-agnostic — arbitrary JSONL (e.g. the worker's
+    # the transport is payload-agnostic — arbitrary JSONL (e.g. a caller's
     # PipelineEvents) round-trips without going through SpanEvent.
     store = LocalConduit(tmp_path)
     prefix = "run/r/nodes/n"
@@ -129,13 +129,13 @@ async def test_injected_heartbeat_factory_ships_custom_line(tmp_path):
     prefix = "run/r/nodes/n"
     ship = ChunkShipper(
         store, prefix, heartbeat_s=10.0,
-        heartbeat_factory=lambda ts: '{"event_type":"lane_heartbeat"}',
+        heartbeat_factory=lambda ts: '{"event_type":"sandbox_heartbeat"}',
         clock=lambda: clock["t"],
     )
     reader = ChunkReader(store, prefix, clock=lambda: clock["t"])
     clock["t"] = 20.0  # quiet past the heartbeat window
     await ship.tick()
-    assert await reader.poll_lines() == ['{"event_type":"lane_heartbeat"}']
+    assert await reader.poll_lines() == ['{"event_type":"sandbox_heartbeat"}']
 
 
 @pytest.mark.asyncio
@@ -176,7 +176,7 @@ async def test_chunk_reader_default_filter_unchanged(tmp_path):
     reader = ChunkReader(store, prefix, dead_after_s=100.0, clock=lambda: clock["t"])
 
     clock["t"] = 150.0
-    await ship.emit_line('{"event_type": "lane_heartbeat"}')
+    await ship.emit_line('{"event_type": "sandbox_heartbeat"}')
     await ship.flush()
     await reader.poll_lines()
     assert reader.is_dead() is False  # no filter → any line is progress (drive_node regression guard)

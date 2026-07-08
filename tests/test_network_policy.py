@@ -27,7 +27,7 @@ def _spec(labels: dict, *, egress_allow: tuple = (), egress_public_https: bool =
     return SandboxLaunchSpec(
         image="test/image:latest",
         labels=labels,
-        store_prefix="run/test/nodes/run/lane-0",
+        store_prefix="run/test/nodes/run/sbx-0",
         egress_allow=list(egress_allow),
         egress_public_https=egress_public_https,
     )
@@ -38,7 +38,7 @@ def _policy(*, store_port: int = _STORE_PORT) -> dict:
     # is now deny-by-default; that is covered in tests/test_egress.py).
     egress = EgressConfig(store_cidr=_STORE_CIDR, store_port=store_port, public_https=True)
     rt = _runtime(egress)
-    spec = _spec({"app": "lane"}, egress_public_https=True)
+    spec = _spec({"app": "pool_a"}, egress_public_https=True)
     return rt._network_policy(spec, "pod-x", "uid-x")
 
 
@@ -49,7 +49,7 @@ def test_policy_type_is_egress_only():
 
 def test_pod_selector_matches_spec_labels():
     policy = _policy()
-    assert policy["spec"]["podSelector"]["matchLabels"] == {"app": "lane"}
+    assert policy["spec"]["podSelector"]["matchLabels"] == {"app": "pool_a"}
 
 
 def test_store_rule_carries_store_port_and_store_cidr():
@@ -100,7 +100,7 @@ def test_network_policy_kind_and_api_version():
 
 def test_network_policy_namespace_matches_runtime():
     rt = _runtime(EgressConfig(store_cidr=_STORE_CIDR))
-    spec = _spec({"app": "lane"})
+    spec = _spec({"app": "pool_a"})
     policy = rt._network_policy(spec, "pod-x", "uid-x")
     assert policy["metadata"]["namespace"] == "resoluto-sandboxes"
 
@@ -111,7 +111,7 @@ def test_network_policy_namespace_matches_runtime():
 def _rules(egress: EgressConfig) -> list[dict]:
     # Mirror the EgressConfig's allow/public_https onto the spec — that's what _network_policy
     # actually reads (the runtime's own EgressConfig only supplies the store base).
-    spec = _spec({"app": "lane"}, egress_allow=tuple(egress.allow), egress_public_https=egress.public_https)
+    spec = _spec({"app": "pool_a"}, egress_allow=tuple(egress.allow), egress_public_https=egress.public_https)
     return _runtime(egress)._network_policy(spec, "pod-x", "uid-x")["spec"]["egress"]
 
 

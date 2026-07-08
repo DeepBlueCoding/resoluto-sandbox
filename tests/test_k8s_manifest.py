@@ -1,5 +1,5 @@
 """The pod manifest must carry activeDeadlineSeconds ONLY when the spec sets one —
-no hidden wall-clock deadline on lanes (liveness is the watchdog, not a timer)."""
+no hidden wall-clock deadline on sandboxes (liveness is the watchdog, not a timer)."""
 import logging
 
 import pytest
@@ -87,7 +87,7 @@ def test_manifest_omits_active_deadline_when_none():
 
 def test_network_policy_default_deny_egress():
     rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32"))
-    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n", labels={"app": "lane"})
+    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n", labels={"app": "pool_a"})
     policy = rt._network_policy(spec, "sbx-test", "fake-uid-123")
     assert policy["spec"]["policyTypes"] == ["Egress"]
     assert policy["kind"] == "NetworkPolicy"
@@ -365,25 +365,25 @@ async def test_dind_tmpfs_preflight_passes_when_pod_equals_node_allocatable():
 
 
 @pytest.mark.asyncio
-async def test_preflight_graph_error_message_names_env_var_knobs():
+async def test_preflight_graph_error_message_names_the_knobs():
     # check (a) error: operator must know to shrink graph or switch to block backend
     rt = K8sSandboxRuntime(node_allocatable_memory="32Gi")
     with pytest.raises(RuntimeError) as exc_info:
         await rt._preflight_memory(_dind_spec(memory="10Gi", docker_graph_size="12Gi"))
     msg = str(exc_info.value)
-    assert "RESOLUTO_LANE_DIND_GRAPH" in msg
-    assert "RESOLUTO_LANE_DIND_MEMORY" in msg
+    assert "graph does not fit inside pod" in msg
+    assert "dind graph size" in msg
     assert "block" in msg  # operator can switch to the block-backed graph
 
 
 @pytest.mark.asyncio
-async def test_preflight_node_error_message_names_env_var_knobs():
+async def test_preflight_node_error_message_names_the_knobs():
     # check (b) error: operator must know to shrink pod or provision a larger node
     rt = K8sSandboxRuntime(node_allocatable_memory="16Gi")
     with pytest.raises(RuntimeError) as exc_info:
         await rt._preflight_memory(_dind_spec(memory="24Gi", docker_graph_size="18Gi"))
     msg = str(exc_info.value)
-    assert "RESOLUTO_LANE_DIND_MEMORY" in msg
+    assert "dind pod memory" in msg
     assert "pod does not fit on node" in msg
 
 
@@ -413,7 +413,7 @@ def test_manifest_stamps_opaque_scheduling_gates_and_annotations():
     from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
     rt = K8sSandboxRuntime()
     spec = SandboxLaunchSpec(
-        image="x", store_prefix="run/x/nodes/n/lane-0",
+        image="x", store_prefix="run/x/nodes/n/sbx-0",
         labels={"kueue.x-k8s.io/queue-name": "team-a"},
         scheduling_gates=["kueue.x-k8s.io/admission"],
         annotations={"foo": "bar"},
@@ -433,7 +433,7 @@ def test_manifest_no_gates_by_default_normal_scheduling():
     from resoluto.sandbox.contracts import SandboxLaunchSpec
     from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
     m = K8sSandboxRuntime()._manifest(
-        SandboxLaunchSpec(image="x", store_prefix="run/x/nodes/n/lane-0"), "sbx-test")
+        SandboxLaunchSpec(image="x", store_prefix="run/x/nodes/n/sbx-0"), "sbx-test")
     assert "schedulingGates" not in m["spec"]
     assert "annotations" not in m["metadata"]
 

@@ -11,5 +11,5 @@ All notable changes to `resoluto-sandbox` are documented here. The format follow
   containerd) and `k8s` (short-lived Kata microVM pod).
 - `Conduit` seams — `LocalConduit`, `StdoutConduit`, `S3Conduit` (minio/S3), `GcsConduit`
   (experimental) — and the `SandboxRuntime` isolation seam.
-- Per-run egress control, `SandboxPool` bounded concurrency, and the `SubstrateBackend` orchestration
-  of the stage → run → collect lifecycle.
+- Per-run egress control, `SandboxPool` bounded concurrency, and the `SubstrateBackend` that drives
+  the stage → run → collect lifecycle.

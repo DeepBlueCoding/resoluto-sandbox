@@ -124,7 +124,7 @@ def test_allow_accepts_plain_domain_and_full_url(monkeypatch):
 def test_allow_hostname_resolves_into_a_rule(monkeypatch):
     import socket
     monkeypatch.setattr(socket, "getaddrinfo", lambda h, *a, **k: [(2, 1, 6, "", ("104.18.0.7", 0))])
-    # a locked-down lane that may reach only the Anthropic API (real hostname, not a keyword)
+    # a locked-down sandbox that may reach only the Anthropic API (real hostname, not a keyword)
     rules = local_egress_iptables(EgressConfig(allow=["api.anthropic.com"], public_https=False), chain="EG")
     joined = [" ".join(r) for r in rules]
     assert "-A EG -p tcp --dport 443 -d 104.18.0.7/32 -j ACCEPT" in joined

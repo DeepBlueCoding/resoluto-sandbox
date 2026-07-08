@@ -67,7 +67,7 @@ SubstrateBackend(
         egress=None,   # or EgressConfig(...)
     ),
     conduit=store_from_env(),
-    image="<lane-image>",
+    image="<sandbox-image>",
     store_env=store_env_for_pod(os.environ),
 )
 ```
@@ -79,7 +79,7 @@ SubstrateBackend(
   CIDRs (resolved when rendered). `None` → opt OUT of isolation (no NetworkPolicy, unrestricted
   egress) — distinct from `EgressConfig()`, which denies by default.
 
-`Sandbox(backend="k8s")` constructs the k8s backend (reads `RESOLUTO_LANE_IMAGE` + `RESOLUTO_STORE_KIND`
+`Sandbox(backend="k8s")` constructs the k8s backend (reads `RESOLUTO_SANDBOX_IMAGE` + `RESOLUTO_STORE_KIND`
 from env) — only useful for simple cases; inject `SubstrateBackend` for egress/conduit config.
 
 ## Status: this is implemented, not roadmap
@@ -192,10 +192,10 @@ Runs IN-GUEST before the workload, three probes:
 2. IMDS TCP `169.254.169.254:80` — must be BLOCKED.
 3. Store PUT sentinel (`<prefix>/_canary_ok`) — must SUCCEED.
 
-Any unexpected result → lane aborts with a reason naming every failed probe (surfaced via `SpanEmitter`). This fires when the CNI mis-enforces the policy or the policy was not applied before the pod started.
+Any unexpected result → sandbox aborts with a reason naming every failed probe (surfaced via `SpanEmitter`). This fires when the CNI mis-enforces the policy or the policy was not applied before the pod started.
 
 The egress canary RUNS on the `local` backend too (fail-closed) — local egress is enforced
-HOST-SIDE on the lane CNI bridge (default-deny: store + DNS only until you opt in via
+HOST-SIDE on the sandbox CNI bridge (default-deny: store + DNS only until you opt in via
 `RESOLUTO_EGRESS_ALLOW` / `_PUBLIC_HTTPS`; REJECT IMDS + RFC1918 private), immune to in-guest root.
 There is no bypass: isolation is never downgraded and
 host `AWS_*` creds are never forwarded — the pod auths via the prefix-scoped, write-only
@@ -204,7 +204,7 @@ host `AWS_*` creds are never forwarded — the pod auths via the prefix-scoped, 
 ## Related k8s knobs (env)
 
 - `RESOLUTO_SANDBOX_KUBECONTEXT` — PINS the kube-context. If unset and not in-cluster, launch FAILS CLOSED (refuses the ambient current-context). Override only with `RESOLUTO_SANDBOX_ALLOW_AMBIENT_CONTEXT=1`. Prevents launching adversarial pods on the wrong (even prod) cluster.
-- `RESOLUTO_SANDBOX_NAMESPACE` (default `resoluto-sandboxes`), `RESOLUTO_LANE_IMAGE_PULL_POLICY` (default `IfNotPresent`).
+- `RESOLUTO_SANDBOX_NAMESPACE` (default `resoluto-sandboxes`), `RESOLUTO_SANDBOX_IMAGE_PULL_POLICY` (default `IfNotPresent`).
 - `RESOLUTO_STORE_KIND` — required for the k8s conduit when `conduit=None`.
 
 ## Copy-paste: locked-down k8s run
@@ -234,7 +234,7 @@ runtime = K8sSandboxRuntime(
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
     conduit=store_from_env(),
-    image="<registry>/resoluto-lane:0.1.0",
+    image="<registry>/resoluto-sandbox-base:0.1.0",
     store_env=store_env_for_pod(os.environ),
 ))
 
@@ -256,7 +256,7 @@ from resoluto.sandbox import Sandbox
 result = Sandbox(backend="local").run(["python", "agent.py"], workspace=".")
 ```
 Kata microVM (hardware-virtualized) via nerdctl + a dedicated containerd on the host. Egress is
-enforced HOST-SIDE on the lane CNI bridge (default-deny: store + DNS only until you opt in; REJECT
+enforced HOST-SIDE on the sandbox CNI bridge (default-deny: store + DNS only until you opt in; REJECT
 IMDS + RFC1918 private), immune to in-guest root. It is rendered from the SAME `EgressConfig` as k8s — the
 `local_egress_iptables()` renderer — so the `RESOLUTO_EGRESS_ALLOW` / `_ALLOW_PORT` / `_PUBLIC_HTTPS`
 knobs apply here too (set them, re-run `scripts/local-backend-up.sh`). The egress canary RUNS

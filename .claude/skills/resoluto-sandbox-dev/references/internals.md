@@ -80,14 +80,14 @@ runtime = K8sSandboxRuntime(
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
     conduit=store_from_env(),                    # needs RESOLUTO_STORE_KIND
-    image="registry.local/resoluto-lane:0.1.0",   # REQUIRED — no default
+    image="registry.local/resoluto-sandbox-base:0.1.0",   # REQUIRED — no default
     store_env=store_env_for_pod(os.environ),
 ))
 ```
 
 The `"local"` / `"k8s"` string shortcuts (`client.py`) build the same `SubstrateBackend` with the right
 runtime, conduit, and store_env. The k8s backend reads `RESOLUTO_SANDBOX_NAMESPACE`,
-`RESOLUTO_SANDBOX_KUBECONTEXT`, `RESOLUTO_LANE_IMAGE_PULL_POLICY` from env; the substrate hard-codes
+`RESOLUTO_SANDBOX_KUBECONTEXT`, `RESOLUTO_SANDBOX_IMAGE_PULL_POLICY` from env; the substrate hard-codes
 `dead_after_s=600.0` on its `drive_node` call. (`KataNerdctlSandboxRuntime` is stdlib-only — it shells the
 `nerdctl` CLI; `K8sSandboxRuntime` is imported lazily so the core import stays pydantic-only.)
 
@@ -145,8 +145,8 @@ class NodeOutcome:
 
 `drive_node` maps a non-`completed` outcome to `NodeResult(status="failure", ...)`; on `completed` it
 reads `<prefix>/result.json` via `result_key(spec.store_prefix)` and parses it as `NodeResult`. A
-missing/garbled `result.json` is itself a failure verdict — never trusted as the authoritative gate
-verdict (that's derived orchestrator-side).
+missing/garbled `result.json` is itself a failure verdict — never trusted as the authoritative
+verdict (that's derived host-side).
 
 ### Liveness contract (read this — it's the whole point)
 
@@ -164,7 +164,7 @@ verdict (that's derived orchestrator-side).
 ## 3. In-pod runner: `runner_main` → `run_node_in_sandbox`
 
 `runner_main.py` is the image ENTRYPOINT, configured ENTIRELY from env (the pod carries no
-orchestrator connection). It reads:
+host connection). It reads:
 
 | env | meaning |
 |---|---|
@@ -195,7 +195,7 @@ Flow inside the root `node` span:
 4. **workload** (`workload_argv`) — `result.exit_code = rc`; `status = "success" if rc==0 else "failure"`.
 5. On `rc==0` + `output_paths`: `collect_outputs(...)` → `result.output_archive`.
 6. **cleanup hook** (`cleanup_argv`) — ALWAYS runs (success/failure/staging error), best-effort, NEVER
-   changes the verdict. This is the "free temp/resources after a gate" hook (`docker builder prune -f`,
+   changes the verdict. This is the "free temp/resources after a run" hook (`docker builder prune -f`,
    `docker compose down -v`, `rm -rf scratch`) so a reused sandbox's tmpfs graph doesn't accrue.
 7. `finally`: write `<prefix>/result.json` (`result.model_dump_json()`), cancel heartbeat, close shipper.
 
@@ -222,7 +222,7 @@ ChunkReader(store, prefix, *, dead_after_s=120.0, clock=time.monotonic, progress
   await reader.poll()       -> list[SpanEvent]
   reader.arm()                               # start silence window (call at RUNNING; idempotent)
   reader.is_dead()          -> bool          # WORK-silence; False until armed/finished
-  reader.substrate_silent   -> bool          # SUBSTRATE-silence; the only kill the worker acts on
+  reader.substrate_silent   -> bool          # SUBSTRATE-silence; the only kill the host acts on
   reader.finished           -> bool          # total_chunks reached
   reader.seconds_since_progress / .seconds_since_arrival
 ```
@@ -267,7 +267,7 @@ await fetch_outputs(store, prefix, dest_dir) -> list[str]                       
 
 Transport is a `Conduit`: `put(key, bytes)` / `get(key) -> bytes` / `list_prefix(prefix) -> [ObjectInfo]`.
 Optional `copy_prefix(src, dst) -> int` (default round-trips bytes; backends override for server-side
-copy — this is how resume copies a lane forward). Encoding is ALWAYS UTF-8 JSON for structured objects
+copy — this is how resume copies a sandbox forward). Encoding is ALWAYS UTF-8 JSON for structured objects
 and gzip-tar for archives. No pickle/msgpack anywhere on the wire — any language that reads/writes JSON
 and gzip-tar can implement a client.
 
@@ -283,10 +283,10 @@ Key namespace under `run/<run_id>/nodes/<node_id>/`:
 | `_manifest.json` | pod → host | EOF: `{"total_chunks": N}` |
 
 `SpanEvent` (each JSONL line) required fields: `run_id`, `span_id`, `parent_span_id` (`""` for root),
-`kind` (advisory free string; common: `run`/`node`/`lane`/`attempt`/`gate`/`agent`/`tool`/`log`),
+`kind` (advisory free string; common: `run`/`phase`/`node`/`attempt`/`agent`/`tool`/`log`),
 `name`, `event` (`open`/`close`/`log`), `ts` (epoch-seconds float), `status` (on `close`), `data`
 (redacted). `NodeResult` (`result.json`): `node_id`, `status` (`success`|`failure`), `exit_code`,
-`output_archive`, plus orchestrator-filled `observed_phase`/`reason`/`substrate_logs` (out-of-guest,
+`output_archive`, plus host-filled `observed_phase`/`reason`/`substrate_logs` (out-of-guest,
 untrusted). Don't duplicate the schemas — `spec/*.schema.json` (JSON Schema draft 2020-12) are authoritative.
 
 ### Conduits (`store_from_env()`, `RESOLUTO_STORE_KIND`)
@@ -324,11 +324,11 @@ downgrade is fail-loud, not silent.
 no context is pinned (`context=None`) and not in-cluster, it **raises** unless
 `RESOLUTO_SANDBOX_ALLOW_AMBIENT_CONTEXT=1`:
 ```
-refusing to launch lane pods on the ambient kube-context — set RESOLUTO_SANDBOX_KUBECONTEXT, or
+refusing to launch sandbox pods on the ambient kube-context — set RESOLUTO_SANDBOX_KUBECONTEXT, or
 RESOLUTO_SANDBOX_ALLOW_AMBIENT_CONTEXT=1 to override
 ```
 Rationale: an unpinned current-context can wander to an unrelated (even production) cluster and launch
-adversarial lane pods there. Missing/empty local kube-config → in-cluster fallback (that path is allowed).
+adversarial sandbox pods there. Missing/empty local kube-config → in-cluster fallback (that path is allowed).
 
 **dind storage driver note.** `flavor="dind"` runs privileged (GUEST-scoped under Kata — host stays
 unprivileged) with an emptyDir docker graph at `/var/lib/docker`. `graph_backend` and `dind_graph_bytes`
@@ -339,7 +339,7 @@ config — and are honored per-step by both runtimes (k8s emptyDir, local nerdct
   virtiofs rootfs does NOT work for the graph — vfs exhausts host-side fd handles and overlay2/
   fuse-overlayfs fail; **tmpfs is the only non-virtiofs fallback**. `_preflight_memory` refuses a launch
   where `graph_size >= pod_memory` or `pod_memory > node_allocatable` (distinct actionable messages).
-- `block` — Kata maps a no-medium emptyDir to a virtio-blk device; the lane entrypoint formats it ext4
+- `block` — Kata maps a no-medium emptyDir to a virtio-blk device; the sandbox entrypoint formats it ext4
   and remounts before dockerd starts. overlay2 on ext4/virtio-blk, NO RAM tax (sized by
   `resources.dind_graph_bytes`, off-pod-memory). Use this to avoid the tmpfs RAM tax.
 
@@ -389,10 +389,10 @@ async with await pool.acquire(spec, on_wait=None) as lease:
 - `max_concurrent` < 1 → `ValueError`. `acquire_timeout_s` is a SUBSTRATE cap on WAITING for a slot
   (distinct from the no-timeout-on-work principle); timeout → `RuntimeError` (substrate starvation).
 - `admission_gate` (async `-> int` active-pod count, e.g. `runtime.count_active_pods`) replaces the
-  in-process semaphore so the cap spans worker replicas (k8s API is the coordination point).
+  in-process semaphore so the cap spans host replicas (k8s API is the coordination point).
 - RAM-budget gate (`mem_budget_bytes` or lazy `mem_budget_provider`): a parked caller holds NO RAM (pod
   not launched until granted), wakes event-driven on release (FIFO, no starvation). `on_wait(amount,
-  available)` fires once when a caller parks. A held lane consumes zero RAM → competitors **serialize**.
+  available)` fires once when a caller parks. A held sandbox consumes zero RAM → competitors **serialize**.
 
 ---
 

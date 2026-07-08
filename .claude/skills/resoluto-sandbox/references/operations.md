@@ -165,7 +165,7 @@ and `ENV RESOLUTO_IMAGE_VERSION=${IMAGE_VERSION}` (asserted against the installe
 start by `version_guard.py` — fail loud on drift). Companion packages (e.g. `langgraph`) are left
 to pip's resolver to pick versions compatible with the pinned anchor. **`langchain` bakes NO LLM
 integration** — LangChain itself is provider-agnostic; extend the image with `langchain-anthropic`,
-`langchain-openai`, etc. before it can call anything (see `references/agents.md`).
+`langchain-openai`, etc. before it can call anything (see `references/programs.md`).
 
 Overlay Dockerfiles live in `images/{claude,langchain,openai}.Dockerfile`; base is `Dockerfile.base`.
 
@@ -221,7 +221,7 @@ Backend ↔ conduit pairing:
 - **local** → `localfs` (`LocalConduit`, bind-mounted at `/conduit` inside the Kata microVM guest). The
   local backend wires this automatically.
 - **k8s** → `s3` against minio (local) or real S3 (cloud). The pod self-reports chunks to the
-  store; the orchestrator tails it. `SubstrateBackend` requires a conduit (inject or `store_from_env()`).
+  store; the host tails it. `SubstrateBackend` requires a conduit (inject or `store_from_env()`).
 
 ---
 
@@ -246,7 +246,7 @@ runtime = K8sSandboxRuntime(
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
     conduit=store_from_env(),       # needs RESOLUTO_STORE_KIND
-    image="<registry>/resoluto-lane:0.1.0",
+    image="<registry>/resoluto-sandbox-base:0.1.0",
     store_env=store_env_for_pod(os.environ),
 ))
 result = sb.run(["python", "agent.py"], workspace="/path/to/ws", output_paths=["out/*.json"])
@@ -318,7 +318,7 @@ Runtime/placement:
 |---|---|---|
 | `RESOLUTO_SANDBOX_KUBECONTEXT` | None | PINNED kube-context (required to launch safely) |
 | `RESOLUTO_SANDBOX_NAMESPACE` | `resoluto-sandboxes` | pod namespace |
-| `RESOLUTO_LANE_IMAGE_PULL_POLICY` | `IfNotPresent` | pod imagePullPolicy |
+| `RESOLUTO_SANDBOX_IMAGE_PULL_POLICY` | `IfNotPresent` | pod imagePullPolicy |
 | `RESOLUTO_SANDBOX_ALLOW_AMBIENT_CONTEXT` | unset | `1` to allow unpinned context (unsafe) |
 | `RESOLUTO_SANDBOX_MAX_PODS` | `20` | namespace ResourceQuota pods |
 | `RESOLUTO_SANDBOX_MAX_MEMORY` | `96Gi` | namespace ResourceQuota limits.memory |

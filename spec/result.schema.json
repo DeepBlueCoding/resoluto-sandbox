@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "The lane's typed work product \u2014 written by the in-sandbox runner to\n`<prefix>/result.json`, read back by the orchestrator. Generic by design: it\ncarries NO gate/lane/git vocabulary (that mapping is the worker's, upstream).\n\nThe first block is the sandbox's self-report; the `observed_*` / `reason` /\n`substrate_logs` block is filled by the ORCHESTRATOR from out-of-guest signals\n(the in-guest verdict is work product, not a trust decision).",
+  "description": "The sandbox's typed work product \u2014 written by the in-sandbox runner to\n`<prefix>/result.json`, read back by the host. Generic by design: it\ncarries NO consumer-specific vocabulary (that mapping is the caller's, upstream).\n\nThe first block is the sandbox's self-report; the `observed_*` / `reason` /\n`substrate_logs` block is filled by the HOST from out-of-guest signals\n(the in-guest verdict is work product, not a trust decision).",
   "properties": {
     "node_id": {
       "default": "",

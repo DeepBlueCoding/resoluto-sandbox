@@ -113,7 +113,7 @@ class SubstrateBackend(Backend):
 
         run_id = "run-" + uuid4().hex[:8]
         node_id = "run"
-        prefix = f"run/{run_id}/nodes/{node_id}/lane-0"
+        prefix = f"run/{run_id}"
 
         if workspace:
             await put_dir(self._conduit, prefix, workspace)

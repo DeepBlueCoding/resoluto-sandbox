@@ -5,14 +5,14 @@
 # Contains ONLY the generic runtime substrate:
 #   - python 3.12, docker-ce + compose (for dind), node 20, tini, gh
 #   - overlay2-on-tmpfs daemon.json
-#   - non-root lane user (uid 1000) + pam_limits fd drop-in
+#   - non-root sandbox user (uid 1000) + pam_limits fd drop-in
 #   - git safe.directory config
-#   - lane-entrypoint.sh (dind startup + runuser drop)
+#   - sandbox-entrypoint.sh (dind startup + runuser drop)
 #   - resoluto-sandbox wheel (the passive store runner)
 #
-# No agent-vendor tooling (no claude, no pnpm, no playwright).
-# No factory wheels (core/pipeline/worker/agent-claude).
-# No factory git identity (user.email / user.name).
+# No provider tooling (no claude, no pnpm, no playwright).
+# No downstream/consumer wheels (only the resoluto-sandbox wheel).
+# No preset git identity (user.email / user.name).
 #
 # Build context: this repo's own root (standalone — no parent/sibling directory needed). Prefer
 # `resoluto-sandbox image build` (images.py) — it tags this automatically as
@@ -52,14 +52,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # (the runtime mounts a tmpfs emptyDir at /var/lib/docker)
 RUN mkdir -p /etc/docker && printf '{"storage-driver":"overlay2"}\n' > /etc/docker/daemon.json
 
-# resoluto-sandbox passive runner (only this wheel — no factory code)
+# resoluto-sandbox passive runner (only this wheel — no downstream code)
 COPY --from=builder /wheels /wheels
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir /wheels/*.whl \
     && rm -rf /wheels
 
-# non-root lane user: uid 1000, docker group, workspace dir
-# No ~/.claude wiring — that is agent-vendor credential injection, not substrate
+# non-root sandbox user: uid 1000, docker group, workspace dir
+# No ~/.claude wiring — that is provider credential injection, not substrate
 RUN useradd -m -s /bin/bash -u 1000 user \
     && usermod -aG docker user \
     && mkdir -p /workspace \
@@ -73,12 +73,12 @@ RUN printf 'user soft nofile 524288\nuser hard nofile 1048576\n' \
 # git: allow any directory (generic safety config, not factory identity)
 RUN git config --system safe.directory "*"
 
-# entrypoint: dind brings up dockerd as root then drops to the lane user
-COPY <<'EOF' /usr/local/bin/lane-entrypoint.sh
+# entrypoint: dind brings up dockerd as root then drops to the sandbox user
+COPY <<'EOF' /usr/local/bin/sandbox-entrypoint.sh
 #!/bin/sh
 set -e
 if [ "$(id -u)" = "0" ]; then
-    # Block-backed graph path (RESOLUTO_LANE_GRAPH_BACKEND=block): when Kata maps
+    # Block-backed graph path (graph_backend=block): when Kata maps
     # the emptyDir (no medium) to a virtio-blk device, /var/lib/docker is mounted
     # on a raw block device. Format it ext4 (idempotent: skip if already ext4) and
     # remount so overlay2 works. The findmnt/blkid check is a no-op on the default
@@ -102,8 +102,8 @@ if [ "$(id -u)" = "0" ]; then
 fi
 exec "$@"
 EOF
-RUN chmod +x /usr/local/bin/lane-entrypoint.sh
+RUN chmod +x /usr/local/bin/sandbox-entrypoint.sh
 
 USER 1000
 WORKDIR /workspace
-ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/lane-entrypoint.sh"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/sandbox-entrypoint.sh"]

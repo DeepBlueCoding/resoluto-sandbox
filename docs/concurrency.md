@@ -25,14 +25,14 @@ pool = SandboxPool(runtime, max_concurrent=4, mem_budget_bytes=16 * 1024**3)  # 
 
 async def one(prefix: str) -> None:
     spec = SandboxLaunchSpec(
-        image="<registry>/resoluto-lane:0.1.0",
+        image="<registry>/resoluto-sandbox-base:0.1.0",
         store_prefix=prefix,
         resources=Resources.from_quantities(memory="4Gi", cpu="2"),
     )
     async with await pool.acquire(spec) as lease:   # parks here until a slot + budget free up
         ...  # work against lease.handle (e.g. drive_node below); the sandbox is destroyed on exit
 
-await asyncio.gather(*(one(f"run/demo/nodes/n{i}/lane-0") for i in range(10)))  # 10 queued, 4 run at once
+await asyncio.gather(*(one(f"run/demo/nodes/n{i}/sandbox-0") for i in range(10)))  # 10 queued, 4 run at once
 ```
 
 - `pool.available` / `pool.live_count` report free slots / live sandboxes.
@@ -41,7 +41,7 @@ await asyncio.gather(*(one(f"run/demo/nodes/n{i}/lane-0") for i in range(10)))  
 - `SandboxPool` also satisfies the `Admission` protocol, so you can hand it straight to
   `drive_node(..., admit=pool)` to pool-admit a driven node (below).
 
-> The pool bounds SUBSTRATE admission (how many sandboxes exist at once), NOT agent-work liveness. A
+> The pool bounds SUBSTRATE admission (how many sandboxes exist at once), NOT workload liveness. A
 > slow-but-alive sandbox holds its slot as long as it keeps emitting — there is no wall-clock cap.
 
 ## Advanced: the direct `drive_node` path
@@ -63,9 +63,9 @@ from resoluto.sandbox.contracts import Resources, SandboxLaunchSpec
 from resoluto.sandbox.driver import drive_node
 
 spec = SandboxLaunchSpec(
-    image="<registry>/resoluto-lane:0.1.0",
+    image="<registry>/resoluto-sandbox-base:0.1.0",
     flavor="dind", privileged=True,                       # docker-in-docker under Kata
-    store_prefix="run/demo/nodes/build/lane-0",
+    store_prefix="run/demo/nodes/build/sandbox-0",
     resources=Resources.from_quantities(
         memory="8Gi", cpu="4",
         dind_graph="30Gi", graph_backend="block",         # image graph on a 30 GiB disk-backed volume, not RAM
@@ -81,6 +81,6 @@ result = asyncio.run(drive_node(runtime, conduit, spec))  # NodeResult; tails ch
 the Conduit chunks, and returns a `NodeResult`. Pass `admit=pool` to admit through a `SandboxPool`;
 pass `on_event=` to receive each `SpanEvent` live.
 
-> These are the substrate's own building blocks — the worker's step-lane path drives exactly this
-> surface. Prefer the `Sandbox` facade for single-shot runs; reach here only when you need pooling,
+> These are the substrate's own building blocks — a host that drives many sandboxes builds on exactly
+> this surface. Prefer the `Sandbox` facade for single-shot runs; reach here only when you need pooling,
 > dind, a disk-backed graph, or per-spec egress.

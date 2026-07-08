@@ -9,7 +9,7 @@ relative to that workspace — NOT the host interpreter or host absolute paths, 
 inside the Kata microVM. `payloads/hello.py` is a plain program; it never imports resoluto.sandbox.
 
 Run from resoluto-sandbox/ (local Kata backend provisioned via scripts/local-backend-up.sh):
-    set -a; source local.env; set +a          # exports RESOLUTO_LANE_IMAGE
+    set -a; source local.env; set +a          # exports RESOLUTO_SANDBOX_IMAGE
     uv run python examples/run_hello_in_sandbox.py
 """
 import io
@@ -20,9 +20,9 @@ from pathlib import Path
 from resoluto.sandbox import Sandbox
 
 payloads = Path(__file__).resolve().parent / "payloads"
-image = os.environ.get("RESOLUTO_LANE_IMAGE")
+image = os.environ.get("RESOLUTO_SANDBOX_IMAGE")
 if not image:
-    sys.exit("set RESOLUTO_LANE_IMAGE first (the provisioned lane image):  set -a; source local.env; set +a")
+    sys.exit("set RESOLUTO_SANDBOX_IMAGE first (the provisioned sandbox image):  set -a; source local.env; set +a")
 
 result = Sandbox(backend="local", image=image).run(
     ["python", "hello.py", "sandbox"],   # guest python; path relative to the staged workspace

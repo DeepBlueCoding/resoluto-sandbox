@@ -84,7 +84,7 @@ runtime = K8sSandboxRuntime(
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
     conduit=store_from_env(),
-    image="<registry>/resoluto-lane:0.1.0",
+    image="<registry>/resoluto-sandbox-base:0.1.0",
     store_env=store_env_for_pod(os.environ),
 ))
 r = sb.run(
@@ -146,7 +146,7 @@ runtime = K8sSandboxRuntime(
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
     conduit=store_from_env(),
-    image="<registry>/resoluto-lane:0.1.0",
+    image="<registry>/resoluto-sandbox-base:0.1.0",
     store_env=store_env_for_pod(os.environ),
 ))
 ```
@@ -177,7 +177,7 @@ runtime = K8sSandboxRuntime(
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
     conduit=store_from_env(),
-    image="myregistry/my-lane:0.1.0",
+    image="myregistry/my-sandbox-base:0.1.0",
     store_env=store_env_for_pod(os.environ),
 ))
 ```
@@ -242,7 +242,7 @@ Both backends merge stdout→`output` (errors stays `""`).
   `backend="local"` runs a Kata microVM via `nerdctl` against a dedicated, standalone containerd
   (own socket/root at `/run/resoluto-local/containerd/`) — VM-grade isolation at parity with k8s,
   on a single host. The egress canary RUNS (fail-closed); local egress is enforced HOST-SIDE on the
-  lane CNI bridge (default-deny: store + DNS only until you opt in via `RESOLUTO_EGRESS_ALLOW` /
+  sandbox CNI bridge (default-deny: store + DNS only until you opt in via `RESOLUTO_EGRESS_ALLOW` /
   `_PUBLIC_HTTPS`; REJECT IMDS + RFC1918 private),
   immune to in-guest root. Suitable for untrusted code, same as k8s. Needs `/dev/kvm` + nerdctl +
   the dedicated containerd + an image (default `resoluto-sandbox-base:<installed wheel version>` (`default_local_image()`), never a floating tag; override with `image=`).

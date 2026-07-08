@@ -5,7 +5,7 @@
 """LLM smoke test: ask Claude a REAL question THROUGH the sandbox and SHOW the
 input (the prompt) and the output (Claude's answer).
 
-This proves the full agent path end to end: a real LLM call runs inside the Kata sandbox,
+This proves the full workload path end to end: a real LLM call runs inside the Kata sandbox,
 reaching api.anthropic.com over the allowed public :443 egress, and its input/output
 round-trips through the store-mediated substrate.
 
@@ -14,12 +14,12 @@ $CLAUDE_CODE_OAUTH_TOKEN if set, else the OAuth access token from your subscript
 (~/.claude/.credentials.json). ANTHROPIC_API_KEY stays unset so usage bills your subscription.
 The token rides in the pod env (a secret) — fine for a local dev smoke.
 
-Egress is DENY-by-default (secure) — an agent lane can't reach the LLM until you open it. The k8s
+Egress is DENY-by-default (secure) — a sandbox can't reach the LLM until you open it. The k8s
 path here opens just the provider (`allow=["anthropic"]`). The LOCAL backend enforces egress at
 PROVISION time, so provision it with the LLM opened first:
     RESOLUTO_EGRESS_ALLOW=anthropic bash scripts/local-backend-up.sh    # (or RESOLUTO_EGRESS_PUBLIC_HTTPS=1)
 
-Run from resoluto-sandbox/ (lane image present; backends provisioned):
+Run from resoluto-sandbox/ (sandbox image present; backends provisioned):
     set -a; source store.env; source local.env; set +a
     uv run python tests/smoke/smoke_llm.py                       # local backend
     uv run python tests/smoke/smoke_llm.py --k8s-only            # k8s backend
@@ -81,13 +81,13 @@ def _show(label: str, prompt: str, res) -> bool:
 
 
 def _egress_unenforced(res) -> bool:
-    """The lane refused ONLY because the cluster CNI didn't program egress in time (a race, not a
+    """The sandbox refused ONLY because the cluster CNI didn't program egress in time (a race, not a
     code failure). The local backend enforces egress host-side and is the reliable path here."""
     return "egress canary failed" in (res.reason or "") or "egress canary failed" in res.output
 
 
 def run_local(prompt: str, token: str) -> str:
-    image = os.environ["RESOLUTO_LANE_IMAGE"]
+    image = os.environ["RESOLUTO_SANDBOX_IMAGE"]
     res = Sandbox(backend="local", image=image).run(
         ["python", "llm_agent.py", prompt],
         workspace=_staged_workspace(),
@@ -118,7 +118,7 @@ def run_k8s(prompt: str, token: str) -> str:
     ))
     store_env = {k: v for k, v in os.environ.items() if k.startswith("RESOLUTO_STORE_")}
     store_env["RESOLUTO_STORE_WRITE_TOKEN"] = json.dumps(sts)
-    # Egress is DENY-by-default — the LLM lane can't phone home unless we open it. Open just the LLM
+    # Egress is DENY-by-default — the LLM sandbox can't phone home unless we open it. Open just the LLM
     # provider (least privilege). CDN IPs rotate, so if this flakes, use public_https=True instead.
     import dataclasses
     egress = EgressConfig.from_store_env() or EgressConfig()
@@ -130,7 +130,7 @@ def run_k8s(prompt: str, token: str) -> str:
     )
     sb = Sandbox(backend=SubstrateBackend(
         runtime=runtime, conduit=store_from_env(),
-        image=os.environ["RESOLUTO_LANE_IMAGE"], store_env=store_env,
+        image=os.environ["RESOLUTO_SANDBOX_IMAGE"], store_env=store_env,
     ))
     res = sb.run(
         ["python", "llm_agent.py", prompt],

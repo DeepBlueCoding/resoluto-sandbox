@@ -1,5 +1,5 @@
 """The runtime must PIN its kube-context, never follow the ambient current-context
-(which can wander to an unrelated/production cluster and run adversarial lane pods)."""
+(which can wander to an unrelated/production cluster and run adversarial sandbox pods)."""
 import sys
 import types
 

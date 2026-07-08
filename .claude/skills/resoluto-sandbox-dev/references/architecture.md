@@ -13,7 +13,7 @@ from resoluto.sandbox.client import Sandbox
 
 # select by name (backend shortcuts)
 sb = Sandbox(backend="local")          # SubstrateBackend(KataNerdctlSandboxRuntime + LocalConduit)
-sb = Sandbox(backend="k8s")            # SubstrateBackend(K8sSandboxRuntime + store_from_env()) — needs RESOLUTO_LANE_IMAGE
+sb = Sandbox(backend="k8s")            # SubstrateBackend(K8sSandboxRuntime + store_from_env()) — needs RESOLUTO_SANDBOX_IMAGE
 
 # or inject a configured SubstrateBackend (the real k8s path with egress/conduit config)
 import os
@@ -30,7 +30,7 @@ runtime = K8sSandboxRuntime(
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
     conduit=store_from_env(),
-    image="ghcr.io/you/lane:tag",
+    image="ghcr.io/you/sandbox:tag",
     store_env=store_env_for_pod(os.environ),
 ))
 ```
@@ -38,7 +38,7 @@ sb = Sandbox(backend=SubstrateBackend(
 `Sandbox.__init__(*, backend: Backend | str = "local", image: str | None = None)`:
 - a `Backend` instance → held as-is
 - `"local"` (default) → builds `SubstrateBackend(KataNerdctlSandboxRuntime + LocalConduit)`, image `default_local_image()` = `resoluto-sandbox-base:<installed wheel version>` (dynamic, never `:dev`)
-- `"k8s"` → builds `SubstrateBackend(K8sSandboxRuntime + store_from_env())` (needs `RESOLUTO_LANE_IMAGE`)
+- `"k8s"` → builds `SubstrateBackend(K8sSandboxRuntime + store_from_env())` (needs `RESOLUTO_SANDBOX_IMAGE`)
 - anything else (including `"docker"`) → `ValueError`
 
 ## The run API (identical across backends)
@@ -191,7 +191,7 @@ backend = SubstrateBackend(
     runtime=runtime,
     conduit=S3Conduit("my-bucket", endpoint_url="http://minio:9000",
                       aws_access_key_id="...", aws_secret_access_key="..."),
-    image="ghcr.io/you/lane:tag",
+    image="ghcr.io/you/sandbox:tag",
     store_env=store_env_for_pod(os.environ),
 )
 from resoluto.sandbox.client import Sandbox
@@ -277,4 +277,4 @@ your program  (plain: reads argv -> writes stdout/files/exit; never imports reso
 
 - Wire protocol, chunk/JSONL framing, `SpanEvent` semantics → `spec/PROTOCOL.md`
 - Substrate internals (storage driver, dind, stepped loop, resume-via-copy_prefix) → `internals.md`
-- Worker/pipeline layering and the lane seam → `../` sibling reference docs in this skill
+- Adding a new runtime/backend/conduit → `extending.md` (sibling reference doc in this skill)

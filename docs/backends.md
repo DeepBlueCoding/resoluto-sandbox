@@ -45,7 +45,7 @@ from resoluto.sandbox.contracts import Resources
 from resoluto.sandbox.backends.substrate import SubstrateBackend
 
 sb = Sandbox(backend=SubstrateBackend(
-    runtime=runtime, conduit=conduit, image="<registry>/resoluto-lane:0.1.0",
+    runtime=runtime, conduit=conduit, image="<registry>/resoluto-sandbox-base:0.1.0",
     store_env=store_env,
     resources=Resources.from_quantities(memory="16Gi", cpu="4", disk="40Gi"),  # default: 4Gi / 2 cpu
 ))
@@ -76,7 +76,7 @@ Sandbox(backend="local").run(argv, workspace, output_paths)
 ```
 
 Egress is enforced host-side on the CNI bridge and is default-deny (secure by default):
-a fresh lane reaches only DNS + its store, and you opt in to what the workload needs at
+a fresh sandbox reaches only DNS + its store, and you opt in to what the workload needs at
 provision time (`RESOLUTO_EGRESS_ALLOW` for specific destinations, `RESOLUTO_EGRESS_PUBLIC_HTTPS=1`
 for all outbound :443). IMDS `169.254.169.254` + RFC1918 private ranges are always rejected, so it
 is immune to in-guest root. The egress canary runs fail-closed before your workload; there is no
@@ -136,7 +136,7 @@ runtime = K8sSandboxRuntime(
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
     conduit=store_from_env(),
-    image="<registry>/resoluto-lane:0.1.0",
+    image="<registry>/resoluto-sandbox-base:0.1.0",
     store_env=store_env_for_pod(os.environ),
 ))
 result = sb.run(["bash", "-lc", "echo hi"], workspace="./proj", output_paths=["*.txt"])
@@ -144,10 +144,10 @@ print(result.output)   # "hi"
 print(result.ok)       # True
 ```
 
-Or use the convenience shortcut (reads `RESOLUTO_LANE_IMAGE` and `RESOLUTO_STORE_KIND` from env):
+Or use the convenience shortcut (reads `RESOLUTO_SANDBOX_IMAGE` and `RESOLUTO_STORE_KIND` from env):
 
 ```python
-Sandbox(backend="k8s", image="<registry>/resoluto-lane:0.1.0").run(...)
+Sandbox(backend="k8s", image="<registry>/resoluto-sandbox-base:0.1.0").run(...)
 ```
 
 ### Optional: egress lockdown
@@ -273,14 +273,14 @@ the bucket policy to allow the credentials you export below.
 
 ```bash
 tag=$(resoluto-sandbox image build --provider claude)
-docker tag "$tag" <registry>/resoluto-lane:0.1.0
-docker push <registry>/resoluto-lane:0.1.0
+docker tag "$tag" <registry>/resoluto-sandbox-base:0.1.0
+docker push <registry>/resoluto-sandbox-base:0.1.0
 ```
 
 Set the image in the environment:
 
 ```bash
-export RESOLUTO_LANE_IMAGE=<registry>/resoluto-lane:0.1.0
+export RESOLUTO_SANDBOX_IMAGE=<registry>/resoluto-sandbox-base:0.1.0
 ```
 
 ### 6. Export environment variables
@@ -293,7 +293,7 @@ export RESOLUTO_SANDBOX_KUBECONTEXT=<your-context-name>
 export RESOLUTO_SANDBOX_NAMESPACE=resoluto-sandboxes
 
 # Image to run inside each pod
-export RESOLUTO_LANE_IMAGE=<registry>/resoluto-lane:0.1.0
+export RESOLUTO_SANDBOX_IMAGE=<registry>/resoluto-sandbox-base:0.1.0
 
 # Conduit: S3-compatible store
 export RESOLUTO_STORE_KIND=s3
@@ -314,7 +314,7 @@ prevent accidentally targeting the wrong cluster. Use
 
 ### 7. Smoke test
 
-Wire `sb` exactly as in [Usage](#usage) (here reading `image=os.environ["RESOLUTO_LANE_IMAGE"]`), then:
+Wire `sb` exactly as in [Usage](#usage) (here reading `image=os.environ["RESOLUTO_SANDBOX_IMAGE"]`), then:
 
 ```python
 result = sb.run(["bash", "-lc", "echo hi from kata"])

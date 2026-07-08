@@ -1,6 +1,6 @@
 # Host ↔ Sandbox Wire Protocol
 
-This document describes the protocol between an orchestrator (host) and a sandbox (guest) in
+This document describes the protocol between a host and a sandbox (guest) in
 language-neutral terms. A Python reference implementation lives in `src/resoluto/sandbox/`.
 Any language that can read/write JSON and gzip-tar archives can implement a client.
 
@@ -38,9 +38,9 @@ run/<run_id>/nodes/<node_id>/
 | `_manifest.json`                   | sandbox → host  | EOF marker: `{"total_chunks": N}`                |
 
 Sequence numbers in event chunk names are zero-padded six-digit integers (`000001`, `000002`, …).
-Chunks are immutable once written. The orchestrator tails `list_prefix` for new chunk keys,
+Chunks are immutable once written. The host tails `list_prefix` for new chunk keys,
 fetches each in order, and reads lines as they arrive. `_manifest.json` signals that all chunks
-have been written; the orchestrator stops tailing once the chunk count matches `total_chunks`.
+have been written; the host stops tailing once the chunk count matches `total_chunks`.
 
 ## Schemas
 
@@ -62,7 +62,7 @@ Each line is a UTF-8 JSON object. Required fields:
 | `run_id`       | string  | Identifies the run                                          |
 | `span_id`      | string  | Unique identifier for this span                             |
 | `parent_span_id` | string | Parent span; empty string for root spans                  |
-| `kind`         | string  | advisory; any string permitted. Common: `run` / `phase` / `node` / `attempt` / `gate` / `agent` / `tool` / `log` |
+| `kind`         | string  | advisory; any string permitted. Common: `run` / `phase` / `node` / `attempt` / `agent` / `tool` / `log` |
 | `name`         | string  | Human-readable span name (empty for log events)             |
 | `event`        | string  | `open` / `close` / `log`                                   |
 | `ts`           | number  | Unix epoch seconds (float), stamped by the emitter          |
@@ -71,8 +71,8 @@ Each line is a UTF-8 JSON object. Required fields:
 
 ### NodeResult (`result.json`)
 
-Written once by the sandbox when work is complete. The orchestrator reads this after the manifest
-arrives. Fields filled by the orchestrator (`observed_phase`, `reason`, `substrate_logs`) are
+Written once by the sandbox when work is complete. The host reads this after the manifest
+arrives. Fields filled by the host (`observed_phase`, `reason`, `substrate_logs`) are
 appended from out-of-guest signals and must not be trusted as the in-guest verdict.
 
 | Field            | Type           | Description                                         |
@@ -81,7 +81,7 @@ appended from out-of-guest signals and must not be trusted as the in-guest verdi
 | `status`         | string         | `success` or `failure`                              |
 | `exit_code`      | integer / null | Exit code of the main process, if available         |
 | `output_archive` | string / null  | Key of the primary output archive in the conduit    |
-| `observed_phase` | string         | Orchestrator-observed substrate phase               |
+| `observed_phase` | string         | Host-observed substrate phase                       |
 | `reason`         | string         | Human-readable failure reason                       |
 | `substrate_logs` | string         | Forensic substrate logs (untrusted)                 |
 
@@ -111,7 +111,7 @@ Written last by the sandbox to signal that all event chunks are complete.
 Liveness is determined by **chunk arrival rate** and **heartbeat events**, not wall-clock time.
 
 - The sandbox emits periodic `kind=log, event=log` heartbeat records into the event stream.
-- The orchestrator treats absence of new chunks for a configurable silence window as a liveness
+- The host treats absence of new chunks for a configurable silence window as a liveness
   failure.
 - There are no hardcoded wall-clock timeouts. If the sandbox is doing work, it keeps running.
 - Unstartable sandboxes (e.g., image pull failures) are detected via substrate status polling
@@ -119,10 +119,10 @@ Liveness is determined by **chunk arrival rate** and **heartbeat events**, not w
 
 ## Sequence
 
-1. Orchestrator writes `inbox/<name>.tar.gz` (workspace) and optionally `task.json` (for backends that read it).
-2. Orchestrator launches the sandbox, passing the run prefix, a write-scoped token, and workload configuration via env vars.
+1. Host writes `inbox/<name>.tar.gz` (workspace) and optionally `task.json` (for backends that read it).
+2. Host launches the sandbox, passing the run prefix, a write-scoped token, and workload configuration via env vars.
 3. Sandbox reads `inbox/`, performs its work (the reference runner is driven by env vars, not `task.json`).
 4. Sandbox appends `events-<NNNNNN>.jsonl` chunks as work progresses.
 5. Sandbox writes `result.json` and any `outbox/<name>.tar.gz` artifacts.
 6. Sandbox writes `_manifest.json` with the final chunk count.
-7. Orchestrator reads events in sequence, fetches `result.json`, collects outbox archives.
+7. Host reads events in sequence, fetches `result.json`, collects outbox archives.

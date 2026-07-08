@@ -25,9 +25,9 @@ def _local_conduit_base() -> str:
 
     The Kata guest (launched via sudo nerdctl) writes into the bind-mounted conduit as a
     different uid, so the leaf must stay group/world-writable. Gating it behind a 0o700 parent
-    that only the invoking user can traverse keeps lane data (and any staged tokens) unreachable
+    that only the invoking user can traverse keeps sandbox data (and any staged tokens) unreachable
     to other local users regardless of the leaf's mode. Disk-backed (not XDG_RUNTIME_DIR tmpfs),
-    since lane artifacts can be large.
+    since sandbox artifacts can be large.
     """
     base = os.path.join(tempfile.gettempdir(), f"resoluto-sandbox-{os.getuid()}")
     os.makedirs(base, mode=0o700, exist_ok=True)
@@ -53,19 +53,19 @@ def _build_local_backend(image: str | None) -> SubstrateBackend:
 
 
 def _build_k8s_backend(image: str | None) -> SubstrateBackend:
-    """Build the k8s backend, wiring a conduit from env to a K8sSandboxRuntime. Inputs: optional image override (falls back to RESOLUTO_LANE_IMAGE). Output: a SubstrateBackend."""
+    """Build the k8s backend, wiring a conduit from env to a K8sSandboxRuntime. Inputs: optional image override (falls back to RESOLUTO_SANDBOX_IMAGE). Output: a SubstrateBackend."""
     from resoluto.sandbox.conduit.factory import store_from_env
     from resoluto.sandbox.runtime.k8s import EgressConfig, K8sSandboxRuntime
 
-    image = image or os.environ.get("RESOLUTO_LANE_IMAGE")
+    image = image or os.environ.get("RESOLUTO_SANDBOX_IMAGE")
     if not image:
-        raise ValueError("backend='k8s' requires image=... or RESOLUTO_LANE_IMAGE")
+        raise ValueError("backend='k8s' requires image=... or RESOLUTO_SANDBOX_IMAGE")
     conduit = store_from_env()
     runtime = K8sSandboxRuntime(
         egress=EgressConfig.from_store_env(),
         namespace=os.environ.get("RESOLUTO_SANDBOX_NAMESPACE", "resoluto-sandboxes"),
         context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT") or None,
-        image_pull_policy=os.environ.get("RESOLUTO_LANE_IMAGE_PULL_POLICY", "IfNotPresent"),
+        image_pull_policy=os.environ.get("RESOLUTO_SANDBOX_IMAGE_PULL_POLICY", "IfNotPresent"),
     )
     store_env = {**store_env_for_pod(os.environ), **secrets_env_for_pod(os.environ)}
     return SubstrateBackend(runtime=runtime, conduit=conduit, image=image, store_env=store_env)

@@ -145,49 +145,49 @@ async def test_gate_repolls_and_admits_when_slot_opens():
 
 
 @pytest.mark.asyncio
-async def test_deadlock_regression_gate_not_starved_by_lanes():
-    """Gate pool must admit even when lane pool is saturated.
+async def test_deadlock_regression_pool_b_not_starved_by_pool_a():
+    """pool_b must admit even when pool_a is saturated.
 
-    Demonstrates that a shared unfiltered count (the old bug) would block gate
-    admission: with lane_cap=2 and gate_cap=1, two active lane pods make the
-    shared count == 2 >= gate_cap, so the gate pool never acquires. With
-    kind-scoped gates, lane pods (kind="lane") are invisible to the gate
-    counter (kind="gate") and gate admission succeeds immediately.
+    Demonstrates that a shared unfiltered count (the old bug) would block pool_b
+    admission: with pool_a_cap=2 and pool_b_cap=1, two active pool_a pods make the
+    shared count == 2 >= pool_b_cap, so pool_b never acquires. With
+    kind-scoped admission, pool_a pods (kind="pool_a") are invisible to the pool_b
+    counter (kind="pool_b") and pool_b admission succeeds immediately.
     """
     rt = _FakeRuntime()
 
-    # Simulate two active lane pods and zero gate pods — the production deadlock
-    # scenario: lane pool is at capacity, gate pool should still be free.
-    lane_count = 2  # lane pods active — saturates lane_cap
-    gate_count = 0  # no gate pods yet
-    lane_cap = 2
-    gate_cap = 2
+    # Simulate two active pool_a pods and zero pool_b pods — the production deadlock
+    # scenario: pool_a is at capacity, pool_b should still be free.
+    pool_a_count = 2  # pool_a pods active — saturates pool_a_cap
+    pool_b_count = 0  # no pool_b pods yet
+    pool_a_cap = 2
+    pool_b_cap = 2
 
-    async def _lane_gate() -> int:
-        return lane_count
+    async def _pool_a_admit() -> int:
+        return pool_a_count
 
-    async def _gate_gate() -> int:
-        return gate_count
+    async def _pool_b_admit() -> int:
+        return pool_b_count
 
-    # kind-scoped gates — the gate pool sees gate_count=0 (lane pods are invisible to it)
-    # and admits immediately even though the lane pool is saturated.
-    fixed_lane_pool = SandboxPool(
+    # kind-scoped admission — pool_b sees pool_b_count=0 (pool_a pods are invisible to it)
+    # and admits immediately even though pool_a is saturated.
+    fixed_pool_a = SandboxPool(
         rt,
-        max_concurrent=lane_cap,
-        admission_gate=_lane_gate,
+        max_concurrent=pool_a_cap,
+        admission_gate=_pool_a_admit,
         acquire_timeout_s=0.05,
     )
-    fixed_gate_pool = SandboxPool(
+    fixed_pool_b = SandboxPool(
         rt,
-        max_concurrent=gate_cap,
-        admission_gate=_gate_gate,
+        max_concurrent=pool_b_cap,
+        admission_gate=_pool_b_admit,
         acquire_timeout_s=0.05,
     )
 
-    # Lane pool at cap — cannot acquire (lane_count == lane_cap)
+    # pool_a at cap — cannot acquire (pool_a_count == pool_a_cap)
     with pytest.raises(RuntimeError, match="acquire timed out"):
-        await fixed_lane_pool.acquire(_spec())
+        await fixed_pool_a.acquire(_spec())
 
-    # Gate pool still admits because its kind-scoped count is 0 < gate_cap
-    async with await fixed_gate_pool.acquire(_spec()) as lease:
+    # pool_b still admits because its kind-scoped count is 0 < pool_b_cap
+    async with await fixed_pool_b.acquire(_spec()) as lease:
         assert lease.handle is not None

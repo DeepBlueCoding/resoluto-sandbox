@@ -1,5 +1,5 @@
 """S3Conduit translates transport failures (e.g. minio storage-full) into a
-typed ConduitError so the engine can fail the run fast with the real cause —
+typed ConduitError so the host can fail the run fast with the real cause —
 while ordinary application errors pass through unreclassified."""
 import pytest
 
@@ -43,7 +43,7 @@ def _client_error():
     ],
 )
 async def test_put_reclassifies_only_transport_failures(monkeypatch, make_exc, expected, must_contain):
-    store = S3Conduit("lanes")
+    store = S3Conduit("sandboxes")
     monkeypatch.setattr(store, "_client", lambda: _FakeCM(make_exc()))
     with pytest.raises(expected) as ei:
         await store.put("k", b"data")
@@ -52,5 +52,5 @@ async def test_put_reclassifies_only_transport_failures(monkeypatch, make_exc, e
 
 
 async def test_aclose_is_safe():
-    store = S3Conduit("lanes")
+    store = S3Conduit("sandboxes")
     await store.aclose()  # no session yet → no-op, must not raise

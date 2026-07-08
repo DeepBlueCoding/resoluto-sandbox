@@ -1,7 +1,7 @@
 """Hermetic unit tests for the PURE k8s lifecycle logic that today is only reachable
 behind @integration. They NEVER reach a real cluster or launch a real pod: the `_client`
 seam is stubbed with `monkeypatch.setattr(rt, "_client", ...)` so no kubernetes API is
-touched. They run in the default `uv run pytest` lane (NOT marked @integration)."""
+touched. They run in the default `uv run pytest` path (NOT marked @integration)."""
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -325,6 +325,6 @@ async def test_count_active_pods_kind_filter_adds_label(monkeypatch):
             return pods
 
     _stub_client(rt, _Api(), monkeypatch)
-    n = await rt.count_active_pods(kind="lane")
+    n = await rt.count_active_pods(kind="pool_a")
     assert n == 1
-    assert seen["selector"] == "resoluto_sandbox=true,resoluto.kind=lane"
+    assert seen["selector"] == "resoluto_sandbox=true,resoluto.kind=pool_a"

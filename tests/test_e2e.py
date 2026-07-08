@@ -1,13 +1,13 @@
 """§11.6 step 5 — the WHOLE loop on real infra, end to end.
 
 A real Kata pod (runtimeClass=kata) runs the BAKED runner image as its ENTRYPOINT.
-The runner — holding no orchestrator connection — self-reports redacted span/log
+The runner — holding no host connection — self-reports redacted span/log
 chunks + result.json to LIVE minio. Host-side `drive_node` (SandboxPool +
 K8sSandboxRuntime + S3Conduit) tails that store, reconstructs the telemetry,
 collects the result, and reaps the pod. This is the store-mediated loop that the
 RES-236 wedge made impossible — proven against the substrate, not a fake.
 
-Run:  uv run pytest -m integration tests/test_e2e_lane.py
+Run:  uv run pytest -m integration tests/test_e2e.py
 Needs: live k3s+Kata, the resoluto-sandbox-runner:0.1.0 image imported into k3s
 containerd, and spike-minio on the host (0.0.0.0:9100, minioadmin/minioadmin).
 """
@@ -29,7 +29,7 @@ from resoluto.sandbox.conduit.s3 import S3Conduit
 from resoluto.sandbox.runtime.k8s import EgressConfig, K8sSandboxRuntime
 
 # These drive a FRESH runner image whose in-guest egress canary is always-on (the trusted-local
-# bypass was removed). They therefore require a CNI that actually ENFORCES the lane's egress
+# bypass was removed). They therefore require a CNI that actually ENFORCES the sandbox's egress
 # NetworkPolicy. This dev box (k3s + Flannel; kube-router netpol non-functional for egress) does
 # NOT, so the fail-closed canary correctly refuses — external egress is genuinely open here. The
 # store-mediated host→pod→minio→reap loop itself is proven GREEN by scripts/store-backend-canary.py.
@@ -46,7 +46,7 @@ KUBECONTEXT = os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT", "default")  # pin l
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_real_kata_lane_store_mediated_loop(runner_image):
+async def test_real_kata_sandbox_store_mediated_loop(runner_image):
     run_id = f"e2e{uuid.uuid4().hex[:8]}"
     node_id = "compile"
     bucket = "resoluto-e2e"
@@ -108,7 +108,7 @@ async def test_real_kata_lane_store_mediated_loop(runner_image):
 @pytest.mark.asyncio
 async def test_real_repo_stages_in_and_diff_comes_back_out(tmp_path, runner_image):
     """A real git repo (incl. .git history) rides into the passive Kata pod as ONE
-    store object, the lane reads it + emits a patched artifact, and the host fetches
+    store object, the sandbox reads it + emits a patched artifact, and the host fetches
     that artifact back — no git egress, no creds in guest, store as the only path."""
     run_id = f"e2e{uuid.uuid4().hex[:8]}"
     node_id = "edit"
@@ -129,7 +129,7 @@ async def test_real_repo_stages_in_and_diff_comes_back_out(tmp_path, runner_imag
         aws_access_key_id=MINIO_KEY, aws_secret_access_key=MINIO_KEY,
     )
     await store.ensure_bucket()
-    # HOST pushes the worktree as the lane's single input object
+    # HOST pushes the worktree as the sandbox's single input object
     await put_dir(store, prefix, str(repo))
 
     spec = SandboxLaunchSpec(

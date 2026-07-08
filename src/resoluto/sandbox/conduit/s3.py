@@ -69,7 +69,7 @@ async def mint_scoped_credential(
     import aioboto3
 
     session = aioboto3.Session()
-    session_name = f"resoluto-lane-{prefix.replace('/', '-')}"[:64]
+    session_name = f"resoluto-sandbox-{prefix.replace('/', '-')}"[:64]
     async with session.client(
         "sts",
         endpoint_url=endpoint_url,

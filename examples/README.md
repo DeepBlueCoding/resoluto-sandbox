@@ -12,17 +12,17 @@ Two kinds of file live here — keep them straight:
 
 | Driver | Shows |
 |--------|-------|
-| `run_agent_in_sandbox.py` | **The point of this project** — run a REAL Claude agent isolated in a Kata microVM, egress locked to the LLM, prompt→answer round-tripped through the store. |
+| `run_agent_in_sandbox.py` | Run any untrusted program isolated in a Kata microVM — here a Claude agent as the sample workload — egress locked, input→output round-tripped through the store. |
 | `run_hello_in_sandbox.py` | The bare mechanics — stage a plain program (`payloads/hello.py`) into the guest and run it under the local Kata backend. |
 
 ```bash
 # provision the local Kata backend first (see the repo README), then:
-set -a; source local.env; set +a                                       # exports RESOLUTO_LANE_IMAGE
+set -a; source local.env; set +a                                       # exports RESOLUTO_SANDBOX_IMAGE
 uv run python examples/run_hello_in_sandbox.py                         # simplest: hello, sandboxed
 uv run python examples/run_agent_in_sandbox.py "why isolate agents?"   # a real agent, isolated
 ```
 
-Neither driver hardcodes an image tag — both read `RESOLUTO_LANE_IMAGE` (set when you provision the
+Neither driver hardcodes an image tag — both read `RESOLUTO_SANDBOX_IMAGE` (set when you provision the
 backend) and fail fast if it is unset.
 
 ## Payloads
