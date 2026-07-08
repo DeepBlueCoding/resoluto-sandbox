@@ -163,7 +163,7 @@ def main() -> int:
     results = {}
     if "--k8s-only" not in flags:
         results["local"] = run_local(prompt, token)
-    if "--k8s-only" in flags or ("--local-only" not in flags and "--both" in flags):
+    if "--k8s-only" in flags or "--both" in flags:
         results["k8s"] = run_k8s(prompt, token)
 
     print("\n=== llm smoke summary ===")

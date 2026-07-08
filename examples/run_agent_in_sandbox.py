@@ -64,16 +64,15 @@ def main() -> int:
         return 1
 
     # a throwaway workspace holding just the agent program — the token travels via env, not files
-    ws = Path(tempfile.mkdtemp(prefix="agent-ws-"))
-    shutil.copy(PAYLOAD, ws / "claude_agent.py")
-
-    result = Sandbox(backend="local", image=image).run(
-        ["python", "claude_agent.py", prompt],
-        workspace=str(ws),
-        env={"CLAUDE_CODE_OAUTH_TOKEN": token},   # authenticate the guest claude CLI
-        egress=["api.anthropic.com"],             # local backend: lock egress to the LLM only (SNI proxy)
-        stream=io.StringIO(),                     # capture substrate telemetry; print the clean answer below
-    )
+    with tempfile.TemporaryDirectory(prefix="agent-ws-") as ws:
+        shutil.copy(PAYLOAD, Path(ws) / "claude_agent.py")
+        result = Sandbox(backend="local", image=image).run(
+            ["python", "claude_agent.py", prompt],
+            workspace=ws,
+            env={"CLAUDE_CODE_OAUTH_TOKEN": token},   # authenticate the guest claude CLI
+            egress=["api.anthropic.com"],             # local backend: lock egress to the LLM only (SNI proxy)
+            stream=io.StringIO(),                     # capture substrate telemetry; print the clean answer below
+        )
     print(f"\nINPUT  (prompt) : {prompt!r}")
     print(f"OUTPUT (answer) : {result.output.strip()!r}")
     print(f"exit={result.exit_code}  — ran in a Kata microVM, egress=api.anthropic.com only")
