@@ -332,13 +332,32 @@
   
   
     <li class="md-tabs__item">
+      <a href="../concurrency/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Concurrency
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
       <a href="../auth/" class="md-tabs__link">
         
   
   
     
   
-  Auth
+  Credentials
 
       </a>
     </li>
@@ -599,6 +618,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#sizing-memory-cpu-disk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sizing — memory, CPU, disk
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#local" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -812,6 +842,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../concurrency/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concurrency
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../auth/" class="md-nav__link">
         
   
@@ -819,7 +876,7 @@
   <span class="md-ellipsis">
     
   
-    Auth
+    Credentials
   
 
     
@@ -852,10 +909,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
         
           
-          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
             
   
   
@@ -873,8 +930,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_7">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1072,6 +1129,17 @@
     <span class="md-ellipsis">
       
         Run lifecycle
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sizing-memory-cpu-disk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sizing — memory, CPU, disk
       
     </span>
   </a>
@@ -1320,6 +1388,23 @@ wall-clock timeout on the work itself — a live sandbox runs as long as it keep
 <code>RunResult.output</code> carries the merged stream and <code>RunResult.errors</code> is always <code>""</code>.
 This is intentional, not a dropped field. On k8s, <code>RunResult.reason</code> carries
 substrate forensics when a pod is evicted or OOM-killed, and is <code>""</code> on a normal exit.</p>
+<h2 id="sizing-memory-cpu-disk">Sizing — memory, CPU, disk<a class="headerlink" href="#sizing-memory-cpu-disk" title="Permanent link">&para;</a></h2>
+<p>The facade defaults each sandbox to 4 GiB / 2 CPU. To size it, pass a <code>Resources</code> to the injected
+<code>SubstrateBackend</code> — <strong>both backends honor it</strong> (k8s renders pod requests/limits, <code>local</code> renders
+<code>nerdctl --memory</code>/<code>--cpus</code>):</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox</span><span class="w"> </span><span class="kn">import</span> <span class="n">Sandbox</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.contracts</span><span class="w"> </span><span class="kn">import</span> <span class="n">Resources</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.backends.substrate</span><span class="w"> </span><span class="kn">import</span> <span class="n">SubstrateBackend</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">sb</span> <span class="o">=</span> <span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">SubstrateBackend</span><span class="p">(</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">runtime</span><span class="o">=</span><span class="n">runtime</span><span class="p">,</span> <span class="n">conduit</span><span class="o">=</span><span class="n">conduit</span><span class="p">,</span> <span class="n">image</span><span class="o">=</span><span class="s2">&quot;&lt;registry&gt;/resoluto-sandbox-base:0.1.0&quot;</span><span class="p">,</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">store_env</span><span class="o">=</span><span class="n">store_env</span><span class="p">,</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">resources</span><span class="o">=</span><span class="n">Resources</span><span class="o">.</span><span class="n">from_quantities</span><span class="p">(</span><span class="n">memory</span><span class="o">=</span><span class="s2">&quot;16Gi&quot;</span><span class="p">,</span> <span class="n">cpu</span><span class="o">=</span><span class="s2">&quot;4&quot;</span><span class="p">,</span> <span class="n">disk</span><span class="o">=</span><span class="s2">&quot;40Gi&quot;</span><span class="p">),</span>  <span class="c1"># default: 4Gi / 2 cpu</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="p">))</span>
+</span></code></pre></div>
+<p><code>Resources.from_quantities</code> takes human quantity strings (<code>"16Gi"</code>, <code>"4"</code>, <code>"40Gi"</code>). The disk-backed
+docker image graph (<code>graph_backend="block"</code>, <code>dind_graph=...</code>) is a dind-only knob on the direct
+<code>drive_node</code> path — see <a href="../concurrency/#advanced-the-direct-drive_node-path">Concurrency &amp; direct control</a>.</p>
 <h2 id="local">local<a class="headerlink" href="#local" title="Permanent link">&para;</a></h2>
 <p><code>backend="local"</code> runs the program in a Kata microVM launched via <code>nerdctl</code> against a
 dedicated, standalone containerd on this host (its own socket/root at
@@ -1327,17 +1412,17 @@ dedicated, standalone containerd on this host (its own socket/root at
 It never assumes k3s and never touches Docker's or k3s's containerd. The host and
 microVM share a <code>LocalConduit</code> over a bind-mounted directory (<code>/conduit</code>). No cluster,
 no S3 — everything stays on your machine:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>Sandbox(backend=&quot;local&quot;).run(argv, workspace, output_paths)
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>   └─ SubstrateBackend (KataNerdctlSandboxRuntime + LocalConduit)
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>        nerdctl run --rm -v &lt;conduit&gt;:/conduit &lt;image&gt;   # Kata microVM, standalone containerd
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>          runner_main stages workspace → /workspace
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>          runs argv
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>          ships spans + heartbeat to /conduit
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>          writes result.json + outbox to /conduit
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>   → RunResult(output, exit_code, artifacts)     # no k8s, no S3
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>Sandbox(backend=&quot;local&quot;).run(argv, workspace, output_paths)
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>   └─ SubstrateBackend (KataNerdctlSandboxRuntime + LocalConduit)
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>        nerdctl run --rm -v &lt;conduit&gt;:/conduit &lt;image&gt;   # Kata microVM, standalone containerd
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>          runner_main stages workspace → /workspace
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>          runs argv
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>          ships spans + heartbeat to /conduit
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>          writes result.json + outbox to /conduit
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>   → RunResult(output, exit_code, artifacts)     # no k8s, no S3
 </span></code></pre></div>
 <p>Egress is enforced host-side on the CNI bridge and is default-deny (secure by default):
-a fresh lane reaches only DNS + its store, and you opt in to what the workload needs at
+a fresh sandbox reaches only DNS + its store, and you opt in to what the workload needs at
 provision time (<code>RESOLUTO_EGRESS_ALLOW</code> for specific destinations, <code>RESOLUTO_EGRESS_PUBLIC_HTTPS=1</code>
 for all outbound :443). IMDS <code>169.254.169.254</code> + RFC1918 private ranges are always rejected, so it
 is immune to in-guest root. The egress canary runs fail-closed before your workload; there is no
@@ -1361,42 +1446,42 @@ trusted-local bypass.</p>
 <p>Each <code>run()</code> call launches one short-lived Kata microVM pod. The host and pod exchange
 data through a <code>Conduit</code> (an S3-compatible object store); there is no long-lived
 connection between them.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>   host (your process)            Conduit  (S3 / minio / …)        Kata microVM pod (k8s)
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>   ───────────────────           ───────────────────────         ──────────────────────
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>   put_dir(workspace) ─────────────▶  inbox/ *.tar.gz ───────────▶  stage inputs -&gt; /workspace
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>   drive_node: launch pod ───────────────────────────────────────▶  run argv (RESOLUTO_WORKLOAD_ARGV)
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>   tail ChunkReader  ◀───────────── events-000001.jsonl ◀──────────  ship spans + heartbeat
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>   read result.json  ◀───────────── result.json ◀─────────────────  write verdict
-</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>   fetch_outputs     ◀───────────── outbox/ *.tar.gz ◀────────────  collect output_paths
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>   reap pod
-</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>   → RunResult(output reconstructed from chunks, exit_code, artifacts)
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>   host (your process)            Conduit  (S3 / minio / …)        Kata microVM pod (k8s)
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>   ───────────────────           ───────────────────────         ──────────────────────
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>   put_dir(workspace) ─────────────▶  inbox/ *.tar.gz ───────────▶  stage inputs -&gt; /workspace
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>   drive_node: launch pod ───────────────────────────────────────▶  run argv (RESOLUTO_WORKLOAD_ARGV)
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>   tail ChunkReader  ◀───────────── events-000001.jsonl ◀──────────  ship spans + heartbeat
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>   read result.json  ◀───────────── result.json ◀─────────────────  write verdict
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>   fetch_outputs     ◀───────────── outbox/ *.tar.gz ◀────────────  collect output_paths
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>   reap pod
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>   → RunResult(output reconstructed from chunks, exit_code, artifacts)
 </span></code></pre></div>
 <p>Dependencies must be baked into the image — the pod has no package-manager access at
 runtime.</p>
 <h3 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h3>
 <p>The image is not a <code>Sandbox</code> concern — inject a configured <code>SubstrateBackend</code>:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox</span><span class="w"> </span><span class="kn">import</span> <span class="n">Sandbox</span>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.backends.substrate</span><span class="w"> </span><span class="kn">import</span> <span class="n">SubstrateBackend</span><span class="p">,</span> <span class="n">store_env_for_pod</span>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.conduit.factory</span><span class="w"> </span><span class="kn">import</span> <span class="n">store_from_env</span>
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.runtime.k8s</span><span class="w"> </span><span class="kn">import</span> <span class="n">K8sSandboxRuntime</span>
-</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
-</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="n">runtime</span> <span class="o">=</span> <span class="n">K8sSandboxRuntime</span><span class="p">(</span>
-</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="n">namespace</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;RESOLUTO_SANDBOX_NAMESPACE&quot;</span><span class="p">,</span> <span class="s2">&quot;resoluto-sandboxes&quot;</span><span class="p">),</span>
-</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    <span class="n">context</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;RESOLUTO_SANDBOX_KUBECONTEXT&quot;</span><span class="p">),</span>
-</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="p">)</span>
-</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="n">sb</span> <span class="o">=</span> <span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">SubstrateBackend</span><span class="p">(</span>
-</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>    <span class="n">runtime</span><span class="o">=</span><span class="n">runtime</span><span class="p">,</span>
-</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>    <span class="n">conduit</span><span class="o">=</span><span class="n">store_from_env</span><span class="p">(),</span>
-</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>    <span class="n">image</span><span class="o">=</span><span class="s2">&quot;&lt;registry&gt;/resoluto-lane:dev&quot;</span><span class="p">,</span>
-</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>    <span class="n">store_env</span><span class="o">=</span><span class="n">store_env_for_pod</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">),</span>
-</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="p">))</span>
-</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="n">result</span> <span class="o">=</span> <span class="n">sb</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="s2">&quot;bash&quot;</span><span class="p">,</span> <span class="s2">&quot;-lc&quot;</span><span class="p">,</span> <span class="s2">&quot;echo hi&quot;</span><span class="p">],</span> <span class="n">workspace</span><span class="o">=</span><span class="s2">&quot;./proj&quot;</span><span class="p">,</span> <span class="n">output_paths</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;*.txt&quot;</span><span class="p">])</span>
-</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">output</span><span class="p">)</span>   <span class="c1"># &quot;hi&quot;</span>
-</span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">ok</span><span class="p">)</span>       <span class="c1"># True</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox</span><span class="w"> </span><span class="kn">import</span> <span class="n">Sandbox</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.backends.substrate</span><span class="w"> </span><span class="kn">import</span> <span class="n">SubstrateBackend</span><span class="p">,</span> <span class="n">store_env_for_pod</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.conduit.factory</span><span class="w"> </span><span class="kn">import</span> <span class="n">store_from_env</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.runtime.k8s</span><span class="w"> </span><span class="kn">import</span> <span class="n">K8sSandboxRuntime</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="n">runtime</span> <span class="o">=</span> <span class="n">K8sSandboxRuntime</span><span class="p">(</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    <span class="n">namespace</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;RESOLUTO_SANDBOX_NAMESPACE&quot;</span><span class="p">,</span> <span class="s2">&quot;resoluto-sandboxes&quot;</span><span class="p">),</span>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    <span class="n">context</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;RESOLUTO_SANDBOX_KUBECONTEXT&quot;</span><span class="p">),</span>
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="p">)</span>
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="n">sb</span> <span class="o">=</span> <span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">SubstrateBackend</span><span class="p">(</span>
+</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>    <span class="n">runtime</span><span class="o">=</span><span class="n">runtime</span><span class="p">,</span>
+</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>    <span class="n">conduit</span><span class="o">=</span><span class="n">store_from_env</span><span class="p">(),</span>
+</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>    <span class="n">image</span><span class="o">=</span><span class="s2">&quot;&lt;registry&gt;/resoluto-sandbox-base:0.1.0&quot;</span><span class="p">,</span>
+</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>    <span class="n">store_env</span><span class="o">=</span><span class="n">store_env_for_pod</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">),</span>
+</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="p">))</span>
+</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a><span class="n">result</span> <span class="o">=</span> <span class="n">sb</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="s2">&quot;bash&quot;</span><span class="p">,</span> <span class="s2">&quot;-lc&quot;</span><span class="p">,</span> <span class="s2">&quot;echo hi&quot;</span><span class="p">],</span> <span class="n">workspace</span><span class="o">=</span><span class="s2">&quot;./proj&quot;</span><span class="p">,</span> <span class="n">output_paths</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;*.txt&quot;</span><span class="p">])</span>
+</span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">output</span><span class="p">)</span>   <span class="c1"># &quot;hi&quot;</span>
+</span><span id="__span-3-19"><a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">ok</span><span class="p">)</span>       <span class="c1"># True</span>
 </span></code></pre></div>
-<p>Or use the convenience shortcut (reads <code>RESOLUTO_LANE_IMAGE</code> and <code>RESOLUTO_STORE_KIND</code> from env):</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="s2">&quot;k8s&quot;</span><span class="p">,</span> <span class="n">image</span><span class="o">=</span><span class="s2">&quot;&lt;registry&gt;/resoluto-lane:dev&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="o">...</span><span class="p">)</span>
+<p>Or use the convenience shortcut (reads <code>RESOLUTO_SANDBOX_IMAGE</code> and <code>RESOLUTO_STORE_KIND</code> from env):</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="s2">&quot;k8s&quot;</span><span class="p">,</span> <span class="n">image</span><span class="o">=</span><span class="s2">&quot;&lt;registry&gt;/resoluto-sandbox-base:0.1.0&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="o">...</span><span class="p">)</span>
 </span></code></pre></div>
 <h3 id="optional-egress-lockdown">Optional: egress lockdown<a class="headerlink" href="#optional-egress-lockdown" title="Permanent link">&para;</a></h3>
 <p>By default Kata provides kernel isolation but places no restriction on network egress.
@@ -1404,24 +1489,16 @@ For untrusted code, add <code>EgressConfig</code> to apply a default-deny <code>
 permits only: the object store (<code>store_cidr:store_port</code>), public HTTPS (TCP/443 to
 anywhere — covers the LLM API + git, no fragile FQDN→/32 pinning), and DNS. IMDS
 (<code>169.254.169.254</code>) and everything else are denied.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox</span><span class="w"> </span><span class="kn">import</span> <span class="n">Sandbox</span>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.backends.substrate</span><span class="w"> </span><span class="kn">import</span> <span class="n">SubstrateBackend</span><span class="p">,</span> <span class="n">store_env_for_pod</span>
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.conduit.factory</span><span class="w"> </span><span class="kn">import</span> <span class="n">store_from_env</span>
-</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.runtime.k8s</span><span class="w"> </span><span class="kn">import</span> <span class="n">K8sSandboxRuntime</span><span class="p">,</span> <span class="n">EgressConfig</span>
-</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>
-</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="n">runtime</span> <span class="o">=</span> <span class="n">K8sSandboxRuntime</span><span class="p">(</span>
-</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="n">namespace</span><span class="o">=</span><span class="s2">&quot;resoluto-sandboxes&quot;</span><span class="p">,</span>
-</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    <span class="n">context</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;RESOLUTO_SANDBOX_KUBECONTEXT&quot;</span><span class="p">),</span>
-</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>    <span class="c1"># EgressConfig.from_store_env() builds this from RESOLUTO_STORE_ENDPOINT.</span>
-</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>    <span class="n">egress</span><span class="o">=</span><span class="n">EgressConfig</span><span class="p">(</span><span class="n">store_cidr</span><span class="o">=</span><span class="s2">&quot;10.0.0.5/32&quot;</span><span class="p">,</span> <span class="n">store_port</span><span class="o">=</span><span class="mi">9000</span><span class="p">),</span>  <span class="c1"># store; port default 443</span>
-</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="p">)</span>
-</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="n">sb</span> <span class="o">=</span> <span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">SubstrateBackend</span><span class="p">(</span>
-</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>    <span class="n">runtime</span><span class="o">=</span><span class="n">runtime</span><span class="p">,</span>
-</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>    <span class="n">conduit</span><span class="o">=</span><span class="n">store_from_env</span><span class="p">(),</span>
-</span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>    <span class="n">image</span><span class="o">=</span><span class="s2">&quot;&lt;registry&gt;/resoluto-lane:dev&quot;</span><span class="p">,</span>
-</span><span id="__span-4-17"><a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>    <span class="n">store_env</span><span class="o">=</span><span class="n">store_env_for_pod</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">),</span>
-</span><span id="__span-4-18"><a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="p">))</span>
+<p>Same wiring as <a href="#usage">Usage</a> above — just pass <code>egress=</code> to the runtime:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.runtime.k8s</span><span class="w"> </span><span class="kn">import</span> <span class="n">K8sSandboxRuntime</span><span class="p">,</span> <span class="n">EgressConfig</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="c1"># EgressConfig.from_store_env() builds this from RESOLUTO_STORE_ENDPOINT.</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">runtime</span> <span class="o">=</span> <span class="n">K8sSandboxRuntime</span><span class="p">(</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="n">namespace</span><span class="o">=</span><span class="s2">&quot;resoluto-sandboxes&quot;</span><span class="p">,</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="n">context</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;RESOLUTO_SANDBOX_KUBECONTEXT&quot;</span><span class="p">),</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    <span class="n">egress</span><span class="o">=</span><span class="n">EgressConfig</span><span class="p">(</span><span class="n">store_cidr</span><span class="o">=</span><span class="s2">&quot;10.0.0.5/32&quot;</span><span class="p">,</span> <span class="n">store_port</span><span class="o">=</span><span class="mi">9000</span><span class="p">),</span>  <span class="c1"># store; port default 443</span>
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="p">)</span>
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="c1"># ...then inject it into SubstrateBackend exactly as in Usage.</span>
 </span></code></pre></div>
 <blockquote>
 <p>NetworkPolicy is evaluated post-DNAT. If the store is reached via DNAT (a dockerized
@@ -1444,21 +1521,21 @@ or managed (EKS, GKE, AKS). Follow these steps in order.</p>
 <li>Managed (production): EKS (AWS), GKE (GCP), AKS (Azure)</li>
 </ul>
 <p>The cluster must be reachable from your host via <code>kubectl</code>. Confirm:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>kubectl<span class="w"> </span>cluster-info
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>kubectl<span class="w"> </span>cluster-info
 </span></code></pre></div>
 <h3 id="2-kata-containers-hardware-isolation">2. Kata Containers (hardware isolation)<a class="headerlink" href="#2-kata-containers-hardware-isolation" title="Permanent link">&para;</a></h3>
 <p>Install the Kata Containers runtime on each node: https://katacontainers.io/docs/</p>
 <p>Then create a <code>RuntimeClass</code> named <code>kata</code>:</p>
-<div class="language-yaml highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">node.k8s.io/v1</span>
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">RuntimeClass</span>
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="nt">metadata</span><span class="p">:</span>
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">kata</span>
-</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="nt">handler</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">kata</span>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">node.k8s.io/v1</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">RuntimeClass</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">kata</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="nt">handler</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">kata</span>
 </span></code></pre></div>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>kubectl<span class="w"> </span>apply<span class="w"> </span>-f<span class="w"> </span>kata-runtimeclass.yaml
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>kubectl<span class="w"> </span>apply<span class="w"> </span>-f<span class="w"> </span>kata-runtimeclass.yaml
 </span></code></pre></div>
 <p>Verify:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>runtimeclass<span class="w"> </span>kata
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>runtimeclass<span class="w"> </span>kata
 </span></code></pre></div>
 <blockquote>
 <p>Some managed clusters offer Kata as an optional add-on (e.g. GKE Sandbox). Check your
@@ -1477,16 +1554,16 @@ enforced. The egress canary (run in-guest before your workload) detects this.</p
 <p>The host and pods exchange data through a shared object store reachable from both your
 host machine and the pods inside the cluster.</p>
 <p>Option A — minio (local/dev):</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>--name<span class="w"> </span>minio<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span>-p<span class="w"> </span><span class="m">9000</span>:9000<span class="w"> </span>-p<span class="w"> </span><span class="m">9001</span>:9001<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span>-e<span class="w"> </span><span class="nv">MINIO_ROOT_USER</span><span class="o">=</span>minioadmin<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">  </span>-e<span class="w"> </span><span class="nv">MINIO_ROOT_PASSWORD</span><span class="o">=</span>minioadmin<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">  </span>quay.io/minio/minio<span class="w"> </span>server<span class="w"> </span>/data<span class="w"> </span>--console-address<span class="w"> </span><span class="s2">&quot;:9001&quot;</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>--name<span class="w"> </span>minio<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">  </span>-p<span class="w"> </span><span class="m">9000</span>:9000<span class="w"> </span>-p<span class="w"> </span><span class="m">9001</span>:9001<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">  </span>-e<span class="w"> </span><span class="nv">MINIO_ROOT_USER</span><span class="o">=</span>minioadmin<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">  </span>-e<span class="w"> </span><span class="nv">MINIO_ROOT_PASSWORD</span><span class="o">=</span>minioadmin<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">  </span>quay.io/minio/minio<span class="w"> </span>server<span class="w"> </span>/data<span class="w"> </span>--console-address<span class="w"> </span><span class="s2">&quot;:9001&quot;</span>
 </span></code></pre></div>
 <p>Create a bucket named <code>resoluto</code>:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># with the mc CLI (https://min.io/docs/minio/linux/reference/minio-mc.html):</span>
-</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>mc<span class="w"> </span><span class="nb">alias</span><span class="w"> </span><span class="nb">set</span><span class="w"> </span><span class="nb">local</span><span class="w"> </span>http://localhost:9000<span class="w"> </span>minioadmin<span class="w"> </span>minioadmin
-</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>mc<span class="w"> </span>mb<span class="w"> </span>local/resoluto
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># with the mc CLI (https://min.io/docs/minio/linux/reference/minio-mc.html):</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>mc<span class="w"> </span><span class="nb">alias</span><span class="w"> </span><span class="nb">set</span><span class="w"> </span><span class="nb">local</span><span class="w"> </span>http://localhost:9000<span class="w"> </span>minioadmin<span class="w"> </span>minioadmin
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>mc<span class="w"> </span>mb<span class="w"> </span>local/resoluto
 </span></code></pre></div>
 <blockquote>
 <p>The endpoint must be routable from the pods. <code>localhost</code> from the host is not reachable
@@ -1497,57 +1574,42 @@ the bucket policy to allow the credentials you export below.</p>
 <h3 id="5-build-and-push-a-provider-image">5. Build and push a provider image<a class="headerlink" href="#5-build-and-push-a-provider-image" title="Permanent link">&para;</a></h3>
 <p><code>image build</code> tags by the pinned SDK package + version, e.g. <code>resoluto-sandbox:claude-agent-sdk-0.2.110</code>
 (see <code>images.py:SDK_VERSION</code>). Retag to your registry path before pushing:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nv">tag</span><span class="o">=</span><span class="k">$(</span>resoluto-sandbox<span class="w"> </span>image<span class="w"> </span>build<span class="w"> </span>--provider<span class="w"> </span>claude<span class="k">)</span>
-</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>docker<span class="w"> </span>tag<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$tag</span><span class="s2">&quot;</span><span class="w"> </span>&lt;registry&gt;/resoluto-lane:dev
-</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>docker<span class="w"> </span>push<span class="w"> </span>&lt;registry&gt;/resoluto-lane:dev
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nv">tag</span><span class="o">=</span><span class="k">$(</span>resoluto-sandbox<span class="w"> </span>image<span class="w"> </span>build<span class="w"> </span>--provider<span class="w"> </span>claude<span class="k">)</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>docker<span class="w"> </span>tag<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$tag</span><span class="s2">&quot;</span><span class="w"> </span>&lt;registry&gt;/resoluto-sandbox-base:0.1.0
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>docker<span class="w"> </span>push<span class="w"> </span>&lt;registry&gt;/resoluto-sandbox-base:0.1.0
 </span></code></pre></div>
 <p>Set the image in the environment:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RESOLUTO_LANE_IMAGE</span><span class="o">=</span>&lt;registry&gt;/resoluto-lane:dev
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RESOLUTO_SANDBOX_IMAGE</span><span class="o">=</span>&lt;registry&gt;/resoluto-sandbox-base:0.1.0
 </span></code></pre></div>
 <h3 id="6-export-environment-variables">6. Export environment variables<a class="headerlink" href="#6-export-environment-variables" title="Permanent link">&para;</a></h3>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="c1"># Pin the kube context (required — backend refuses to launch without this)</span>
-</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RESOLUTO_SANDBOX_KUBECONTEXT</span><span class="o">=</span>&lt;your-context-name&gt;
-</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>
-</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="c1"># Namespace for sandbox pods (default: resoluto-sandboxes)</span>
-</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RESOLUTO_SANDBOX_NAMESPACE</span><span class="o">=</span>resoluto-sandboxes
-</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>
-</span><span id="__span-13-7"><a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="c1"># Image to run inside each pod</span>
-</span><span id="__span-13-8"><a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RESOLUTO_LANE_IMAGE</span><span class="o">=</span>&lt;registry&gt;/resoluto-lane:dev
-</span><span id="__span-13-9"><a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>
-</span><span id="__span-13-10"><a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="c1"># Conduit: S3-compatible store</span>
-</span><span id="__span-13-11"><a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RESOLUTO_STORE_KIND</span><span class="o">=</span>s3
-</span><span id="__span-13-12"><a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RESOLUTO_STORE_ENDPOINT</span><span class="o">=</span>http://&lt;minio-host&gt;:9000<span class="w">   </span><span class="c1"># omit for AWS S3</span>
-</span><span id="__span-13-13"><a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RESOLUTO_STORE_BUCKET</span><span class="o">=</span>resoluto
-</span><span id="__span-13-14"><a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RESOLUTO_STORE_REGION</span><span class="o">=</span>us-east-1
-</span><span id="__span-13-15"><a id="__codelineno-13-15" name="__codelineno-13-15" href="#__codelineno-13-15"></a>
-</span><span id="__span-13-16"><a id="__codelineno-13-16" name="__codelineno-13-16" href="#__codelineno-13-16"></a><span class="c1"># Store credentials — use a scoped token (preferred) or ambient AWS creds:</span>
-</span><span id="__span-13-17"><a id="__codelineno-13-17" name="__codelineno-13-17" href="#__codelineno-13-17"></a><span class="nb">export</span><span class="w"> </span><span class="nv">AWS_ACCESS_KEY_ID</span><span class="o">=</span>&lt;your-key-id&gt;
-</span><span id="__span-13-18"><a id="__codelineno-13-18" name="__codelineno-13-18" href="#__codelineno-13-18"></a><span class="nb">export</span><span class="w"> </span><span class="nv">AWS_SECRET_ACCESS_KEY</span><span class="o">=</span>&lt;your-secret&gt;
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1"># Pin the kube context (required — backend refuses to launch without this)</span>
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RESOLUTO_SANDBOX_KUBECONTEXT</span><span class="o">=</span>&lt;your-context-name&gt;
+</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>
+</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="c1"># Namespace for sandbox pods (default: resoluto-sandboxes)</span>
+</span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RESOLUTO_SANDBOX_NAMESPACE</span><span class="o">=</span>resoluto-sandboxes
+</span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>
+</span><span id="__span-14-7"><a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="c1"># Image to run inside each pod</span>
+</span><span id="__span-14-8"><a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RESOLUTO_SANDBOX_IMAGE</span><span class="o">=</span>&lt;registry&gt;/resoluto-sandbox-base:0.1.0
+</span><span id="__span-14-9"><a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>
+</span><span id="__span-14-10"><a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="c1"># Conduit: S3-compatible store</span>
+</span><span id="__span-14-11"><a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RESOLUTO_STORE_KIND</span><span class="o">=</span>s3
+</span><span id="__span-14-12"><a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RESOLUTO_STORE_ENDPOINT</span><span class="o">=</span>http://&lt;minio-host&gt;:9000<span class="w">   </span><span class="c1"># omit for AWS S3</span>
+</span><span id="__span-14-13"><a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RESOLUTO_STORE_BUCKET</span><span class="o">=</span>resoluto
+</span><span id="__span-14-14"><a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RESOLUTO_STORE_REGION</span><span class="o">=</span>us-east-1
+</span><span id="__span-14-15"><a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a>
+</span><span id="__span-14-16"><a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a><span class="c1"># Store credentials — use a scoped token (preferred) or ambient AWS creds:</span>
+</span><span id="__span-14-17"><a id="__codelineno-14-17" name="__codelineno-14-17" href="#__codelineno-14-17"></a><span class="nb">export</span><span class="w"> </span><span class="nv">AWS_ACCESS_KEY_ID</span><span class="o">=</span>&lt;your-key-id&gt;
+</span><span id="__span-14-18"><a id="__codelineno-14-18" name="__codelineno-14-18" href="#__codelineno-14-18"></a><span class="nb">export</span><span class="w"> </span><span class="nv">AWS_SECRET_ACCESS_KEY</span><span class="o">=</span>&lt;your-secret&gt;
 </span></code></pre></div>
 <p>Replace all <code>&lt;placeholders&gt;</code> with your real values. Do not commit secrets.</p>
 <p><code>RESOLUTO_SANDBOX_KUBECONTEXT</code> is required — the backend fails closed if it is unset, to
 prevent accidentally targeting the wrong cluster. Use
 <code>RESOLUTO_SANDBOX_ALLOW_AMBIENT_CONTEXT=1</code> only in carefully controlled environments.</p>
 <h3 id="7-smoke-test">7. Smoke test<a class="headerlink" href="#7-smoke-test" title="Permanent link">&para;</a></h3>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
-</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox</span><span class="w"> </span><span class="kn">import</span> <span class="n">Sandbox</span>
-</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.backends.substrate</span><span class="w"> </span><span class="kn">import</span> <span class="n">SubstrateBackend</span><span class="p">,</span> <span class="n">store_env_for_pod</span>
-</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.conduit.factory</span><span class="w"> </span><span class="kn">import</span> <span class="n">store_from_env</span>
-</span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.runtime.k8s</span><span class="w"> </span><span class="kn">import</span> <span class="n">K8sSandboxRuntime</span>
-</span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>
-</span><span id="__span-14-7"><a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="n">runtime</span> <span class="o">=</span> <span class="n">K8sSandboxRuntime</span><span class="p">(</span>
-</span><span id="__span-14-8"><a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>    <span class="n">namespace</span><span class="o">=</span><span class="s2">&quot;resoluto-sandboxes&quot;</span><span class="p">,</span>
-</span><span id="__span-14-9"><a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>    <span class="n">context</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;RESOLUTO_SANDBOX_KUBECONTEXT&quot;</span><span class="p">),</span>
-</span><span id="__span-14-10"><a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="p">)</span>
-</span><span id="__span-14-11"><a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a><span class="n">sb</span> <span class="o">=</span> <span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">SubstrateBackend</span><span class="p">(</span>
-</span><span id="__span-14-12"><a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a>    <span class="n">runtime</span><span class="o">=</span><span class="n">runtime</span><span class="p">,</span>
-</span><span id="__span-14-13"><a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a>    <span class="n">conduit</span><span class="o">=</span><span class="n">store_from_env</span><span class="p">(),</span>
-</span><span id="__span-14-14"><a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a>    <span class="n">image</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;RESOLUTO_LANE_IMAGE&quot;</span><span class="p">],</span>
-</span><span id="__span-14-15"><a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a>    <span class="n">store_env</span><span class="o">=</span><span class="n">store_env_for_pod</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">),</span>
-</span><span id="__span-14-16"><a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a><span class="p">))</span>
-</span><span id="__span-14-17"><a id="__codelineno-14-17" name="__codelineno-14-17" href="#__codelineno-14-17"></a><span class="n">result</span> <span class="o">=</span> <span class="n">sb</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="s2">&quot;bash&quot;</span><span class="p">,</span> <span class="s2">&quot;-lc&quot;</span><span class="p">,</span> <span class="s2">&quot;echo hi from kata&quot;</span><span class="p">])</span>
-</span><span id="__span-14-18"><a id="__codelineno-14-18" name="__codelineno-14-18" href="#__codelineno-14-18"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">output</span><span class="p">)</span>   <span class="c1"># &quot;hi from kata&quot;</span>
-</span><span id="__span-14-19"><a id="__codelineno-14-19" name="__codelineno-14-19" href="#__codelineno-14-19"></a><span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">ok</span>
+<p>Wire <code>sb</code> exactly as in <a href="#usage">Usage</a> (here reading <code>image=os.environ["RESOLUTO_SANDBOX_IMAGE"]</code>), then:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="n">result</span> <span class="o">=</span> <span class="n">sb</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="s2">&quot;bash&quot;</span><span class="p">,</span> <span class="s2">&quot;-lc&quot;</span><span class="p">,</span> <span class="s2">&quot;echo hi from kata&quot;</span><span class="p">])</span>
+</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">output</span><span class="p">)</span>   <span class="c1"># &quot;hi from kata&quot;</span>
+</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">ok</span>
 </span></code></pre></div>
 <p>If the run hangs, check that the pod can reach the store endpoint (<code>kubectl logs -n
 resoluto-sandboxes &lt;pod-name&gt;</code>) and that <code>RESOLUTO_SANDBOX_KUBECONTEXT</code> points at the
@@ -1555,26 +1617,26 @@ right cluster.</p>
 <h2 id="adding-another-backend">Adding another backend<a class="headerlink" href="#adding-another-backend" title="Permanent link">&para;</a></h2>
 <p>To add a new isolation target, implement <code>SandboxRuntime</code> (the isolation/placement seam)
 and wire it into <code>SubstrateBackend</code>:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.backends.substrate</span><span class="w"> </span><span class="kn">import</span> <span class="n">SubstrateBackend</span>
-</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.conduit</span><span class="w"> </span><span class="kn">import</span> <span class="n">LocalConduit</span>
-</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>
-</span><span id="__span-15-4"><a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="n">sb</span> <span class="o">=</span> <span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">SubstrateBackend</span><span class="p">(</span>
-</span><span id="__span-15-5"><a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>    <span class="n">runtime</span><span class="o">=</span><span class="n">MyRuntime</span><span class="p">(</span><span class="o">...</span><span class="p">),</span>
-</span><span id="__span-15-6"><a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>    <span class="n">conduit</span><span class="o">=</span><span class="n">LocalConduit</span><span class="p">(</span><span class="s2">&quot;/tmp/conduit&quot;</span><span class="p">),</span>
-</span><span id="__span-15-7"><a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>    <span class="n">image</span><span class="o">=</span><span class="s2">&quot;my-image:tag&quot;</span><span class="p">,</span>
-</span><span id="__span-15-8"><a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>    <span class="n">store_env</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;RESOLUTO_STORE_KIND&quot;</span><span class="p">:</span> <span class="s2">&quot;localfs&quot;</span><span class="p">,</span> <span class="s2">&quot;RESOLUTO_STORE_ROOT&quot;</span><span class="p">:</span> <span class="s2">&quot;/conduit&quot;</span><span class="p">},</span>
-</span><span id="__span-15-9"><a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a><span class="p">))</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.backends.substrate</span><span class="w"> </span><span class="kn">import</span> <span class="n">SubstrateBackend</span>
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.conduit</span><span class="w"> </span><span class="kn">import</span> <span class="n">LocalConduit</span>
+</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>
+</span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="n">sb</span> <span class="o">=</span> <span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">SubstrateBackend</span><span class="p">(</span>
+</span><span id="__span-16-5"><a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>    <span class="n">runtime</span><span class="o">=</span><span class="n">MyRuntime</span><span class="p">(</span><span class="o">...</span><span class="p">),</span>
+</span><span id="__span-16-6"><a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>    <span class="n">conduit</span><span class="o">=</span><span class="n">LocalConduit</span><span class="p">(</span><span class="s2">&quot;/tmp/conduit&quot;</span><span class="p">),</span>
+</span><span id="__span-16-7"><a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>    <span class="n">image</span><span class="o">=</span><span class="s2">&quot;my-image:tag&quot;</span><span class="p">,</span>
+</span><span id="__span-16-8"><a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>    <span class="n">store_env</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;RESOLUTO_STORE_KIND&quot;</span><span class="p">:</span> <span class="s2">&quot;localfs&quot;</span><span class="p">,</span> <span class="s2">&quot;RESOLUTO_STORE_ROOT&quot;</span><span class="p">:</span> <span class="s2">&quot;/conduit&quot;</span><span class="p">},</span>
+</span><span id="__span-16-9"><a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a><span class="p">))</span>
 </span></code></pre></div>
 <p>For a completely new run approach (not store-mediated), implement the <code>Backend</code> ABC
 (one method: <code>run(...) -&gt; RunResult</code>) and inject it:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.backends.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">Backend</span><span class="p">,</span> <span class="n">RunResult</span>
-</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>
-</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">MyBackend</span><span class="p">(</span><span class="n">Backend</span><span class="p">):</span>
-</span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">argv</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">workspace</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">stdin</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">env</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">env_file</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-</span><span id="__span-16-5"><a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>            <span class="n">secrets</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">output_paths</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">stream</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">egress</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RunResult</span><span class="p">:</span>
-</span><span id="__span-16-6"><a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>        <span class="o">...</span>
-</span><span id="__span-16-7"><a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>
-</span><span id="__span-16-8"><a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a><span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">MyBackend</span><span class="p">(</span><span class="o">...</span><span class="p">))</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">argv</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.backends.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">Backend</span><span class="p">,</span> <span class="n">RunResult</span>
+</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>
+</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">MyBackend</span><span class="p">(</span><span class="n">Backend</span><span class="p">):</span>
+</span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">argv</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">workspace</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">stdin</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">env</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">env_file</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-17-5"><a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>            <span class="n">secrets</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">output_paths</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">stream</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">egress</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RunResult</span><span class="p">:</span>
+</span><span id="__span-17-6"><a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>        <span class="o">...</span>
+</span><span id="__span-17-7"><a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>
+</span><span id="__span-17-8"><a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">MyBackend</span><span class="p">(</span><span class="o">...</span><span class="p">))</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">argv</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
 </span></code></pre></div>
 <p>No facade changes are needed — <code>Sandbox</code> holds any <code>Backend</code> instance. For a full guide
 including <code>Conduit</code> and <code>SandboxRuntime</code> extension points, see

@@ -332,13 +332,32 @@
   
   
     <li class="md-tabs__item">
+      <a href="../concurrency/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Concurrency
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
       <a href="../auth/" class="md-tabs__link">
         
   
   
     
   
-  Auth
+  Credentials
 
       </a>
     </li>
@@ -690,6 +709,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../concurrency/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concurrency
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../auth/" class="md-nav__link">
         
   
@@ -697,7 +743,7 @@
   <span class="md-ellipsis">
     
   
-    Auth
+    Credentials
   
 
     
@@ -730,10 +776,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
         
           
-          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
             
   
   
@@ -751,8 +797,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_7">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1064,25 +1110,9 @@ never pulled from a registry. Pass <code>image=</code> to override.</p>
 <h3 id="k8s"><code>k8s</code><a class="headerlink" href="#k8s" title="Permanent link">&para;</a></h3>
 <p>Each run executes in a short-lived Kata microVM pod via the <code>drive_node</code> primitive and a
 <code>Conduit</code> object store. The sandbox reports progress as append-only JSONL chunks to the
-store; the orchestrator tails and reaps the pod when done. No long-lived connection between the halves.</p>
-<p>Inject a configured <code>SubstrateBackend</code> — the image is not a <code>Sandbox</code> constructor concern:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox</span><span class="w"> </span><span class="kn">import</span> <span class="n">Sandbox</span>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.backends.substrate</span><span class="w"> </span><span class="kn">import</span> <span class="n">SubstrateBackend</span><span class="p">,</span> <span class="n">store_env_for_pod</span>
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.conduit.factory</span><span class="w"> </span><span class="kn">import</span> <span class="n">store_from_env</span>
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.runtime.k8s</span><span class="w"> </span><span class="kn">import</span> <span class="n">K8sSandboxRuntime</span>
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
-</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="n">runtime</span> <span class="o">=</span> <span class="n">K8sSandboxRuntime</span><span class="p">(</span>
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    <span class="n">namespace</span><span class="o">=</span><span class="s2">&quot;resoluto-sandboxes&quot;</span><span class="p">,</span>
-</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="n">context</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;RESOLUTO_SANDBOX_KUBECONTEXT&quot;</span><span class="p">),</span>
-</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="p">)</span>
-</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="n">sb</span> <span class="o">=</span> <span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">SubstrateBackend</span><span class="p">(</span>
-</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>    <span class="n">runtime</span><span class="o">=</span><span class="n">runtime</span><span class="p">,</span>
-</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>    <span class="n">conduit</span><span class="o">=</span><span class="n">store_from_env</span><span class="p">(),</span>
-</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>    <span class="n">image</span><span class="o">=</span><span class="s2">&quot;&lt;registry&gt;/resoluto-lane:dev&quot;</span><span class="p">,</span>
-</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>    <span class="n">store_env</span><span class="o">=</span><span class="n">store_env_for_pod</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">),</span>
-</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="p">))</span>
-</span></code></pre></div>
+store; the host tails and reaps the pod when done. No long-lived connection between the halves.</p>
+<p>Inject a configured <code>SubstrateBackend</code> — the image is not a <code>Sandbox</code> constructor concern. See
+<a href="../getting-started/#the-k8s-backend">Getting started → The k8s backend</a> for the full wiring.</p>
 <p>Requirements: a Kubernetes cluster (k3s, kind, EKS, or any distribution) with Kata Containers,
 <code>RESOLUTO_STORE_KIND</code> (plus the matching store env vars) set in the environment, and
 <code>RESOLUTO_SANDBOX_KUBECONTEXT</code> pinned (fails closed otherwise). <code>stdin</code> raises

@@ -2,7 +2,7 @@
 
 ## Local backend — Kata isolation + host-side egress policy
 
-The local backend runs the program in a Kata microVM launched via `nerdctl` against a standalone containerd on this host — full Kata isolation, on a single host with no cluster. Egress is enforced host-side on its CNI bridge and is **default-deny (secure by default)**: a fresh lane reaches only DNS and its store. You opt in to what the workload needs at PROVISION time via the env knobs (`RESOLUTO_EGRESS_ALLOW` for specific destinations, `RESOLUTO_EGRESS_PUBLIC_HTTPS=1` for all outbound :443). IMDS `169.254.169.254` and RFC1918 private ranges are always rejected, so the policy is immune to in-guest root. The egress canary always runs fail-closed before any workload, the Kata runtime-class guard is unconditional, and host AWS creds are never forwarded (a scoped store token only).
+The local backend runs the program in a Kata microVM launched via `nerdctl` against a standalone containerd on this host — full Kata isolation, on a single host with no cluster. Egress is enforced host-side on its CNI bridge and is **default-deny (secure by default)**: a fresh sandbox reaches only DNS and its store. You opt in to what the workload needs at PROVISION time via the env knobs (`RESOLUTO_EGRESS_ALLOW` for specific destinations, `RESOLUTO_EGRESS_PUBLIC_HTTPS=1` for all outbound :443). IMDS `169.254.169.254` and RFC1918 private ranges are always rejected, so the policy is immune to in-guest root. The egress canary always runs fail-closed before any workload, the Kata runtime-class guard is unconditional, and host AWS creds are never forwarded (a scoped store token only).
 
 Provision the local backend with `scripts/local-backend-up.sh` (ends with a green Kata-microVM canary). To open egress, set the env before running it, e.g.:
 
@@ -17,11 +17,11 @@ Use `backend="local"` for single-host development. For cluster-scale placement, 
 
 ### `egress=None` — the opt-OUT (no NetworkPolicy)
 
-`egress=None` on `K8sSandboxRuntime` is an explicit opt-OUT of network isolation: NO NetworkPolicy is created, so the lane pod has **unrestricted egress**. The pod still runs inside a Kata microVM (separate OS kernel, no host process namespace), but nothing restricts which hosts the workload can reach. This is DIFFERENT from `EgressConfig()`, which is deny-by-default (see below). Use `egress=None` only for trusted workloads where kernel isolation alone is acceptable; for untrusted code always pass an `EgressConfig`.
+`egress=None` on `K8sSandboxRuntime` is an explicit opt-OUT of network isolation: NO NetworkPolicy is created, so the sandbox pod has **unrestricted egress**. The pod still runs inside a Kata microVM (separate OS kernel, no host process namespace), but nothing restricts which hosts the workload can reach. This is DIFFERENT from `EgressConfig()`, which is deny-by-default (see below). Use `egress=None` only for trusted workloads where kernel isolation alone is acceptable; for untrusted code always pass an `EgressConfig`.
 
 ### `EgressConfig` — deny by default (secure)
 
-`EgressConfig()` is **secure by default**: it DENIES all egress except DNS and the object store — a fresh lane cannot reach the internet, the LLM, or registries. You opt IN to exactly what the workload needs. Pass it to `K8sSandboxRuntime` and it applies a default-deny egress NetworkPolicy to the lane pod (created before the pod) so egress is enforced from the first packet:
+`EgressConfig()` is **secure by default**: it DENIES all egress except DNS and the object store — a fresh sandbox cannot reach the internet, the LLM, or registries. You opt IN to exactly what the workload needs. Pass it to `K8sSandboxRuntime` and it applies a default-deny egress NetworkPolicy to the sandbox pod (created before the pod) so egress is enforced from the first packet:
 
 ```python
 import os
@@ -44,7 +44,7 @@ runtime = K8sSandboxRuntime(
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
     conduit=store_from_env(),
-    image="<registry>/resoluto-lane:dev",
+    image="<registry>/resoluto-sandbox-base:0.1.0",
     store_env=store_env_for_pod(os.environ),
 ))
 ```
@@ -84,7 +84,7 @@ Before the workload runs, the pod self-verifies isolation with three probes:
 1. **IMDS TCP `169.254.169.254:80`** — must be blocked (no cloud-metadata leakage).
 1. **Store PUT sentinel** — must succeed (the only permitted egress channel).
 
-If any probe returns an unexpected result the lane aborts with a reason string naming every failed probe. This catch fires when the CNI enforces the policy incorrectly, or when the policy was not applied before the pod started.
+If any probe returns an unexpected result the sandbox aborts with a reason string naming every failed probe. This catch fires when the CNI enforces the policy incorrectly, or when the policy was not applied before the pod started.
 
 The canary always runs and is fail-closed. Host AWS credentials are never forwarded to the pod; a scoped store token is the only credential it receives. The `evaluate_verdict` pure function (the pass/fail logic) is unit-tested in `tests/test_egress_canary.py`; the in-guest execution is the live check.
 
@@ -100,7 +100,7 @@ Three simple knobs (no CIDRs or code edits needed):
 | `allow_port`   | port for `allow` (default 443; e.g. **22** for git-over-SSH, or a private service port)                                                                      |
 | `public_https` | `False` (default) = deny all outbound except store + `allow` + DNS; set **`True`** to allow ALL `:443` (escape hatch for trusted code)                       |
 
-So an agent lane that needs the LLM + npm/pypi reads `EgressConfig(allow=["api.anthropic.com", "registry.npmjs.org", "pypi.org"])` (or `RESOLUTO_EGRESS_ALLOW="api.anthropic.com,registry.npmjs.org"`). Hostname entries resolve to **current** IPs when the policy is rendered; these APIs are CDN-backed (rotating IPs), so a pinned allowlist is best-effort and needs periodic re-resolve. On the **local** backend prefer per-run `Sandbox.run(egress=["api.anthropic.com"])` (enforced by DOMAIN via the built-in SNI proxy, so it never goes stale for CDN-backed hosts); `EgressConfig(allow=[...])` (CIDR-based) is the k8s per-runtime path. When you need reliable access from otherwise-restricted code, `public_https=True` (all :443, trusted code) is the pragmatic escape hatch.
+So a sandbox that needs the LLM + npm/pypi reads `EgressConfig(allow=["api.anthropic.com", "registry.npmjs.org", "pypi.org"])` (or `RESOLUTO_EGRESS_ALLOW="api.anthropic.com,registry.npmjs.org"`). Hostname entries resolve to **current** IPs when the policy is rendered; these APIs are CDN-backed (rotating IPs), so a pinned allowlist is best-effort and needs periodic re-resolve. On the **local** backend prefer per-run `Sandbox.run(egress=["api.anthropic.com"])` (enforced by DOMAIN via the built-in SNI proxy, so it never goes stale for CDN-backed hosts); `EgressConfig(allow=[...])` (CIDR-based) is the k8s per-runtime path. When you need reliable access from otherwise-restricted code, `public_https=True` (all :443, trusted code) is the pragmatic escape hatch.
 
 ### Allow by DOMAIN, PER STEP — `run(egress=[...])` (the primary knob)
 
@@ -112,11 +112,11 @@ Sandbox(backend="local").run(argv, egress=["registry.npmjs.org"])   # this step 
 Sandbox(backend="local").run(argv)                                  # egress=None → deny all (secure default)
 ```
 
-Each `run()` sets that step's allowed domains on the fly and clears them after — **no re-provision**. Under the hood the built-in **SNI proxy** (`resoluto.sandbox.egress_proxy`) reads the step's allowlist LIVE (from a file each run rewrites) and splices the (still-encrypted) stream to the original destination ONLY if the TLS SNI matches — exact (`api.anthropic.com`) or `*.wildcard` (`*.openai.com`). No IP pinning, no CA/MITM, works under any CNI; it refuses internal/IMDS destinations even on an SNI match (no SSRF). The mechanism is `KataNerdctlSandboxRuntime.apply_egress()` writing the proxy's live allowlist file; `SubstrateBackend.run` applies it before the lane and clears it after.
+Each `run()` sets that step's allowed domains on the fly and clears them after — **no re-provision**. Under the hood the built-in **SNI proxy** (`resoluto.sandbox.egress_proxy`) reads the step's allowlist LIVE (from a file each run rewrites) and splices the (still-encrypted) stream to the original destination ONLY if the TLS SNI matches — exact (`api.anthropic.com`) or `*.wildcard` (`*.openai.com`). No IP pinning, no CA/MITM, works under any CNI; it refuses internal/IMDS destinations even on an SNI match (no SSRF). The mechanism is `KataNerdctlSandboxRuntime.apply_egress()` writing the proxy's live allowlist file; `SubstrateBackend.run` applies it before the sandbox and clears it after.
 
 One-time setup runs the proxy + the static `:443` redirect: `scripts/local-backend-up.sh` (it also seeds the file from `RESOLUTO_EGRESS_DOMAINS` if set — a default, overridden per run).
 
-Verified end-to-end, back-to-back with NO re-provision: `run(egress=["registry.npmjs.org"])` → a lane's `pnpm add is-odd` installs from the registry; `run(egress=["api.anthropic.com"])` → the same install is blocked (ECONNRESET) while a real Claude agent answers. A URL *path* still can't be enforced at this layer (that needs a MITM proxy). DNS and the CIDR FORWARD chain handle everything else; `allow=[...]` (below) remains for non-443 ports / explicit CIDRs. NOTE: `egress=` is applied by the `local` backend today; on `k8s` use `EgressConfig` (per-runtime).
+Verified end-to-end, back-to-back with NO re-provision: `run(egress=["registry.npmjs.org"])` → a sandbox's `pnpm add is-odd` installs from the registry; `run(egress=["api.anthropic.com"])` → the same install is blocked (ECONNRESET) while a real Claude agent answers. A URL *path* still can't be enforced at this layer (that needs a MITM proxy). DNS and the CIDR FORWARD chain handle everything else; `allow=[...]` (below) remains for non-443 ports / explicit CIDRs. NOTE: `egress=` is applied by the `local` backend today; on `k8s` use `EgressConfig` (per-runtime).
 
 **In code (k8s):**
 
@@ -138,7 +138,7 @@ export RESOLUTO_EGRESS_PUBLIC_HTTPS=1                       # opt IN to all :443
 - **local**: `scripts/local-backend-up.sh` renders the firewall from these env knobs via the SAME renderer (`python -m resoluto.sandbox.egress local-iptables`). Set them and re-run the script; the Kata canary re-verifies enforcement.
 - **k8s**: pass an `EgressConfig` to `K8sSandboxRuntime(egress=...)`, or `EgressConfig.from_store_env()` (which reads the same env). `egress=None` = opt OUT of isolation entirely (no NetworkPolicy, unrestricted egress) — distinct from `EgressConfig()`, which denies by default.
 
-There is no per-rule *blacklist* primitive (the model is default-deny; IMDS/RFC1918 are hardcoded denies). "Blacklist a host" = enumerate the hosts you DO want in `allow=[...]` and leave `public_https=False`. To add a NEW backend, write a renderer that maps `EgressConfig` to its mechanism (see `src/resoluto.sandbox/egress.py`).
+There is no per-rule *blacklist* primitive (the model is default-deny; IMDS/RFC1918 are hardcoded denies). "Blacklist a host" = enumerate the hosts you DO want in `allow=[...]` and leave `public_https=False`. To add a NEW backend, write a renderer that maps `EgressConfig` to its mechanism (see `src/resoluto/sandbox/egress.py`).
 
 ## What you can manage
 

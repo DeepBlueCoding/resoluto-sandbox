@@ -12,7 +12,8 @@
 - [Concepts](https://deepbluecoding.github.io/resoluto-sandbox/main/concepts/index.md)
 - [Backends](https://deepbluecoding.github.io/resoluto-sandbox/main/backends/index.md)
 - [Networking](https://deepbluecoding.github.io/resoluto-sandbox/main/networking/index.md)
-- [Auth](https://deepbluecoding.github.io/resoluto-sandbox/main/auth/index.md)
+- [Concurrency](https://deepbluecoding.github.io/resoluto-sandbox/main/concurrency/index.md)
+- [Credentials](https://deepbluecoding.github.io/resoluto-sandbox/main/auth/index.md)
 
 ## API
 

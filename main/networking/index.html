@@ -18,7 +18,7 @@
         <link rel="prev" href="../backends/">
       
       
-        <link rel="next" href="../auth/">
+        <link rel="next" href="../concurrency/">
       
       
         
@@ -332,13 +332,32 @@
   
   
     <li class="md-tabs__item">
+      <a href="../concurrency/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Concurrency
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
       <a href="../auth/" class="md-tabs__link">
         
   
   
     
   
-  Auth
+  Credentials
 
       </a>
     </li>
@@ -751,6 +770,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../concurrency/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concurrency
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../auth/" class="md-nav__link">
         
   
@@ -758,7 +804,7 @@
   <span class="md-ellipsis">
     
   
-    Auth
+    Credentials
   
 
     
@@ -791,10 +837,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
         
           
-          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
             
   
   
@@ -812,8 +858,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_7">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1152,7 +1198,7 @@
 <h2 id="local-backend-kata-isolation-host-side-egress-policy">Local backend — Kata isolation + host-side egress policy<a class="headerlink" href="#local-backend-kata-isolation-host-side-egress-policy" title="Permanent link">&para;</a></h2>
 <p>The local backend runs the program in a Kata microVM launched via <code>nerdctl</code> against a standalone
 containerd on this host — full Kata isolation, on a single host with no cluster. Egress is enforced
-host-side on its CNI bridge and is <strong>default-deny (secure by default)</strong>: a fresh lane reaches only
+host-side on its CNI bridge and is <strong>default-deny (secure by default)</strong>: a fresh sandbox reaches only
 DNS and its store. You opt in to what the workload needs at PROVISION time via the env knobs
 (<code>RESOLUTO_EGRESS_ALLOW</code> for specific destinations, <code>RESOLUTO_EGRESS_PUBLIC_HTTPS=1</code> for all
 outbound :443). IMDS <code>169.254.169.254</code> and RFC1918 private ranges are always rejected, so the
@@ -1168,16 +1214,16 @@ canary). To open egress, set the env before running it, e.g.:</p>
 <h2 id="k8s-backend-kata-isolation-egress-networkpolicy">k8s backend — Kata isolation + egress NetworkPolicy<a class="headerlink" href="#k8s-backend-kata-isolation-egress-networkpolicy" title="Permanent link">&para;</a></h2>
 <h3 id="egressnone-the-opt-out-no-networkpolicy"><code>egress=None</code> — the opt-OUT (no NetworkPolicy)<a class="headerlink" href="#egressnone-the-opt-out-no-networkpolicy" title="Permanent link">&para;</a></h3>
 <p><code>egress=None</code> on <code>K8sSandboxRuntime</code> is an explicit opt-OUT of network isolation: NO NetworkPolicy
-is created, so the lane pod has <strong>unrestricted egress</strong>. The pod still runs inside a Kata microVM
+is created, so the sandbox pod has <strong>unrestricted egress</strong>. The pod still runs inside a Kata microVM
 (separate OS kernel, no host process namespace), but nothing restricts which hosts the workload can
 reach. This is DIFFERENT from <code>EgressConfig()</code>, which is deny-by-default (see below). Use
 <code>egress=None</code> only for trusted workloads where kernel isolation alone is acceptable; for untrusted
 code always pass an <code>EgressConfig</code>.</p>
 <h3 id="egressconfig-deny-by-default-secure"><code>EgressConfig</code> — deny by default (secure)<a class="headerlink" href="#egressconfig-deny-by-default-secure" title="Permanent link">&para;</a></h3>
 <p><code>EgressConfig()</code> is <strong>secure by default</strong>: it DENIES all egress except DNS and the object store —
-a fresh lane cannot reach the internet, the LLM, or registries. You opt IN to exactly what the
+a fresh sandbox cannot reach the internet, the LLM, or registries. You opt IN to exactly what the
 workload needs. Pass it to <code>K8sSandboxRuntime</code> and it applies a default-deny egress NetworkPolicy
-to the lane pod (created before the pod) so egress is enforced from the first packet:</p>
+to the sandbox pod (created before the pod) so egress is enforced from the first packet:</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox</span><span class="w"> </span><span class="kn">import</span> <span class="n">Sandbox</span>
 </span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.backends.substrate</span><span class="w"> </span><span class="kn">import</span> <span class="n">SubstrateBackend</span><span class="p">,</span> <span class="n">store_env_for_pod</span>
@@ -1198,7 +1244,7 @@ to the lane pod (created before the pod) so egress is enforced from the first pa
 </span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a><span class="n">sb</span> <span class="o">=</span> <span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">SubstrateBackend</span><span class="p">(</span>
 </span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>    <span class="n">runtime</span><span class="o">=</span><span class="n">runtime</span><span class="p">,</span>
 </span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>    <span class="n">conduit</span><span class="o">=</span><span class="n">store_from_env</span><span class="p">(),</span>
-</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>    <span class="n">image</span><span class="o">=</span><span class="s2">&quot;&lt;registry&gt;/resoluto-lane:dev&quot;</span><span class="p">,</span>
+</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>    <span class="n">image</span><span class="o">=</span><span class="s2">&quot;&lt;registry&gt;/resoluto-sandbox-base:0.1.0&quot;</span><span class="p">,</span>
 </span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>    <span class="n">store_env</span><span class="o">=</span><span class="n">store_env_for_pod</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">),</span>
 </span><span id="__span-1-23"><a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a><span class="p">))</span>
 </span></code></pre></div>
@@ -1270,7 +1316,7 @@ the in-guest egress canary (see below) is the empirical backstop.</p>
 <li><strong>IMDS TCP <code>169.254.169.254:80</code></strong> — must be blocked (no cloud-metadata leakage).</li>
 <li><strong>Store PUT sentinel</strong> — must succeed (the only permitted egress channel).</li>
 </ol>
-<p>If any probe returns an unexpected result the lane aborts with a reason string naming every
+<p>If any probe returns an unexpected result the sandbox aborts with a reason string naming every
 failed probe. This catch fires when the CNI enforces the policy incorrectly, or when the policy
 was not applied before the pod started.</p>
 <p>The canary always runs and is fail-closed. Host AWS credentials are never forwarded to the pod; a
@@ -1306,7 +1352,7 @@ You opt in with <code>allow=[...]</code> (least privilege) or, for trusted code,
 </tr>
 </tbody>
 </table>
-<p>So an agent lane that needs the LLM + npm/pypi reads
+<p>So a sandbox that needs the LLM + npm/pypi reads
 <code>EgressConfig(allow=["api.anthropic.com", "registry.npmjs.org", "pypi.org"])</code> (or
 <code>RESOLUTO_EGRESS_ALLOW="api.anthropic.com,registry.npmjs.org"</code>). Hostname entries resolve to
 <strong>current</strong> IPs when the policy is rendered; these APIs are CDN-backed (rotating IPs), so a pinned
@@ -1330,10 +1376,10 @@ LIVE (from a file each run rewrites) and splices the (still-encrypted) stream to
 destination ONLY if the TLS SNI matches — exact (<code>api.anthropic.com</code>) or <code>*.wildcard</code> (<code>*.openai.com</code>).
 No IP pinning, no CA/MITM, works under any CNI; it refuses internal/IMDS destinations even on an SNI
 match (no SSRF). The mechanism is <code>KataNerdctlSandboxRuntime.apply_egress()</code> writing the proxy's live
-allowlist file; <code>SubstrateBackend.run</code> applies it before the lane and clears it after.</p>
+allowlist file; <code>SubstrateBackend.run</code> applies it before the sandbox and clears it after.</p>
 <p>One-time setup runs the proxy + the static <code>:443</code> redirect: <code>scripts/local-backend-up.sh</code> (it also
 seeds the file from <code>RESOLUTO_EGRESS_DOMAINS</code> if set — a default, overridden per run).</p>
-<p>Verified end-to-end, back-to-back with NO re-provision: <code>run(egress=["registry.npmjs.org"])</code> → a lane's
+<p>Verified end-to-end, back-to-back with NO re-provision: <code>run(egress=["registry.npmjs.org"])</code> → a sandbox's
 <code>pnpm add is-odd</code> installs from the registry; <code>run(egress=["api.anthropic.com"])</code> → the same install is
 blocked (ECONNRESET) while a real Claude agent answers. A URL <em>path</em> still can't be enforced at this
 layer (that needs a MITM proxy). DNS and the CIDR FORWARD chain handle everything else; <code>allow=[...]</code>
@@ -1362,7 +1408,7 @@ reads them too):</strong>
 <p>There is no per-rule <em>blacklist</em> primitive (the model is default-deny; IMDS/RFC1918 are hardcoded
 denies). "Blacklist a host" = enumerate the hosts you DO want in <code>allow=[...]</code> and leave
 <code>public_https=False</code>. To add a NEW backend, write a renderer that maps <code>EgressConfig</code> to its
-mechanism (see <code>src/resoluto.sandbox/egress.py</code>).</p>
+mechanism (see <code>src/resoluto/sandbox/egress.py</code>).</p>
 <h2 id="what-you-can-manage">What you can manage<a class="headerlink" href="#what-you-can-manage" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1454,13 +1500,13 @@ mechanism (see <code>src/resoluto.sandbox/egress.py</code>).</p>
         
         
           
-          <a href="../auth/" class="md-footer__link md-footer__link--next" aria-label="Next: Auth">
+          <a href="../concurrency/" class="md-footer__link md-footer__link--next" aria-label="Next: Concurrency">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Auth
+                Concurrency
               </div>
             </div>
             <div class="md-footer__button md-icon">

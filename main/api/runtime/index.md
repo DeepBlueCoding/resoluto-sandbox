@@ -1,6 +1,6 @@
 # Runtime & Contracts
 
-The isolation/placement seam (`SandboxRuntime`), the orchestration backend that drives the stage → run → collect flow, and the platform-neutral launch spec.
+The isolation/placement seam (`SandboxRuntime`), the backend that drives the stage → run → collect flow, and the platform-neutral launch spec.
 
 ## resoluto.sandbox.SandboxRuntime
 
@@ -85,4 +85,4 @@ def __init__(
 
 Bases: `BaseModel`
 
-Platform-neutral spec the orchestrator hands a runtime to launch one sandbox.
+Platform-neutral spec the caller hands a runtime to launch one sandbox.

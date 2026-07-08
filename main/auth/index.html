@@ -15,7 +15,7 @@
         <link rel="canonical" href="https://deepbluecoding.github.io/resoluto-sandbox/main/auth/">
       
       
-        <link rel="prev" href="../networking/">
+        <link rel="prev" href="../concurrency/">
       
       
         <link rel="next" href="../api/sandbox/">
@@ -29,7 +29,7 @@
     
     
       
-        <title>Auth - Resoluto Sandbox</title>
+        <title>Credentials - Resoluto Sandbox</title>
       
     
     
@@ -84,7 +84,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#auth-using-your-claude-maxpro-subscription" class="md-skip">
+        <a href="#credentials-giving-your-program-its-secrets" class="md-skip">
           Skip to content
         </a>
       
@@ -122,7 +122,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Auth
+              Credentials
             
           </span>
         </div>
@@ -328,6 +328,25 @@
   
   
   
+  
+    <li class="md-tabs__item">
+      <a href="../concurrency/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Concurrency
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
     
   
   
@@ -338,7 +357,7 @@
   
     
   
-  Auth
+  Credentials
 
       </a>
     </li>
@@ -568,6 +587,33 @@
       
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../concurrency/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concurrency
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
     
   
   
@@ -587,7 +633,7 @@
   <span class="md-ellipsis">
     
   
-    Auth
+    Credentials
   
 
     
@@ -605,7 +651,7 @@
   <span class="md-ellipsis">
     
   
-    Auth
+    Credentials
   
 
     
@@ -631,10 +677,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#local-backend" class="md-nav__link">
+  <a href="#which-credential-each-provider-image-needs" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Local backend
+        Which credential each provider image needs
       
     </span>
   </a>
@@ -642,10 +688,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#container-image" class="md-nav__link">
+  <a href="#how-to-pass-it" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Container image
+        How to pass it
       
     </span>
   </a>
@@ -653,6 +699,18 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#claude-subscription-auth-local-dev-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Claude subscription auth — LOCAL DEV ONLY
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Claude subscription auth — LOCAL DEV ONLY">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
   <a href="#gotcha-e-claude_code_oauth_token-with-nothing-exported" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -660,6 +718,11 @@
       
     </span>
   </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -691,10 +754,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
         
           
-          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
             
   
   
@@ -712,8 +775,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_7">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -896,10 +959,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#local-backend" class="md-nav__link">
+  <a href="#which-credential-each-provider-image-needs" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Local backend
+        Which credential each provider image needs
       
     </span>
   </a>
@@ -907,10 +970,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#container-image" class="md-nav__link">
+  <a href="#how-to-pass-it" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Container image
+        How to pass it
       
     </span>
   </a>
@@ -918,6 +981,18 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#claude-subscription-auth-local-dev-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Claude subscription auth — LOCAL DEV ONLY
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Claude subscription auth — LOCAL DEV ONLY">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
   <a href="#gotcha-e-claude_code_oauth_token-with-nothing-exported" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -925,6 +1000,11 @@
       
     </span>
   </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -948,77 +1028,86 @@
   
 
 
-<h1 id="auth-using-your-claude-maxpro-subscription">Auth: using your Claude Max/Pro subscription<a class="headerlink" href="#auth-using-your-claude-maxpro-subscription" title="Permanent link">&para;</a></h1>
-<p>The sandbox never handles credentials. It runs your program; the <code>claude</code> CLI
-that the Claude Agent SDK forks resolves auth on its own, from any of these
-(in the SDK's order of preference):</p>
-<ol>
-<li><code>CLAUDE_CODE_OAUTH_TOKEN</code> — a long-lived OAuth token</li>
-<li><code>~/.claude/.credentials.json</code> — the subscription login file (under <code>$HOME</code>,
-   or <code>$CLAUDE_CONFIG_DIR</code> if set)</li>
-<li><code>ANTHROPIC_API_KEY</code> — pay-as-you-go API billing</li>
-</ol>
+<h1 id="credentials-giving-your-program-its-secrets">Credentials: giving your program its secrets<a class="headerlink" href="#credentials-giving-your-program-its-secrets" title="Permanent link">&para;</a></h1>
+<p><strong>The sandbox never handles credentials.</strong> It runs your program and forwards whatever you hand it —
+via <code>env=</code>, <code>env_file=</code>, <code>secrets=</code>, or a mount — into the guest, untouched. It never reads, parses, or
+knows the format of any provider's credential file. Auth is the <em>program's</em> concern: its SDK/CLI
+resolves the credential from the environment you passed.</p>
+<h2 id="which-credential-each-provider-image-needs">Which credential each provider image needs<a class="headerlink" href="#which-credential-each-provider-image-needs" title="Permanent link">&para;</a></h2>
+<p>Each prebuilt provider image runs a program that talks to that provider's API; supply its credential:</p>
+<table>
+<thead>
+<tr>
+<th>Provider image</th>
+<th>Credential env var</th>
+<th>How to obtain</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>resoluto-sandbox:claude-agent-sdk-&lt;ver&gt;</code></td>
+<td><code>CLAUDE_CODE_OAUTH_TOKEN</code> (subscription) <strong>or</strong> <code>ANTHROPIC_API_KEY</code></td>
+<td><code>claude setup-token</code>, or an Anthropic API key</td>
+</tr>
+<tr>
+<td><code>resoluto-sandbox:langchain-&lt;ver&gt;</code></td>
+<td><code>ANTHROPIC_API_KEY</code></td>
+<td>an Anthropic API key</td>
+</tr>
+<tr>
+<td><code>resoluto-sandbox:openai-agents-&lt;ver&gt;</code></td>
+<td><code>OPENAI_API_KEY</code></td>
+<td>an OpenAI API key</td>
+</tr>
+</tbody>
+</table>
+<h2 id="how-to-pass-it">How to pass it<a class="headerlink" href="#how-to-pass-it" title="Permanent link">&para;</a></h2>
+<p>The guest does NOT inherit your host environment — deliver the credential explicitly:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox</span><span class="w"> </span><span class="kn">import</span> <span class="n">Sandbox</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># local or k8s — the plain, universal path: forward the env var you already hold</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="s2">&quot;local&quot;</span><span class="p">,</span> <span class="n">image</span><span class="o">=</span><span class="s2">&quot;&lt;provider-image&gt;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="p">[</span><span class="s2">&quot;python&quot;</span><span class="p">,</span> <span class="s2">&quot;openai_agent.py&quot;</span><span class="p">,</span> <span class="s2">&quot;Say hi&quot;</span><span class="p">],</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">workspace</span><span class="o">=</span><span class="s2">&quot;examples/payloads&quot;</span><span class="p">,</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">env</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;OPENAI_API_KEY&quot;</span><span class="p">:</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;OPENAI_API_KEY&quot;</span><span class="p">]},</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="p">)</span>
+</span></code></pre></div>
+<ul>
+<li><strong><code>env=</code></strong> — simplest; the value lands as a literal env entry in the guest (and, on k8s, in the pod
+  spec — prefer <code>secrets=</code> there).</li>
+<li><strong><code>secrets=</code></strong> — the production path on k8s: <code>run(secrets={"OPENAI_API_KEY": SecretKeyRef("openai", "key")})</code>
+  references an existing Kubernetes Secret via <code>valueFrom.secretKeyRef</code>, so the value never appears in
+  the pod spec or any log. See <a href="../README.md#secrets">README: Secrets</a>.</li>
+<li><strong><code>env_file=</code></strong> — a dotenv file merged host-side (convenience, not a security boundary).</li>
+<li><strong>mount</strong> — bind a credential file read-only into the guest (see the subscription note below).</li>
+</ul>
+<h2 id="claude-subscription-auth-local-dev-only">Claude subscription auth — LOCAL DEV ONLY<a class="headerlink" href="#claude-subscription-auth-local-dev-only" title="Permanent link">&para;</a></h2>
 <blockquote>
-<p>To bill your Max/Pro subscription, use option 1 or 2 and make sure <code>ANTHROPIC_API_KEY</code> is not set.
-If an API key is present the CLI uses it and bills the API instead of your subscription.</p>
-<p>This page is specifically about the <code>claude</code> CLI's own auth resolution. For getting an API key
-into the sandbox for the <code>langchain</code>/<code>openai</code> provider images (which have no subscription path —
-see <a href="../README.md#prebuilt-provider-images">README: Prebuilt provider images</a>), or for avoiding
-plaintext secrets in a k8s pod spec generally, see <a href="../README.md#secrets">README: Secrets</a>.</p>
+<p>⚠️ <strong>The Claude Max/Pro subscription path is a local-dev convenience — do NOT use it in cloud or
+production.</strong> A subscription OAuth token (<code>CLAUDE_CODE_OAUTH_TOKEN</code> from <code>claude setup-token</code>, or the
+<code>~/.claude/.credentials.json</code> login file) is a <strong>personal, single-user, long-lived</strong> credential: it
+cannot be scoped or rotated per workload, it bills one human's subscription, and mounting a personal
+credential file into shared/cloud pods is a credential-leak anti-pattern. For cloud or production,
+give each workload a <strong>provider API key</strong> delivered via <code>secrets=</code> (above).</p>
 </blockquote>
-<h2 id="local-backend">Local backend<a class="headerlink" href="#local-backend" title="Permanent link">&para;</a></h2>
-<p><code>Sandbox(backend="local")</code> runs your program in a Kata microVM via <code>nerdctl</code>. The microVM does not
-inherit your host environment — credentials must reach it explicitly via <code>env=</code> or a mount. Three
-options:</p>
-<p><strong>Option 1 — mount your subscription login file (simplest for local dev):</strong></p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>claude<span class="w">            </span><span class="c1"># one-time interactive login on your Max/Pro account (if needed)</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>nerdctl<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$HOME</span><span class="s2">/.claude/.credentials.json:/root/.claude/.credentials.json:ro&quot;</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span>...
+<p>For local iteration on a Max/Pro plan, forward a token (or mount the login file) and keep
+<code>ANTHROPIC_API_KEY</code> <strong>unset</strong> so the <code>claude</code> CLI bills your subscription instead of the API:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">CLAUDE_CODE_OAUTH_TOKEN</span><span class="o">=</span><span class="k">$(</span>claude<span class="w"> </span>setup-token<span class="k">)</span><span class="w">   </span><span class="c1"># long-lived token; keep ANTHROPIC_API_KEY unset</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>examples/run_agent_in_sandbox.py<span class="w"> </span>claude<span class="w"> </span><span class="s2">&quot;Say hello in five words&quot;</span>
 </span></code></pre></div>
-<p>Or pass the credential via <code>env=</code> in <code>Sandbox.run()</code>:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="s2">&quot;local&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="p">[</span><span class="s2">&quot;uv&quot;</span><span class="p">,</span> <span class="s2">&quot;run&quot;</span><span class="p">,</span> <span class="s2">&quot;examples/claude_agent.py&quot;</span><span class="p">,</span> <span class="s2">&quot;Say hello in five words&quot;</span><span class="p">],</span>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">env</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;CLAUDE_CODE_OAUTH_TOKEN&quot;</span><span class="p">:</span> <span class="s2">&quot;&lt;your-token&gt;&quot;</span><span class="p">},</span>
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="p">)</span>
+<p>Or mount the single login file read-only (not the whole <code>~/.claude</code> dir — the CLI writes cache into
+its config dir and would fail against a read-only mount of the entire directory):</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$HOME</span><span class="s2">/.claude/.credentials.json:/root/.claude/.credentials.json:ro&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">/examples/payloads:/workspace&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span>resoluto-sandbox:claude-agent-sdk-&lt;ver&gt;<span class="w"> </span>python<span class="w"> </span>claude_agent.py<span class="w"> </span><span class="s2">&quot;Say hello in five words&quot;</span>
 </span></code></pre></div>
-<p><strong>Option 2 — generate a long-lived token:</strong></p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>claude<span class="w"> </span>setup-token<span class="w">   </span><span class="c1"># prints an OAuth token; copy it</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">CLAUDE_CODE_OAUTH_TOKEN</span><span class="o">=</span>...
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>Sandbox<span class="o">(</span><span class="nv">backend</span><span class="o">=</span><span class="s2">&quot;local&quot;</span><span class="o">)</span>.run<span class="o">(</span>argv,<span class="w"> </span><span class="nv">env</span><span class="o">={</span><span class="s2">&quot;CLAUDE_CODE_OAUTH_TOKEN&quot;</span>:<span class="w"> </span>os.environ<span class="o">[</span><span class="s2">&quot;CLAUDE_CODE_OAUTH_TOKEN&quot;</span><span class="o">]})</span>
-</span></code></pre></div>
-<p><strong>Option 3 — bake the credential into your image</strong> (for CI or shared environments):
-build a custom image that includes the credential at build time. Not recommended for
-personal subscriptions — only for service accounts.</p>
-<h2 id="container-image">Container image<a class="headerlink" href="#container-image" title="Permanent link">&para;</a></h2>
-<p>The image bakes the CLI + SDK but no credentials. Supply auth at <code>docker run</code>:</p>
-<p><strong>A long-lived token (best for containers / CI):</strong></p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>claude<span class="w"> </span>setup-token<span class="w">                       </span><span class="c1"># prints an OAuth token; copy it</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">CLAUDE_CODE_OAUTH_TOKEN</span><span class="o">=</span>...<span class="w">        </span><span class="c1"># the value from above</span>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-e<span class="w"> </span>CLAUDE_CODE_OAUTH_TOKEN<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">/examples:/workspace&quot;</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">  </span>resoluto-sandbox:claude-agent-sdk-0.2.110<span class="w"> </span>python<span class="w"> </span>claude_agent.py<span class="w"> </span><span class="s2">&quot;Say hello in five words&quot;</span>
-</span></code></pre></div>
-<p><strong>Or mount just your subscription login file (read-only):</strong></p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$HOME</span><span class="s2">/.claude/.credentials.json:/root/.claude/.credentials.json:ro&quot;</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">/examples:/workspace&quot;</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span>resoluto-sandbox:claude-agent-sdk-0.2.110<span class="w"> </span>python<span class="w"> </span>claude_agent.py<span class="w"> </span><span class="s2">&quot;Say hello in five words&quot;</span>
-</span></code></pre></div>
-<p>Mount the single <code>.credentials.json</code> file, not the whole <code>~/.claude</code> directory —
-the CLI writes history/cache into its config dir and would fail against a
-read-only mount of the entire directory.</p>
-<p>In both cases <code>ANTHROPIC_API_KEY</code> is intentionally absent, so usage bills your
-subscription.</p>
-<h2 id="gotcha-e-claude_code_oauth_token-with-nothing-exported">Gotcha: <code>-e CLAUDE_CODE_OAUTH_TOKEN</code> with nothing exported<a class="headerlink" href="#gotcha-e-claude_code_oauth_token-with-nothing-exported" title="Permanent link">&para;</a></h2>
-<p><code>docker run -e CLAUDE_CODE_OAUTH_TOKEN</code> (no <code>=value</code>) forwards the host's value —
-which is empty if you never exported it. The container then has no auth and the
-CLI returns <code>Not logged in</code>, which the SDK rethrows as the confusing
-<code>Claude Code returned an error result: success</code>. Either <code>export</code> the token first,
-or use the credentials-file mount above.</p>
+<h3 id="gotcha-e-claude_code_oauth_token-with-nothing-exported">Gotcha: <code>-e CLAUDE_CODE_OAUTH_TOKEN</code> with nothing exported<a class="headerlink" href="#gotcha-e-claude_code_oauth_token-with-nothing-exported" title="Permanent link">&para;</a></h3>
+<p><code>docker run -e CLAUDE_CODE_OAUTH_TOKEN</code> (no <code>=value</code>) forwards the host's value — empty if you never
+exported it. The container then has no auth and the CLI returns <code>Not logged in</code>, which the SDK rethrows
+as the confusing <code>Claude Code returned an error result: success</code>. Either <code>export</code> the token first, or
+use the credentials-file mount above.</p>
 
 
 
@@ -1056,7 +1145,7 @@ or use the credentials-file mount above.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../networking/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Networking">
+          <a href="../concurrency/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Concurrency">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1066,7 +1155,7 @@ or use the credentials-file mount above.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Networking
+                Concurrency
               </div>
             </div>
           </a>

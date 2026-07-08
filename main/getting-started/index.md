@@ -32,7 +32,7 @@ result = Sandbox(backend="local").run(
 
 ## The local backend image
 
-`backend="local"` runs in a Kata microVM launched via `nerdctl` against a **dedicated, standalone containerd** (not your regular Docker daemon). It needs a lane image present in that containerd. When `image=` is omitted it uses `default_local_image()` — the base substrate tagged to the currently installed `resoluto-sandbox` version (never a floating `:dev`/`:latest` tag):
+`backend="local"` runs in a Kata microVM launched via `nerdctl` against a **dedicated, standalone containerd** (not your regular Docker daemon). It needs a sandbox image present in that containerd. When `image=` is omitted it uses `default_local_image()` — the base substrate tagged to the currently installed `resoluto-sandbox` version (never a floating `:dev`/`:latest` tag):
 
 ```python
 from resoluto.sandbox.client import default_local_image
@@ -60,7 +60,7 @@ runtime = K8sSandboxRuntime(
 sb = Sandbox(backend=SubstrateBackend(
     runtime=runtime,
     conduit=store_from_env(),
-    image="<registry>/resoluto-lane:dev",
+    image="<registry>/resoluto-sandbox-base:0.1.0",
     store_env=store_env_for_pod(os.environ),
 ))
 ```

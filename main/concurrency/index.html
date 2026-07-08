@@ -12,11 +12,13 @@
         <meta name="author" content="DeepBlueCoding">
       
       
-        <link rel="canonical" href="https://deepbluecoding.github.io/resoluto-sandbox/main/changelog/">
+        <link rel="canonical" href="https://deepbluecoding.github.io/resoluto-sandbox/main/concurrency/">
       
       
-        <link rel="prev" href="../api/pool/">
+        <link rel="prev" href="../networking/">
       
+      
+        <link rel="next" href="../auth/">
       
       
         
@@ -27,7 +29,7 @@
     
     
       
-        <title>Changelog - Resoluto Sandbox</title>
+        <title>Concurrency - Resoluto Sandbox</title>
       
     
     
@@ -82,7 +84,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#changelog" class="md-skip">
+        <a href="#concurrency-direct-control" class="md-skip">
           Skip to content
         </a>
       
@@ -120,7 +122,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Changelog
+              Concurrency
             
           </span>
         </div>
@@ -326,9 +328,11 @@
   
   
   
+    
   
-    <li class="md-tabs__item">
-      <a href="../concurrency/" class="md-tabs__link">
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
         
   
   
@@ -384,11 +388,9 @@
   
   
   
-    
   
-  
-    <li class="md-tabs__item md-tabs__item--active">
-      <a href="./" class="md-tabs__link">
+    <li class="md-tabs__item">
+      <a href="../changelog/" class="md-tabs__link">
         
   
   
@@ -585,10 +587,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../concurrency/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concurrency
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -604,6 +633,48 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#bounded-concurrency-sandboxpool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bounded concurrency — SandboxPool
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#advanced-the-direct-drive_node-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Advanced: the direct drive_node path
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -810,37 +881,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Changelog
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../changelog/" class="md-nav__link">
         
   
   
@@ -856,37 +900,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#unreleased" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Unreleased
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -918,10 +931,21 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#unreleased" class="md-nav__link">
+  <a href="#bounded-concurrency-sandboxpool" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Unreleased
+        Bounded concurrency — SandboxPool
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#advanced-the-direct-drive_node-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Advanced: the direct drive_node path
       
     </span>
   </a>
@@ -948,20 +972,85 @@
   
 
 
-<h1 id="changelog">Changelog<a class="headerlink" href="#changelog" title="Permanent link">&para;</a></h1>
-<p>All notable changes to <code>resoluto-sandbox</code> are documented here. The format follows
-<a href="https://keepachangelog.com/">Keep a Changelog</a>; versions follow <a href="https://semver.org/">SemVer</a>.</p>
-<h2 id="unreleased">Unreleased<a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h1 id="concurrency-direct-control">Concurrency &amp; direct control<a class="headerlink" href="#concurrency-direct-control" title="Permanent link">&para;</a></h1>
+<p>The <code>Sandbox</code> facade runs ONE program per <code>run()</code>. To launch MANY sandboxes under a bounded RAM/slot
+budget, or to reach knobs the facade never exposes (docker-in-docker, a disk-backed image graph,
+per-launch egress on the spec), drop to the building blocks the facade is built on — <code>SandboxPool</code>,
+<code>SandboxLaunchSpec</code>, and <code>drive_node</code>. All three are exported from <code>resoluto.sandbox</code>.</p>
+<p>Both snippets assume a <code>runtime</code> (a <code>SandboxRuntime</code> — e.g. <code>KataNerdctlSandboxRuntime.from_env(...)</code>
+for local or <code>K8sSandboxRuntime(...)</code> for k8s) and, for <code>drive_node</code>, a <code>conduit</code> (a <code>Conduit</code> — e.g.
+<code>store_from_env()</code>), wired exactly as the <a href="../backends/#local"><code>local</code></a> / <a href="../backends/#k8s"><code>k8s</code></a>
+backends build them.</p>
+<h2 id="bounded-concurrency-sandboxpool">Bounded concurrency — <code>SandboxPool</code><a class="headerlink" href="#bounded-concurrency-sandboxpool" title="Permanent link">&para;</a></h2>
+<p><code>SandboxPool</code> admits launches FIFO under two independent limits: a slot count (<code>max_concurrent</code>) and
+an optional RAM budget (<code>mem_budget_bytes</code>, summed from each spec's <code>resources.memory_bytes</code>). A held
+lease occupies a slot plus its RAM until closed; closing the lease destroys the sandbox.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.contracts</span><span class="w"> </span><span class="kn">import</span> <span class="n">Resources</span><span class="p">,</span> <span class="n">SandboxLaunchSpec</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.pool</span><span class="w"> </span><span class="kn">import</span> <span class="n">SandboxPool</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">pool</span> <span class="o">=</span> <span class="n">SandboxPool</span><span class="p">(</span><span class="n">runtime</span><span class="p">,</span> <span class="n">max_concurrent</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="n">mem_budget_bytes</span><span class="o">=</span><span class="mi">16</span> <span class="o">*</span> <span class="mi">1024</span><span class="o">**</span><span class="mi">3</span><span class="p">)</span>  <span class="c1"># ≤4 at once, ≤16 GiB total</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">one</span><span class="p">(</span><span class="n">prefix</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">spec</span> <span class="o">=</span> <span class="n">SandboxLaunchSpec</span><span class="p">(</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>        <span class="n">image</span><span class="o">=</span><span class="s2">&quot;&lt;registry&gt;/resoluto-sandbox-base:0.1.0&quot;</span><span class="p">,</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>        <span class="n">store_prefix</span><span class="o">=</span><span class="n">prefix</span><span class="p">,</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>        <span class="n">resources</span><span class="o">=</span><span class="n">Resources</span><span class="o">.</span><span class="n">from_quantities</span><span class="p">(</span><span class="n">memory</span><span class="o">=</span><span class="s2">&quot;4Gi&quot;</span><span class="p">,</span> <span class="n">cpu</span><span class="o">=</span><span class="s2">&quot;2&quot;</span><span class="p">),</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    <span class="p">)</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="k">async</span> <span class="k">with</span> <span class="k">await</span> <span class="n">pool</span><span class="o">.</span><span class="n">acquire</span><span class="p">(</span><span class="n">spec</span><span class="p">)</span> <span class="k">as</span> <span class="n">lease</span><span class="p">:</span>   <span class="c1"># parks here until a slot + budget free up</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>        <span class="o">...</span>  <span class="c1"># work against lease.handle (e.g. drive_node below); the sandbox is destroyed on exit</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="n">one</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;run/demo/nodes/n</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">/sandbox-0&quot;</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">)))</span>  <span class="c1"># 10 queued, 4 run at once</span>
+</span></code></pre></div>
 <ul>
-<li>Store-mediated, Kata-isolated execution substrate: <code>Sandbox(backend=...).run(argv, ...)</code> over a
-  passive, self-reporting sandbox that rendezvous with the host through a durable <code>Conduit</code>.</li>
-<li>Two backends behind one <code>SubstrateBackend</code>: <code>local</code> (Kata microVM via <code>nerdctl</code> on a dedicated
-  containerd) and <code>k8s</code> (short-lived Kata microVM pod).</li>
-<li><code>Conduit</code> seams — <code>LocalConduit</code>, <code>StdoutConduit</code>, <code>S3Conduit</code> (minio/S3), <code>GcsConduit</code>
-  (experimental) — and the <code>SandboxRuntime</code> isolation seam.</li>
-<li>Per-run egress control, <code>SandboxPool</code> bounded concurrency, and the <code>SubstrateBackend</code> that drives
-  the stage → run → collect lifecycle.</li>
+<li><code>pool.available</code> / <code>pool.live_count</code> report free slots / live sandboxes.</li>
+<li><code>acquire(spec, *, on_wait=None)</code> — <code>on_wait(amount, available)</code> fires once if the caller parks on
+  the RAM budget.</li>
+<li><code>SandboxPool</code> also satisfies the <code>Admission</code> protocol, so you can hand it straight to
+  <code>drive_node(..., admit=pool)</code> to pool-admit a driven node (below).</li>
 </ul>
+<blockquote>
+<p>The pool bounds SUBSTRATE admission (how many sandboxes exist at once), NOT workload liveness. A
+slow-but-alive sandbox holds its slot as long as it keeps emitting — there is no wall-clock cap.</p>
+</blockquote>
+<h2 id="advanced-the-direct-drive_node-path">Advanced: the direct <code>drive_node</code> path<a class="headerlink" href="#advanced-the-direct-drive_node-path" title="Permanent link">&para;</a></h2>
+<p><code>Sandbox</code> / <code>SubstrateBackend</code> always launch a single <code>flavor="plain"</code> step. Three capabilities live
+ONLY on the raw <code>SandboxLaunchSpec</code> + <code>drive_node</code> path and are <strong>NOT reachable through the facade</strong>:</p>
+<ul>
+<li><strong><code>flavor="dind"</code> + <code>privileged=True</code></strong> — docker-in-docker inside the Kata guest (privileged is
+  guest-scoped under Kata, not a host escape).</li>
+<li><strong><code>graph_backend="block"</code> + <code>dind_graph=...</code></strong> — put the inner docker image graph on a disk-backed
+  volume instead of tmpfs, so image layers stay off RAM. <code>graph_backend</code> is ignored by non-dind steps.</li>
+<li><strong><code>egress_allow</code> / <code>egress_public_https</code> ON THE SPEC</strong> — per-launch egress the <code>k8s</code> runtime renders
+  into the pod's NetworkPolicy. Distinct from <code>Sandbox.run(egress=...)</code> (the <code>local</code> SNI-proxy path)
+  and from a runtime-level <code>EgressConfig</code>.</li>
+</ul>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.contracts</span><span class="w"> </span><span class="kn">import</span> <span class="n">Resources</span><span class="p">,</span> <span class="n">SandboxLaunchSpec</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.driver</span><span class="w"> </span><span class="kn">import</span> <span class="n">drive_node</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="n">spec</span> <span class="o">=</span> <span class="n">SandboxLaunchSpec</span><span class="p">(</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">image</span><span class="o">=</span><span class="s2">&quot;&lt;registry&gt;/resoluto-sandbox-base:0.1.0&quot;</span><span class="p">,</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="n">flavor</span><span class="o">=</span><span class="s2">&quot;dind&quot;</span><span class="p">,</span> <span class="n">privileged</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>                       <span class="c1"># docker-in-docker under Kata</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    <span class="n">store_prefix</span><span class="o">=</span><span class="s2">&quot;run/demo/nodes/build/sandbox-0&quot;</span><span class="p">,</span>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="n">resources</span><span class="o">=</span><span class="n">Resources</span><span class="o">.</span><span class="n">from_quantities</span><span class="p">(</span>
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>        <span class="n">memory</span><span class="o">=</span><span class="s2">&quot;8Gi&quot;</span><span class="p">,</span> <span class="n">cpu</span><span class="o">=</span><span class="s2">&quot;4&quot;</span><span class="p">,</span>
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>        <span class="n">dind_graph</span><span class="o">=</span><span class="s2">&quot;30Gi&quot;</span><span class="p">,</span> <span class="n">graph_backend</span><span class="o">=</span><span class="s2">&quot;block&quot;</span><span class="p">,</span>         <span class="c1"># image graph on a 30 GiB disk-backed volume, not RAM</span>
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>    <span class="p">),</span>
+</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>    <span class="n">egress_allow</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;registry.npmjs.org&quot;</span><span class="p">],</span>                  <span class="c1"># this launch reaches only npm (+ DNS + store)</span>
+</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>    <span class="n">egress_public_https</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>    <span class="n">args</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;python&quot;</span><span class="p">,</span> <span class="s2">&quot;-m&quot;</span><span class="p">,</span> <span class="s2">&quot;resoluto.sandbox.runner_main&quot;</span><span class="p">],</span>
+</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="p">)</span>
+</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="n">result</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">drive_node</span><span class="p">(</span><span class="n">runtime</span><span class="p">,</span> <span class="n">conduit</span><span class="p">,</span> <span class="n">spec</span><span class="p">))</span>  <span class="c1"># NodeResult; tails chunks, reaps the sandbox</span>
+</span></code></pre></div>
+<p><code>drive_node(runtime, store, spec, *, admit=None, on_event=None, dead_after_s=120.0)</code> launches, tails
+the Conduit chunks, and returns a <code>NodeResult</code>. Pass <code>admit=pool</code> to admit through a <code>SandboxPool</code>;
+pass <code>on_event=</code> to receive each <code>SpanEvent</code> live.</p>
+<blockquote>
+<p>These are the substrate's own building blocks — a host that drives many sandboxes builds on exactly
+this surface. Prefer the <code>Sandbox</code> facade for single-shot runs; reach here only when you need pooling,
+dind, a disk-backed graph, or per-spec egress.</p>
+</blockquote>
 
 
 
@@ -999,7 +1088,7 @@
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../api/pool/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Pool">
+          <a href="../networking/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Networking">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1009,11 +1098,27 @@
                 Previous
               </span>
               <div class="md-ellipsis">
-                Pool
+                Networking
               </div>
             </div>
           </a>
         
+        
+          
+          <a href="../auth/" class="md-footer__link md-footer__link--next" aria-label="Next: Credentials">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Credentials
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
         
       </nav>
     
