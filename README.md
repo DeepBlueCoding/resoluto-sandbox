@@ -13,8 +13,53 @@ with `uv run agent.py` on your machine runs unchanged inside the sandbox.
 
 ## Install
 
+The Python package installs anywhere (Python 3.12+); its base is pydantic-only. Heavy deps are gated
+behind extras:
+
 ```bash
-pip install resoluto-sandbox   # published wheel coming; for now: pip install -e .
+pip install resoluto-sandbox            # base — pydantic only, no cloud/k8s deps
+pip install "resoluto-sandbox[s3]"      # S3 / minio Conduit           (aioboto3)
+pip install "resoluto-sandbox[k8s]"     # k8s backend                  (kubernetes-asyncio + aioboto3)
+pip install "resoluto-sandbox[gcs]"     # GCS Conduit                  (gcloud-aio-storage)
+# published wheel coming; for now: pip install -e .
+```
+
+`uv` is recommended for running programs/examples.
+
+## Requirements (host)
+
+Running a sandbox needs an isolation host. **The `local` backend (Kata microVMs) is Linux + KVM only**
+— the `k8s` backend's *client* runs anywhere (the microVMs run in your cluster).
+
+| Backend | Runs the microVM on | Host needs |
+|---|---|---|
+| `local` | **Linux with `/dev/kvm`** — bare metal, or a VM with **nested virtualization** | Kata Containers, a `nerdctl-full` bundle (containerd + CNI), Docker (builds images), a local OCI registry, `sudo` |
+| `k8s` | your Kubernetes cluster | a cluster with the Kata runtime class + an S3/minio store; `resoluto-sandbox[k8s]` on the client |
+
+> **macOS / Windows:** Kata microVMs need a Linux kernel + KVM, so the `local` backend does **not** run
+> natively. Use a Linux VM with nested virt enabled, or point the `k8s` backend at a remote cluster —
+> the client side runs on any OS.
+
+### `local` backend components (Linux)
+
+`scripts/local-backend-up.sh` **verifies** these, then provisions the rest (dedicated containerd, CNI
+bridge, host-side egress firewall, `local.env`, and a green Kata-microVM canary). It does **not**
+install the kernel/Kata/nerdctl for you:
+
+| Component | Why | How to get it |
+|---|---|---|
+| **KVM** (`/dev/kvm`) | Kata boots a real VM | your distro's virtualization packages (e.g. `qemu-kvm`/`libvirt` on Debian/Ubuntu, `qemu` on Fedora/Arch); on a VM, enable nested virtualization |
+| **Kata Containers** → `/opt/kata` | the VM runtime (`kata-runtime`, `containerd-shim-kata-v2`) | static release tarball from [kata-containers releases](https://github.com/kata-containers/kata-containers/releases) extracted to `/opt/kata` (verified with 3.31.0) — not a distro package |
+| **`nerdctl-full`** → `/opt/resoluto-local` | containerd + nerdctl + CNI plugins, standalone from Docker/k3s | the **`nerdctl-full-*`** release tarball from [nerdctl releases](https://github.com/containerd/nerdctl/releases) (verified with 2.3.3) |
+| **Docker** | builds the base / provider / your own images (`docker build`, `image build`, `image push`) | Docker Engine — your distro's package or the [official apt repo](https://docs.docker.com/engine/install/) |
+| **OCI registry** on `localhost:5000` | bridges Docker's image store → the sandbox's separate containerd (see [Prebuilt provider images](#prebuilt-provider-images)) | `local-backend-up.sh` **starts one for you** if Docker is present; or run it yourself: `docker run -d --restart unless-stopped -p 5000:5000 --name registry registry:2` |
+
+Architecture: amd64 and arm64 Linux both work — match the Kata/nerdctl tarball to your arch (the images
+build for the host arch automatically). Then:
+
+```bash
+bash scripts/local-backend-up.sh      # verify + provision → green canary
+set -a; source local.env; set +a      # exports RESOLUTO_SANDBOX_IMAGE etc.
 ```
 
 ---

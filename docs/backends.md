@@ -84,18 +84,20 @@ trusted-local bypass.
 
 ### What you need
 
-- A standalone containerd + nerdctl + Kata on this machine. Provision with
-  `scripts/local-backend-up.sh` (ends with a green Kata-microVM canary).
+- KVM + Kata + a `nerdctl-full` bundle + Docker + a `localhost:5000` registry on this Linux host —
+  see the README's [Requirements](../README.md#requirements-host) for how to install each. Provision
+  the rest with `scripts/local-backend-up.sh` (ends with a green Kata-microVM canary).
 - An image with python + the resoluto-sandbox wheel + your program's deps. Default:
-  `resoluto-sandbox-base:<installed wheel version>` (`client.default_local_image()`) — computed
-  dynamically from the running `resoluto-sandbox` package version, never a hardcoded floating tag —
-  held in this host's containerd; the local backend never pulls from a registry. Override with
-  `Sandbox(backend="local", image="your-image:tag")`.
-- If you built that image with plain `docker build` (including `resoluto-sandbox image build`), it
-  landed in your regular Docker daemon — a **different** image store than the dedicated containerd
-  this backend reads from. Transfer it once with `docker save <tag> | sudo "$RESOLUTO_LOCAL_NERDCTL"
-  --address /run/resoluto-local/containerd/containerd.sock --namespace resoluto-local load` (see the
-  README's [Prebuilt provider images](../README.md#prebuilt-provider-images) section).
+  `default_local_image()` = the base image, registry-qualified (`localhost:5000/resoluto-sandbox-base:<installed
+  wheel version>`) — computed from the running package version, never a floating tag. Override with
+  `Sandbox(backend="local", image="…")`.
+- **How a built image reaches this backend — via the registry.** `docker build` (including
+  `resoluto-sandbox image build`) lands the image in your regular Docker daemon, a **separate** store
+  from the dedicated containerd this backend reads. The bridge is the on-box registry: `image build`
+  **pushes** there, and the backend **pulls on demand** (`localhost` is insecure/HTTP by default). For
+  your own image, `docker build … && resoluto-sandbox image push <tag>`, then reference
+  `localhost:5000/<tag>`. Opt out with `RESOLUTO_SANDBOX_REGISTRY=""` (bare tags + `docker save |
+  nerdctl load`). See the README's [Prebuilt provider images](../README.md#prebuilt-provider-images).
 
 ## k8s
 

@@ -161,6 +161,20 @@ sudo iptables -t nat -C PREROUTING -s "$NET_SUBNET" -p tcp --dport 443 -j REDIRE
   || sudo iptables -t nat -I PREROUTING 1 -s "$NET_SUBNET" -p tcp --dport 443 -j REDIRECT --to-port "$PROXY_PORT"
 green "ok: SNI proxy up (:$PROXY_PORT); sandbox :443 filtered by $DOMAINS_FILE (set per-run via Sandbox.run(egress=[...]))"
 
+# ensure the on-box registry the image bridge uses (localhost:5000): `image build` and this script
+# push there and the backend pulls from it. Docker is a documented prereq; reuse or start a registry:2.
+case "$SANDBOX_IMAGE" in
+  localhost:5000/*)
+    if ! curl -fsS http://localhost:5000/v2/ >/dev/null 2>&1; then
+      command -v docker >/dev/null || die "registry localhost:5000 is down and docker is missing to start it — run: docker run -d --restart unless-stopped -p 5000:5000 --name registry registry:2"
+      if docker inspect resoluto-registry >/dev/null 2>&1; then docker start resoluto-registry >/dev/null
+      elif docker inspect registry >/dev/null 2>&1; then docker start registry >/dev/null
+      else docker run -d --restart unless-stopped -p 5000:5000 --name resoluto-registry registry:2 >/dev/null; fi
+      curl -fsS http://localhost:5000/v2/ >/dev/null 2>&1 || die "started a registry but localhost:5000 is still unreachable"
+      green "ok: started local registry (localhost:5000)"
+    fi ;;
+esac
+
 # 5. sandbox image present in the dedicated containerd namespace
 step "5/7 sandbox image ($SANDBOX_IMAGE)"
 if ! N images "$SANDBOX_IMAGE" 2>/dev/null | grep -q resoluto-sandbox; then
