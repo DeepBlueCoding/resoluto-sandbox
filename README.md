@@ -21,6 +21,20 @@ pip install resoluto-sandbox   # published wheel coming; for now: pip install -e
 
 ## Quickstart
 
+The sandbox runs your program in a **Kata microVM** — there is no zero-isolation mode — so it needs a
+one-time host provisioning first: `/dev/kvm` + Kata + a dedicated containerd + the sandbox image. The
+provisioning script does all of it and **writes `local.env`** (which is git-ignored and does *not*
+ship in the repo). From a repo clone:
+
+```bash
+bash scripts/local-backend-up.sh     # provisions the local backend + image, writes local.env, ends on a green canary
+set -a; source local.env; set +a     # exports RESOLUTO_SANDBOX_IMAGE
+
+uv run python examples/run_hello_in_sandbox.py   # the bare mechanics — a plain program, isolated
+```
+
+Then, in your own code:
+
 ```python
 from resoluto.sandbox import Sandbox
 

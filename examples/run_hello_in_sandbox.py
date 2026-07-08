@@ -22,7 +22,13 @@ from resoluto.sandbox import Sandbox
 payloads = Path(__file__).resolve().parent / "payloads"
 image = os.environ.get("RESOLUTO_SANDBOX_IMAGE")
 if not image:
-    sys.exit("set RESOLUTO_SANDBOX_IMAGE first (the provisioned sandbox image):  set -a; source local.env; set +a")
+    sys.exit(
+        "RESOLUTO_SANDBOX_IMAGE is not set — the local Kata backend isn't provisioned yet.\n"
+        "`local.env` does NOT ship in the repo; the provisioning script writes it. From the repo root:\n"
+        "    bash scripts/local-backend-up.sh    # provisions Kata + containerd + image, writes local.env (green canary)\n"
+        "    set -a; source local.env; set +a    # exports RESOLUTO_SANDBOX_IMAGE\n"
+        "    uv run python examples/run_hello_in_sandbox.py"
+    )
 
 result = Sandbox(backend="local", image=image).run(
     ["python", "hello.py", "sandbox"],   # guest python; path relative to the staged workspace

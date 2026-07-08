@@ -16,7 +16,7 @@ Two kinds of file live here — keep them straight:
 | `run_hello_in_sandbox.py` | The bare mechanics — stage a plain program (`payloads/hello.py`) into the guest and run it on the base image. |
 
 ```bash
-# provision the local Kata backend + build the provider image you want (see the repo README), then:
+bash scripts/local-backend-up.sh                                # provision the local Kata backend → writes local.env (green canary)
 set -a; source local.env; set +a                                # exports RESOLUTO_SANDBOX_IMAGE (base)
 uv run python examples/run_hello_in_sandbox.py                   # simplest: hello, on the base image
 
