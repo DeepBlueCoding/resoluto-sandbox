@@ -102,6 +102,19 @@ sudo tee "$CNI_NETCONF/10-$NET_NAME.conflist" >/dev/null <<EOF
 EOF
 green "ok: CNI conflist written ($NET_NAME)"
 
+# Defensive: a STALE bridge owning the same subnet (e.g. a pre-rename `resoluto-lane0`) leaves a
+# DUPLICATE `$NET_SUBNET` route. The kernel may pick the dead bridge for RETURN traffic and silently
+# black-hole every reply — DNS/HTTPS time out from the guest even though the firewall allows them, and
+# the canary fails with all-egress-blocked. Remove any bridge (other than the current sandbox bridge)
+# that owns this subnet's route.
+for stale in $(ip -o route show "$NET_SUBNET" 2>/dev/null \
+    | awk '{for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}' | grep -vx "resoluto-sbx0" | sort -u); do
+  if [ -d "/sys/class/net/$stale/bridge" ]; then
+    red "removing STALE bridge '$stale' — its duplicate $NET_SUBNET route black-holes sandbox return traffic"
+    sudo ip link delete "$stale" type bridge 2>/dev/null || true
+  fi
+done
+
 # 4. host-side egress firewall on the sandbox bridge (immune to in-guest root)
 step "4/7 egress firewall (default-deny; allow DNS+443-public; DROP IMDS+private)"
 CHAIN="RESOLUTO-SANDBOX-EGRESS"
