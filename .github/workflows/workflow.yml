@@ -28,7 +28,7 @@ jobs:
       - name: Install
         run: uv sync --all-extras --dev
       - name: Test
-        run: uv run pytest -q
+        run: uv run pytest -q -m "not integration"   # integration tests need live k3s+Kata (not available on CI runners)
 
   build:
     needs: test
