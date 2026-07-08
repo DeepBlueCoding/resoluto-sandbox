@@ -1,95 +1,74 @@
-# Auth: using your Claude Max/Pro subscription
+# Credentials: giving your program its secrets
 
-The sandbox never handles credentials. It runs your program; the `claude` CLI
-that the Claude Agent SDK forks resolves auth on its own, from any of these
-(in the SDK's order of preference):
+**The sandbox never handles credentials.** It runs your program and forwards whatever you hand it —
+via `env=`, `env_file=`, `secrets=`, or a mount — into the guest, untouched. It never reads, parses, or
+knows the format of any provider's credential file. Auth is the *program's* concern: its SDK/CLI
+resolves the credential from the environment you passed.
 
-1. `CLAUDE_CODE_OAUTH_TOKEN` — a long-lived OAuth token
-2. `~/.claude/.credentials.json` — the subscription login file (under `$HOME`,
-   or `$CLAUDE_CONFIG_DIR` if set)
-3. `ANTHROPIC_API_KEY` — pay-as-you-go API billing
+## Which credential each provider image needs
 
-> To bill your Max/Pro subscription, use option 1 or 2 and make sure `ANTHROPIC_API_KEY` is not set.
-> If an API key is present the CLI uses it and bills the API instead of your subscription.
+Each prebuilt provider image runs a program that talks to that provider's API; supply its credential:
 
-> This page is specifically about the `claude` CLI's own auth resolution. For getting an API key
-> into the sandbox for the `langchain`/`openai` provider images (which have no subscription path —
-> see [README: Prebuilt provider images](../README.md#prebuilt-provider-images)), or for avoiding
-> plaintext secrets in a k8s pod spec generally, see [README: Secrets](../README.md#secrets).
+| Provider image | Credential env var | How to obtain |
+|---|---|---|
+| `resoluto-sandbox:claude-agent-sdk-<ver>` | `CLAUDE_CODE_OAUTH_TOKEN` (subscription) **or** `ANTHROPIC_API_KEY` | `claude setup-token`, or an Anthropic API key |
+| `resoluto-sandbox:langchain-<ver>` | `ANTHROPIC_API_KEY` | an Anthropic API key |
+| `resoluto-sandbox:openai-agents-<ver>` | `OPENAI_API_KEY` | an OpenAI API key |
 
-## Local backend
+## How to pass it
 
-`Sandbox(backend="local")` runs your program in a Kata microVM via `nerdctl`. The microVM does not
-inherit your host environment — credentials must reach it explicitly via `env=` or a mount. Three
-options:
-
-**Option 1 — mount your subscription login file (simplest for local dev):**
-
-```bash
-claude            # one-time interactive login on your Max/Pro account (if needed)
-
-nerdctl run --rm \
-  -v "$HOME/.claude/.credentials.json:/root/.claude/.credentials.json:ro" \
-  ...
-```
-
-Or pass the credential via `env=` in `Sandbox.run()`:
+The guest does NOT inherit your host environment — deliver the credential explicitly:
 
 ```python
-Sandbox(backend="local").run(
-    ["uv", "run", "examples/payloads/claude_agent.py", "Say hello in five words"],
-    env={"CLAUDE_CODE_OAUTH_TOKEN": "<your-token>"},
+import os
+from resoluto.sandbox import Sandbox
+
+# local or k8s — the plain, universal path: forward the env var you already hold
+Sandbox(backend="local", image="<provider-image>").run(
+    ["python", "openai_agent.py", "Say hi"],
+    workspace="examples/payloads",
+    env={"OPENAI_API_KEY": os.environ["OPENAI_API_KEY"]},
 )
 ```
 
-**Option 2 — generate a long-lived token:**
+- **`env=`** — simplest; the value lands as a literal env entry in the guest (and, on k8s, in the pod
+  spec — prefer `secrets=` there).
+- **`secrets=`** — the production path on k8s: `run(secrets={"OPENAI_API_KEY": SecretKeyRef("openai", "key")})`
+  references an existing Kubernetes Secret via `valueFrom.secretKeyRef`, so the value never appears in
+  the pod spec or any log. See [README: Secrets](../README.md#secrets).
+- **`env_file=`** — a dotenv file merged host-side (convenience, not a security boundary).
+- **mount** — bind a credential file read-only into the guest (see the subscription note below).
+
+## Claude subscription auth — LOCAL DEV ONLY
+
+> ⚠️ **The Claude Max/Pro subscription path is a local-dev convenience — do NOT use it in cloud or
+> production.** A subscription OAuth token (`CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`, or the
+> `~/.claude/.credentials.json` login file) is a **personal, single-user, long-lived** credential: it
+> cannot be scoped or rotated per workload, it bills one human's subscription, and mounting a personal
+> credential file into shared/cloud pods is a credential-leak anti-pattern. For cloud or production,
+> give each workload a **provider API key** delivered via `secrets=` (above).
+
+For local iteration on a Max/Pro plan, forward a token (or mount the login file) and keep
+`ANTHROPIC_API_KEY` **unset** so the `claude` CLI bills your subscription instead of the API:
 
 ```bash
-claude setup-token   # prints an OAuth token; copy it
-export CLAUDE_CODE_OAUTH_TOKEN=...
-
-Sandbox(backend="local").run(argv, env={"CLAUDE_CODE_OAUTH_TOKEN": os.environ["CLAUDE_CODE_OAUTH_TOKEN"]})
+export CLAUDE_CODE_OAUTH_TOKEN=$(claude setup-token)   # long-lived token; keep ANTHROPIC_API_KEY unset
+uv run python examples/run_agent_in_sandbox.py claude "Say hello in five words"
 ```
 
-**Option 3 — bake the credential into your image** (for CI or shared environments):
-build a custom image that includes the credential at build time. Not recommended for
-personal subscriptions — only for service accounts.
-
-## Container image
-
-The image bakes the CLI + SDK but no credentials. Supply auth at `docker run`:
-
-**A long-lived token (best for containers / CI):**
-
-```bash
-claude setup-token                       # prints an OAuth token; copy it
-export CLAUDE_CODE_OAUTH_TOKEN=...        # the value from above
-
-docker run --rm -e CLAUDE_CODE_OAUTH_TOKEN \
-  -v "$PWD/examples/payloads:/workspace" \
-  resoluto-sandbox:claude-agent-sdk-0.2.110 python claude_agent.py "Say hello in five words"
-```
-
-**Or mount just your subscription login file (read-only):**
+Or mount the single login file read-only (not the whole `~/.claude` dir — the CLI writes cache into
+its config dir and would fail against a read-only mount of the entire directory):
 
 ```bash
 docker run --rm \
   -v "$HOME/.claude/.credentials.json:/root/.claude/.credentials.json:ro" \
   -v "$PWD/examples/payloads:/workspace" \
-  resoluto-sandbox:claude-agent-sdk-0.2.110 python claude_agent.py "Say hello in five words"
+  resoluto-sandbox:claude-agent-sdk-<ver> python claude_agent.py "Say hello in five words"
 ```
 
-Mount the single `.credentials.json` file, not the whole `~/.claude` directory —
-the CLI writes history/cache into its config dir and would fail against a
-read-only mount of the entire directory.
+### Gotcha: `-e CLAUDE_CODE_OAUTH_TOKEN` with nothing exported
 
-In both cases `ANTHROPIC_API_KEY` is intentionally absent, so usage bills your
-subscription.
-
-## Gotcha: `-e CLAUDE_CODE_OAUTH_TOKEN` with nothing exported
-
-`docker run -e CLAUDE_CODE_OAUTH_TOKEN` (no `=value`) forwards the host's value —
-which is empty if you never exported it. The container then has no auth and the
-CLI returns `Not logged in`, which the SDK rethrows as the confusing
-`Claude Code returned an error result: success`. Either `export` the token first,
-or use the credentials-file mount above.
+`docker run -e CLAUDE_CODE_OAUTH_TOKEN` (no `=value`) forwards the host's value — empty if you never
+exported it. The container then has no auth and the CLI returns `Not logged in`, which the SDK rethrows
+as the confusing `Claude Code returned an error result: success`. Either `export` the token first, or
+use the credentials-file mount above.

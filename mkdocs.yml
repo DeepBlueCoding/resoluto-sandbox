@@ -121,7 +121,7 @@ nav:
   - Backends: backends.md
   - Networking: networking.md
   - Concurrency: concurrency.md
-  - Auth: auth.md
+  - Credentials: auth.md
   - API Reference:
       - Sandbox: api/sandbox.md
       - Conduit: api/conduit.md

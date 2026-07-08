@@ -375,7 +375,7 @@ On `k8s`, retag + push to your registry (`docs/backends.md`), then inject the sa
 - `docs/concepts.md` — the program contract, the run lifecycle, the Conduit
 - `docs/backends.md` — backend setup + the vendor-neutral k8s stack install
 - `docs/networking.md` — egress isolation (the canary + per-backend enforcement)
-- `docs/auth.md` — Claude Max/Pro subscription auth (no API key needed)
+- `docs/auth.md` — credentials: passing each provider's secret to the guest (the subscription path is local-dev only)
 - `spec/PROTOCOL.md` — the language-neutral host ↔ sandbox wire protocol
 - `examples/` — `run_agent_in_sandbox.py <claude|langchain|openai>` runs any provider's agent isolated
   (symmetric across all three images); `run_hello_in_sandbox.py` is the bare mechanics. `payloads/`
