@@ -110,15 +110,20 @@ def _cmd_image(args: argparse.Namespace) -> int:
         print("error: use `resoluto-sandbox image build`", file=sys.stderr)
         return 2
     import subprocess
-    from resoluto.sandbox.images import PROVIDERS, build, build_base
+    from resoluto.sandbox.images import PROVIDERS, build, build_base, pullable, registry
     providers = list(PROVIDERS) if args.provider == "all" else [args.provider]
     context = getattr(args, "context", ".")
+
+    def _report(tag: str) -> None:
+        # the build already pushed to the registry (see images.build); print the pull reference the
+        # local/k8s backend uses, so it's ready to run with no manual `docker save | nerdctl load`.
+        print(f"{tag}  →  pushed {pullable(tag)}" if registry() else tag)
+
     if args.provider == "all":
         prebuilt_base = build_base(ver=args.version, context=context, runner=subprocess.run)
+        _report(prebuilt_base)
         for p in providers:
-            tag = build(p, ver=args.version, context=context, base_tag=prebuilt_base, runner=subprocess.run)
-            print(tag)
+            _report(build(p, ver=args.version, context=context, base_tag=prebuilt_base, runner=subprocess.run))
     else:
-        tag = build(providers[0], ver=args.version, context=context, runner=subprocess.run)
-        print(tag)
+        _report(build(providers[0], ver=args.version, context=context, runner=subprocess.run))
     return 0

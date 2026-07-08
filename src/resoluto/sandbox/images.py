@@ -4,10 +4,42 @@ package + version instead, so the tag itself says what's actually installed. The
 still travels with the overlay as an OCI label + the existing RESOLUTO_IMAGE_VERSION env guard."""
 from __future__ import annotations
 
+import os
 import subprocess
 from importlib.metadata import version as _pkg_version
 
 PROVIDERS = ("claude", "langchain", "openai")
+
+# Where the local backend pulls images from. `docker build` lands an image in the DOCKER daemon's
+# store, but the `local` backend runs Kata microVMs against a SEPARATE, dedicated containerd (own
+# socket at /run/resoluto-local/containerd/) that can't see Docker's store. The bridge is the on-box
+# registry: build → push here → the backend pulls it (localhost is insecure/HTTP by default, so
+# `nerdctl run` pulls on demand with no extra flag). Override for k8s / a shared registry; set to
+# "" to skip pushing and use bare tags (image must already be loaded into the target containerd).
+DEFAULT_REGISTRY = "localhost:5000"
+
+
+def registry() -> str:
+    """The registry the backend pulls images from (RESOLUTO_SANDBOX_REGISTRY, default localhost:5000)."""
+    return os.environ.get("RESOLUTO_SANDBOX_REGISTRY", DEFAULT_REGISTRY)
+
+
+def pullable(tag: str, *, reg: str | None = None) -> str:
+    """The registry-qualified reference the backend pulls (e.g. localhost:5000/resoluto-sandbox:...).
+    Returns the bare tag unchanged when no registry is configured. Inputs: a bare image tag, optional
+    registry override. Output: the pull reference."""
+    reg = registry() if reg is None else reg
+    return f"{reg}/{tag}" if reg else tag
+
+
+def _tag_and_push(tag: str, runner) -> str:
+    """Tag `tag` for the configured registry and push it, so the local backend can pull it. Inputs:
+    a freshly-built bare tag, injectable runner. Output: the pushed pull reference (bare if no registry)."""
+    ref = pullable(tag)
+    if ref != tag:
+        runner(["docker", "tag", tag, ref], check=True)
+        runner(["docker", "push", ref], check=True)
+    return ref
 
 # The pip package that anchors each overlay's tag, and the version pinned into its Dockerfile.
 # Bump SDK_VERSION (and rebuild) to move to a newer SDK release — never a floating install.
@@ -36,24 +68,28 @@ def image_tags(ver: str) -> dict[str, str]:
             **{p: f"resoluto-sandbox:{SDK_PACKAGE[p]}-{SDK_VERSION[p]}" for p in PROVIDERS}}
 
 
-def build_base(*, ver: str | None = None, context: str = ".", runner=subprocess.run) -> str:
-    """Build the base image and return its tag. Inputs: optional version, build context,
-    injectable runner. Output: the base image tag built."""
+def build_base(*, ver: str | None = None, context: str = ".", push: bool = True,
+               runner=subprocess.run) -> str:
+    """Build the base image and (by default) push it to the registry. Inputs: optional version,
+    build context, whether to push, injectable runner. Output: the base image (bare) tag built."""
     ver = ver or wheel_version()
     tag = image_tags(ver)["base"]
     runner(["docker", "build", "-f", "Dockerfile.base", "-t", tag, context], check=True)
+    if push:
+        _tag_and_push(tag, runner)
     return tag
 
 
 def build(provider: str, *, ver: str | None = None, context: str = ".", base_tag: str | None = None,
-          runner=subprocess.run) -> str:
-    """Build one provider overlay (building base first if needed) and return the tag built."""
+          push: bool = True, runner=subprocess.run) -> str:
+    """Build one provider overlay (building base first if needed) and, by default, push it to the
+    registry so the local backend can pull it. Output: the overlay's (bare) tag built."""
     if provider not in PROVIDERS:
         raise ValueError(f"unknown provider {provider!r} (expected one of {PROVIDERS})")
     ver = ver or wheel_version()
     tags = image_tags(ver)
     if base_tag is None:
-        base_tag = build_base(ver=ver, context=context, runner=runner)
+        base_tag = build_base(ver=ver, context=context, push=push, runner=runner)
     tag = tags[provider]
     build_args = [
         "--build-arg", f"BASE_IMAGE={base_tag}",
@@ -66,4 +102,6 @@ def build(provider: str, *, ver: str | None = None, context: str = ".", base_tag
         ["docker", "build", "-f", f"images/{provider}.Dockerfile", *build_args, "-t", tag, context],
         check=True,
     )
+    if push:
+        _tag_and_push(tag, runner)
     return tag

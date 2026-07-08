@@ -20,6 +20,7 @@ bash scripts/local-backend-up.sh                                # provision the 
 set -a; source local.env; set +a                                # exports RESOLUTO_SANDBOX_IMAGE (base)
 uv run python examples/run_hello_in_sandbox.py                   # simplest: hello, on the base image
 
+resoluto-sandbox image build --provider openai                  # build+push the overlay to the registry (openrouter reuses it)
 export OPENAI_API_KEY=...                                        # each provider brings its OWN credential
 uv run python examples/run_agent_in_sandbox.py openai "why isolate agents?"
 export ANTHROPIC_API_KEY=...
@@ -31,8 +32,12 @@ uv run python examples/run_agent_in_sandbox.py openrouter "why isolate agents?"
 ```
 
 `run_hello_in_sandbox.py` reads `RESOLUTO_SANDBOX_IMAGE` (the base image); `run_agent_in_sandbox.py`
-resolves the provider overlay tag automatically from the sandbox's own `image_tags()`. Each forwards the
-provider's credential via `env=` — the sandbox never reads or parses a credential file.
+resolves the provider overlay tag from the sandbox's own `image_tags()` and **registry-qualifies it**
+(`images.pullable()` → `localhost:5000/resoluto-sandbox:…`). `image build` pushes the overlay to that
+registry and the backend pulls it on demand, so **no manual `docker save | nerdctl load`** is needed —
+build once, then run. (Why a registry at all? `docker build` and the `local` backend use two separate
+image stores; the registry bridges them — see the repo README, "Prebuilt provider images".) Each run
+forwards the provider's credential via `env=` — the sandbox never reads or parses a credential file.
 
 ## Payloads
 

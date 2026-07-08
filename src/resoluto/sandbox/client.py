@@ -17,7 +17,9 @@ def default_local_image() -> str:
     Build it with ``resoluto-sandbox image build`` (tags ``resoluto-sandbox-base:<this version>``
     automatically), or ``docker build -f Dockerfile.base -t resoluto-sandbox-base:<this version> ..``
     directly, then load it into the local containerd (see README: Prebuilt provider images)."""
-    return f"resoluto-sandbox-base:{_pkg_version('resoluto-sandbox')}"
+    from resoluto.sandbox.images import pullable
+
+    return pullable(f"resoluto-sandbox-base:{_pkg_version('resoluto-sandbox')}")
 
 
 def _local_conduit_base() -> str:

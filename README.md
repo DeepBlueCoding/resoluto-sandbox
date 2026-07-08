@@ -290,13 +290,15 @@ and has no CLI flag yet.
 
 ## Prebuilt provider images
 
-Each overlay pins one SDK version and tags itself by it — the tag says exactly what's inside:
+Each overlay pins one SDK version and tags itself by it — the tag says exactly what's inside.
+`image build` **builds with Docker and pushes to the registry the local backend pulls from** (see the
+box below), so after it runs the image is ready — no manual transfer step. Bring the backend up first
+(`scripts/local-backend-up.sh`) so the registry exists:
 
 ```bash
-resoluto-sandbox image build --provider claude      # -> resoluto-sandbox:claude-agent-sdk-0.2.110
-resoluto-sandbox image build --provider langchain   # -> resoluto-sandbox:langchain-1.3.11
-resoluto-sandbox image build --provider openai      # -> resoluto-sandbox:openai-agents-0.17.7
-resoluto-sandbox image build --provider all         # builds the base once, then all three overlays
+resoluto-sandbox image build --provider claude   # -> pushed localhost:5000/resoluto-sandbox:claude-agent-sdk-0.2.110
+resoluto-sandbox image build --provider openai   # -> pushed localhost:5000/resoluto-sandbox:openai-agents-0.17.7  (also serves `openrouter`)
+resoluto-sandbox image build --provider all      # base once, then every overlay
 ```
 
 | Provider | Bakes | Example agent | Auth |
@@ -304,6 +306,7 @@ resoluto-sandbox image build --provider all         # builds the base once, then
 | `claude` | `@anthropic-ai/claude-code` + `claude-agent-sdk` | `examples/payloads/claude_agent.py` | Claude Max/Pro subscription (`claude setup-token`) or `ANTHROPIC_API_KEY` — see [`docs/auth.md`](docs/auth.md) |
 | `langchain` | bare `langchain` + `langgraph` — **no LLM integration** | `examples/payloads/langchain_agent.py` | Depends which integration you add — see below |
 | `openai` | `openai-agents` | `examples/payloads/openai_agent.py` | `OPENAI_API_KEY` — pay-as-you-go API only, `OPENAI_MODEL` override |
+| `openrouter` | *(reuses the `openai` image)* | `examples/payloads/openai_agent.py` (via `OPENAI_BASE_URL`) | `OPENROUTER_API_KEY` — OpenAI-compatible endpoint `https://openrouter.ai/api/v1`, default model `mistralai/mistral-small-3.2-24b-instruct`, `OPENROUTER_MODEL` override |
 
 > **The `langchain` image is bare on purpose.** LangChain itself is provider-agnostic — it has no
 > built-in way to call an LLM. To actually use it, extend the image with the matching integration
@@ -316,18 +319,30 @@ resoluto-sandbox image build --provider all         # builds the base once, then
 > `langchain-anthropic` + `ANTHROPIC_API_KEY`, model override `ANTHROPIC_MODEL`) — it will
 > `ImportError` against the plain prebuilt `langchain` image until you extend it this way.
 
-> **`image build` uses Docker; the local backend reads a *different*, dedicated containerd.**
-> `resoluto-sandbox image build` shells out to `docker build`, landing the image in your regular
-> Docker daemon. `Sandbox(backend="local")` launches via `nerdctl` against its OWN dedicated
-> containerd (`scripts/local-backend-up.sh`'s namespace) — a **separate image store** that never
-> sees what plain `docker build`/`docker images` produced. Transfer a built image into it once:
+> **Two image stores — and how a built image reaches the sandbox.** `docker build` lands the image in
+> your regular **Docker daemon**. The `local` backend does *not* use Docker: it launches Kata microVMs
+> via `nerdctl` against its OWN **dedicated containerd** (`/run/resoluto-local/containerd/`, set up by
+> `scripts/local-backend-up.sh`) — a **separate image store** that can't see what `docker build`
+> produced. The bridge between the two is the on-box **registry**:
+>
+> - `resoluto-sandbox image build` builds with Docker **and pushes** to the registry
+>   (`localhost:5000` by default; set `RESOLUTO_SANDBOX_REGISTRY` for k8s or a shared registry).
+> - The examples reference the **registry-qualified** tag (`localhost:5000/resoluto-sandbox:…`, via
+>   `images.pullable()`), and the backend **pulls it on demand** — `localhost` registries are
+>   insecure/HTTP by default, so `nerdctl run` pulls with no extra flag.
+>
+> So after `image build` there is **nothing else to do** — the image is in the registry and the first
+> `run` pulls it into the containerd (then it's cached). This mirrors how the base image already flows
+> (`local-backend-up.sh` pushes it to the same registry). It's the exact mechanism `RESOLUTO_SANDBOX_IMAGE`
+> uses — a `localhost:5000/…` reference.
+>
+> No registry available? Set `RESOLUTO_SANDBOX_REGISTRY=""` (build stays a bare tag) and transfer the
+> image into the containerd directly instead:
 > ```bash
-> docker save resoluto-sandbox:langchain-1.3.11 \
+> docker save resoluto-sandbox:openai-agents-0.17.7 \
 >   | sudo "$RESOLUTO_LOCAL_NERDCTL" --address /run/resoluto-local/containerd/containerd.sock \
 >       --namespace resoluto-local load
 > ```
-> Skip this and `Sandbox(backend="local").run(...)` fails with `nerdctl run failed ... pull access
-> denied` — it tried (and failed) to pull the tag from a registry instead of finding it locally.
 
 Verified end to end against the real Kata sandbox (all three: canary passes, workspace stages, the
 script runs and reaches its auth check). `claude` and `openai` run against the plain prebuilt image;

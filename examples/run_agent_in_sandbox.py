@@ -31,7 +31,7 @@ from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
 from resoluto.sandbox import Sandbox
-from resoluto.sandbox.images import image_tags
+from resoluto.sandbox.images import image_tags, pullable
 
 PAYLOADS = Path(__file__).resolve().parent / "payloads"
 DEFAULT_PROMPT = "In five words, why run an untrusted agent in a sandbox?"
@@ -69,7 +69,9 @@ def main() -> int:
     spec = PROVIDERS[provider]
     payload, llm_host = spec["payload"], spec["host"]
 
-    image = image_tags(_pkg_version("resoluto-sandbox"))[spec["image"]]
+    # the registry-qualified reference (localhost:5000/…) the local backend pulls; `image build`
+    # pushed it there, so no manual load step is needed.
+    image = pullable(image_tags(_pkg_version("resoluto-sandbox"))[spec["image"]])
     token = os.environ.get(spec["auth_env"])
     if not token:
         print(f"set {spec['auth_env']} (the {provider} provider's own credential) — the sandbox "

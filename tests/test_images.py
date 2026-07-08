@@ -1,5 +1,7 @@
 import pytest
-from resoluto.sandbox.images import build, image_tags, PROVIDERS, SDK_PACKAGE, SDK_VERSION
+from resoluto.sandbox.images import (
+    build, image_tags, pullable, PROVIDERS, SDK_PACKAGE, SDK_VERSION,
+)
 
 
 class FakeRunner:
@@ -10,6 +12,11 @@ class FakeRunner:
         self.calls.append(cmd)
 
 
+def _builds(fake):
+    """The `docker build` calls only (push adds `docker tag`/`docker push` calls)."""
+    return [c for c in fake.calls if c[:2] == ["docker", "build"]]
+
+
 def test_build_langchain_returns_correct_tag():
     fake = FakeRunner()
     tag = build("langchain", ver="9.9.9", runner=fake)
@@ -18,16 +25,26 @@ def test_build_langchain_returns_correct_tag():
 
 def test_build_records_base_then_overlay():
     fake = FakeRunner()
-    build("langchain", ver="9.9.9", runner=fake)
+    build("langchain", ver="9.9.9", push=False, runner=fake)
     assert len(fake.calls) == 2
     assert "Dockerfile.base" in fake.calls[0]
     assert "images/langchain.Dockerfile" in fake.calls[1]
 
 
-def test_build_passes_base_image_arg():
+def test_build_pushes_base_and_overlay_to_registry():
     fake = FakeRunner()
     build("langchain", ver="9.9.9", runner=fake)
-    overlay_cmd = fake.calls[1]
+    pushed = [c[2] for c in fake.calls if c[:2] == ["docker", "push"]]
+    assert pushed == [
+        pullable("resoluto-sandbox-base:9.9.9"),
+        pullable(f"resoluto-sandbox:langchain-{SDK_VERSION['langchain']}"),
+    ]
+
+
+def test_build_passes_base_image_arg():
+    fake = FakeRunner()
+    build("langchain", ver="9.9.9", push=False, runner=fake)
+    overlay_cmd = _builds(fake)[1]
     assert "--build-arg" in overlay_cmd
     base_arg_idx = overlay_cmd.index("--build-arg")
     assert overlay_cmd[base_arg_idx + 1].startswith("BASE_IMAGE=resoluto-sandbox-base:9.9.9")
@@ -35,23 +52,21 @@ def test_build_passes_base_image_arg():
 
 def test_build_passes_image_version_arg():
     fake = FakeRunner()
-    build("langchain", ver="9.9.9", runner=fake)
-    overlay_cmd = fake.calls[1]
-    assert "IMAGE_VERSION=9.9.9" in overlay_cmd
+    build("langchain", ver="9.9.9", push=False, runner=fake)
+    assert "IMAGE_VERSION=9.9.9" in _builds(fake)[1]
 
 
 def test_build_passes_sdk_version_arg():
     fake = FakeRunner()
-    build("langchain", ver="9.9.9", runner=fake)
-    overlay_cmd = fake.calls[1]
-    assert f"SDK_VERSION={SDK_VERSION['langchain']}" in overlay_cmd
+    build("langchain", ver="9.9.9", push=False, runner=fake)
+    assert f"SDK_VERSION={SDK_VERSION['langchain']}" in _builds(fake)[1]
 
 
 def test_build_custom_base_tag():
     fake = FakeRunner()
-    build("openai", ver="1.0.0", base_tag="my-base:latest", runner=fake)
-    assert len(fake.calls) == 1
-    assert "BASE_IMAGE=my-base:latest" in fake.calls[0]
+    build("openai", ver="1.0.0", base_tag="my-base:latest", push=False, runner=fake)
+    assert len(_builds(fake)) == 1
+    assert "BASE_IMAGE=my-base:latest" in _builds(fake)[0]
 
 
 def test_build_unknown_provider_raises():
@@ -87,8 +102,11 @@ def test_cli_image_build_langchain(monkeypatch, capsys):
     rc = main(["image", "build", "--provider", "langchain", "--version", "9.9.9"])
     assert rc == 0
     out = capsys.readouterr().out
-    assert f"resoluto-sandbox:langchain-{SDK_VERSION['langchain']}" in out
-    assert len(calls) == 2
+    overlay = f"resoluto-sandbox:langchain-{SDK_VERSION['langchain']}"
+    assert overlay in out
+    assert f"pushed {pullable(overlay)}" in out
+    builds = [c for c in calls if c[:2] == ["docker", "build"]]
+    assert len(builds) == 2  # base + overlay (each also tagged + pushed)
 
 
 def test_cli_image_build_all_builds_base_once(monkeypatch, capsys):
@@ -121,6 +139,6 @@ def test_cli_image_build_context_flag_passed_through(monkeypatch, capsys):
     from resoluto.sandbox.cli import main
     rc = main(["image", "build", "--provider", "claude", "--version", "1.0.0", "--context", ".."])
     assert rc == 0
-    assert len(calls) == 2
-    assert calls[0][-1] == ".."
-    assert calls[1][-1] == ".."
+    builds = [c for c in calls if c[:2] == ["docker", "build"]]
+    assert len(builds) == 2                    # base + overlay
+    assert all(c[-1] == ".." for c in builds)  # context flag threaded to both

@@ -58,7 +58,9 @@ def test_local_default_image_and_override(monkeypatch):
     from importlib.metadata import version as pkg_version
 
     from resoluto.sandbox.client import default_local_image
-    assert default_local_image() == f"resoluto-sandbox-base:{pkg_version('resoluto-sandbox')}"
+    from resoluto.sandbox.images import pullable
+    # default is the base tag registry-qualified for the local backend to pull (localhost:5000/…)
+    assert default_local_image() == pullable(f"resoluto-sandbox-base:{pkg_version('resoluto-sandbox')}")
     assert Sandbox(backend="local")._backend._image == default_local_image()
     assert Sandbox(backend="local", image="my:img")._backend._image == "my:img"
 
