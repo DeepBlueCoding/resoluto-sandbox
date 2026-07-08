@@ -1429,18 +1429,20 @@ is immune to in-guest root. The egress canary runs fail-closed before your workl
 trusted-local bypass.</p>
 <h3 id="what-you-need">What you need<a class="headerlink" href="#what-you-need" title="Permanent link">&para;</a></h3>
 <ul>
-<li>A standalone containerd + nerdctl + Kata on this machine. Provision with
-  <code>scripts/local-backend-up.sh</code> (ends with a green Kata-microVM canary).</li>
+<li>KVM + Kata + a <code>nerdctl-full</code> bundle + Docker + a <code>localhost:5000</code> registry on this Linux host —
+  see the README's <a href="../README.md#requirements-host">Requirements</a> for how to install each. Provision
+  the rest with <code>scripts/local-backend-up.sh</code> (ends with a green Kata-microVM canary).</li>
 <li>An image with python + the resoluto-sandbox wheel + your program's deps. Default:
-  <code>resoluto-sandbox-base:&lt;installed wheel version&gt;</code> (<code>client.default_local_image()</code>) — computed
-  dynamically from the running <code>resoluto-sandbox</code> package version, never a hardcoded floating tag —
-  held in this host's containerd; the local backend never pulls from a registry. Override with
-  <code>Sandbox(backend="local", image="your-image:tag")</code>.</li>
-<li>If you built that image with plain <code>docker build</code> (including <code>resoluto-sandbox image build</code>), it
-  landed in your regular Docker daemon — a <strong>different</strong> image store than the dedicated containerd
-  this backend reads from. Transfer it once with <code>docker save &lt;tag&gt; | sudo "$RESOLUTO_LOCAL_NERDCTL"
-  --address /run/resoluto-local/containerd/containerd.sock --namespace resoluto-local load</code> (see the
-  README's <a href="../README.md#prebuilt-provider-images">Prebuilt provider images</a> section).</li>
+  <code>default_local_image()</code> = the base image, registry-qualified (<code>localhost:5000/resoluto-sandbox-base:&lt;installed
+  wheel version&gt;</code>) — computed from the running package version, never a floating tag. Override with
+  <code>Sandbox(backend="local", image="…")</code>.</li>
+<li><strong>How a built image reaches this backend — via the registry.</strong> <code>docker build</code> (including
+  <code>resoluto-sandbox image build</code>) lands the image in your regular Docker daemon, a <strong>separate</strong> store
+  from the dedicated containerd this backend reads. The bridge is the on-box registry: <code>image build</code>
+  <strong>pushes</strong> there, and the backend <strong>pulls on demand</strong> (<code>localhost</code> is insecure/HTTP by default). For
+  your own image, <code>docker build … &amp;&amp; resoluto-sandbox image push &lt;tag&gt;</code>, then reference
+  <code>localhost:5000/&lt;tag&gt;</code>. Opt out with <code>RESOLUTO_SANDBOX_REGISTRY=""</code> (bare tags + <code>docker save |
+  nerdctl load</code>). See the README's <a href="../README.md#prebuilt-provider-images">Prebuilt provider images</a>.</li>
 </ul>
 <h2 id="k8s">k8s<a class="headerlink" href="#k8s" title="Permanent link">&para;</a></h2>
 <p>Each <code>run()</code> call launches one short-lived Kata microVM pod. The host and pod exchange
