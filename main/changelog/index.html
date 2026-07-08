@@ -984,6 +984,15 @@
   (experimental) — and the <code>SandboxRuntime</code> isolation seam.</li>
 <li>Per-run egress control, <code>SandboxPool</code> bounded concurrency, and the <code>SubstrateBackend</code> that drives
   the stage → run → collect lifecycle.</li>
+<li><code>GcsConduit</code> hardened to <code>S3Conduit</code> parity: bounded transient-fault retry, <code>ConduitError</code>
+  translation, and auth-denial (401/403) passthrough; documented as a single-tenant host-side store
+  with no per-prefix credential scoping.</li>
+<li><code>store_from_env</code> refuses <code>RESOLUTO_STORE_KIND=gcs</code> with a scoped <code>RESOLUTO_STORE_WRITE_TOKEN</code>
+  rather than silently granting whole-service-account access.</li>
+<li><code>K8sSandboxRuntime</code> refuses to build an egress <code>NetworkPolicy</code> for a pod with no labels (an empty
+  podSelector would apply to every pod in the namespace), and <code>close()</code> resets its cached API clients.</li>
+<li>Added <code>SOUL.md</code> — the substrate's design philosophy (isolation ⊥ rendezvous; the Conduit as the
+  backend-portability seam).</li>
 </ul>
 
 
