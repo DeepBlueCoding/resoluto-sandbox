@@ -212,7 +212,7 @@ Option B — cloud S3: create a bucket on AWS S3 (or any S3-compatible provider)
 `image build` tags by the pinned SDK package + version, e.g. `resoluto-sandbox:claude-agent-sdk-0.2.110` (see `images.py:SDK_VERSION`). Retag to your registry path before pushing:
 
 ```bash
-tag=$(resoluto-sandbox image build --provider claude)
+tag=$(resoluto-sandbox image build --provider claude | awk '{print $1}')   # first field = the built tag
 docker tag "$tag" <registry>/resoluto-sandbox-base:0.1.0
 docker push <registry>/resoluto-sandbox-base:0.1.0
 ```

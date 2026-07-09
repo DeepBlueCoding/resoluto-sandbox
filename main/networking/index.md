@@ -34,7 +34,7 @@ from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
 # RESOLUTO_STORE_EGRESS_CIDR/PORT override for a DNAT'd store; NetworkPolicy is evaluated POST-DNAT).
 egress = EgressConfig.from_store_env()
 # ...or construct it explicitly (deny-by-default; open what you need):
-egress = EgressConfig(store_cidr="192.168.1.197/32", store_port=9000,
+egress = EgressConfig(store_cidr="10.0.0.5/32", store_port=9000,
                       allow=["api.anthropic.com", "registry.npmjs.org", "pypi.org"])  # least privilege; store port default 443
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
