@@ -5,7 +5,7 @@ site_url: https://deepbluecoding.github.io/resoluto-sandbox/
 
 repo_name: DeepBlueCoding/resoluto-sandbox
 repo_url: https://github.com/DeepBlueCoding/resoluto-sandbox
-edit_uri: edit/main/docs/
+edit_uri: edit/master/docs/
 
 theme:
   name: material
