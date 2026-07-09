@@ -1,0 +1,1832 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="The store-mediated, Kata-isolated execution substrate — a passive, self-reporting sandbox that rendezvous with the host through a durable store.">
+      
+      
+        <meta name="author" content="DeepBlueCoding">
+      
+      
+        <link rel="canonical" href="https://deepbluecoding.github.io/resoluto-sandbox/0.1.0-rc3/networking/">
+      
+      
+        <link rel="prev" href="../backends/">
+      
+      
+        <link rel="next" href="../concurrency/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Networking - Resoluto Sandbox</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="deep-purple" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#networking" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Resoluto Sandbox" class="md-header__button md-logo" aria-label="Resoluto Sandbox" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18s-.41-.06-.57-.18l-7.9-4.44A.99.99 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18s.41.06.57.18l7.9 4.44c.32.17.53.5.53.88zM12 4.15 6.04 7.5 12 10.85l5.96-3.35zM5 15.91l6 3.38v-6.71L5 9.21zm14 0v-6.7l-6 3.37v6.71z"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Resoluto Sandbox
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Networking
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="deep-purple" data-md-color-accent="indigo"  aria-label="Switch to light"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="indigo"  aria-label="Switch to dark"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/DeepBlueCoding/resoluto-sandbox" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    DeepBlueCoding/resoluto-sandbox
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../concepts/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Concepts
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../protocol/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Protocol
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../examples/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Examples
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../backends/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Backends
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Networking
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../concurrency/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Concurrency
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../auth/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Credentials
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../api/sandbox/" class="md-tabs__link">
+          
+  
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../versioning/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Versioning
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Resoluto Sandbox" class="md-nav__button md-logo" aria-label="Resoluto Sandbox" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18s-.41-.06-.57-.18l-7.9-4.44A.99.99 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18s.41.06.57.18l7.9 4.44c.32.17.53.5.53.88zM12 4.15 6.04 7.5 12 10.85l5.96-3.35zM5 15.91l6 3.38v-6.71L5 9.21zm14 0v-6.7l-6 3.37v6.71z"/></svg>
+
+    </a>
+    Resoluto Sandbox
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/DeepBlueCoding/resoluto-sandbox" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    DeepBlueCoding/resoluto-sandbox
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Networking
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Networking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#local-backend-kata-isolation-host-side-egress-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local backend — Kata isolation + host-side egress policy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#k8s-backend-kata-isolation-egress-networkpolicy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        k8s backend — Kata isolation + egress NetworkPolicy
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="k8s backend — Kata isolation + egress NetworkPolicy">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#egressnone-the-opt-out-no-networkpolicy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        egress=None — the opt-OUT (no NetworkPolicy)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#egressconfig-deny-by-default-secure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EgressConfig — deny by default (secure)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-the-networkpolicy-allows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the NetworkPolicy allows
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cidr-only-no-fqdns-for-the-store" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CIDR-only: no FQDNs for the store
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cni-requirement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CNI requirement
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#egress-canary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Egress canary
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#modifying-the-egress-allowlist-one-config-both-backends" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Modifying the egress allowlist — ONE config, both backends
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Modifying the egress allowlist — ONE config, both backends">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#allow-by-domain-per-step-runegress-the-primary-knob" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Allow by DOMAIN, PER STEP — run(egress=[...]) (the primary knob)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-can-manage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you can manage
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concurrency/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concurrency
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../auth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Credentials
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/sandbox/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sandbox
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/conduit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Conduit
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runtime & Contracts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/pool/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pool
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/driver/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Driver
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/staging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Staging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/telemetry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telemetry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../versioning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Versioning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#local-backend-kata-isolation-host-side-egress-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local backend — Kata isolation + host-side egress policy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#k8s-backend-kata-isolation-egress-networkpolicy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        k8s backend — Kata isolation + egress NetworkPolicy
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="k8s backend — Kata isolation + egress NetworkPolicy">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#egressnone-the-opt-out-no-networkpolicy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        egress=None — the opt-OUT (no NetworkPolicy)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#egressconfig-deny-by-default-secure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EgressConfig — deny by default (secure)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-the-networkpolicy-allows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the NetworkPolicy allows
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cidr-only-no-fqdns-for-the-store" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CIDR-only: no FQDNs for the store
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cni-requirement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CNI requirement
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#egress-canary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Egress canary
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#modifying-the-egress-allowlist-one-config-both-backends" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Modifying the egress allowlist — ONE config, both backends
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Modifying the egress allowlist — ONE config, both backends">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#allow-by-domain-per-step-runegress-the-primary-knob" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Allow by DOMAIN, PER STEP — run(egress=[...]) (the primary knob)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-can-manage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you can manage
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="networking">Networking<a class="headerlink" href="#networking" title="Permanent link">&para;</a></h1>
+<h2 id="local-backend-kata-isolation-host-side-egress-policy">Local backend — Kata isolation + host-side egress policy<a class="headerlink" href="#local-backend-kata-isolation-host-side-egress-policy" title="Permanent link">&para;</a></h2>
+<p>The local backend runs the program in a Kata microVM launched via <code>nerdctl</code> against a standalone
+containerd on this host — full Kata isolation, on a single host with no cluster. Egress is enforced
+host-side on its CNI bridge and is <strong>default-deny (secure by default)</strong>: a fresh sandbox reaches only
+DNS and its store. You opt in to what the workload needs at PROVISION time via the env knobs
+(<code>RESOLUTO_EGRESS_ALLOW</code> for specific destinations, <code>RESOLUTO_EGRESS_PUBLIC_HTTPS=1</code> for all
+outbound :443). IMDS <code>169.254.169.254</code> and RFC1918 private ranges are always rejected, so the
+policy is immune to in-guest root. The egress canary always runs fail-closed before any workload,
+the Kata runtime-class guard is unconditional, and host AWS creds are never forwarded (a scoped
+store token only).</p>
+<p>Provision the local backend with <code>scripts/local-backend-up.sh</code> (ends with a green Kata-microVM
+canary). To open egress, set the env before running it, e.g.:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nv">RESOLUTO_EGRESS_ALLOW</span><span class="o">=</span>api.anthropic.com,registry.npmjs.org<span class="w"> </span>scripts/local-backend-up.sh<span class="w">   </span><span class="c1"># least privilege</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nv">RESOLUTO_EGRESS_PUBLIC_HTTPS</span><span class="o">=</span><span class="m">1</span><span class="w"> </span>scripts/local-backend-up.sh<span class="w">             </span><span class="c1"># escape hatch: all :443</span>
+</span></code></pre></div>
+<p>Use <code>backend="local"</code> for single-host development. For cluster-scale placement, use <code>backend="k8s"</code>.</p>
+<h2 id="k8s-backend-kata-isolation-egress-networkpolicy">k8s backend — Kata isolation + egress NetworkPolicy<a class="headerlink" href="#k8s-backend-kata-isolation-egress-networkpolicy" title="Permanent link">&para;</a></h2>
+<h3 id="egressnone-the-opt-out-no-networkpolicy"><code>egress=None</code> — the opt-OUT (no NetworkPolicy)<a class="headerlink" href="#egressnone-the-opt-out-no-networkpolicy" title="Permanent link">&para;</a></h3>
+<p><code>egress=None</code> on <code>K8sSandboxRuntime</code> is an explicit opt-OUT of network isolation: NO NetworkPolicy
+is created, so the sandbox pod has <strong>unrestricted egress</strong>. The pod still runs inside a Kata microVM
+(separate OS kernel, no host process namespace), but nothing restricts which hosts the workload can
+reach. This is DIFFERENT from <code>EgressConfig()</code>, which is deny-by-default (see below). Use
+<code>egress=None</code> only for trusted workloads where kernel isolation alone is acceptable; for untrusted
+code always pass an <code>EgressConfig</code>.</p>
+<h3 id="egressconfig-deny-by-default-secure"><code>EgressConfig</code> — deny by default (secure)<a class="headerlink" href="#egressconfig-deny-by-default-secure" title="Permanent link">&para;</a></h3>
+<p><code>EgressConfig()</code> is <strong>secure by default</strong>: it DENIES all egress except DNS and the object store —
+a fresh sandbox cannot reach the internet, the LLM, or registries. You opt IN to exactly what the
+workload needs. Pass it to <code>K8sSandboxRuntime</code> and it applies a default-deny egress NetworkPolicy
+to the sandbox pod (created before the pod) so egress is enforced from the first packet:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox</span><span class="w"> </span><span class="kn">import</span> <span class="n">Sandbox</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.backends.substrate</span><span class="w"> </span><span class="kn">import</span> <span class="n">SubstrateBackend</span><span class="p">,</span> <span class="n">store_env_for_pod</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.conduit.factory</span><span class="w"> </span><span class="kn">import</span> <span class="n">store_from_env</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.runtime.k8s</span><span class="w"> </span><span class="kn">import</span> <span class="n">K8sSandboxRuntime</span><span class="p">,</span> <span class="n">EgressConfig</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="c1"># The ONE shared builder — resolves RESOLUTO_STORE_ENDPOINT to the store CIDR:port (honoring the</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="c1"># RESOLUTO_STORE_EGRESS_CIDR/PORT override for a DNAT&#39;d store; NetworkPolicy is evaluated POST-DNAT).</span>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="n">egress</span> <span class="o">=</span> <span class="n">EgressConfig</span><span class="o">.</span><span class="n">from_store_env</span><span class="p">()</span>
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="c1"># ...or construct it explicitly (deny-by-default; open what you need):</span>
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="n">egress</span> <span class="o">=</span> <span class="n">EgressConfig</span><span class="p">(</span><span class="n">store_cidr</span><span class="o">=</span><span class="s2">&quot;192.168.1.197/32&quot;</span><span class="p">,</span> <span class="n">store_port</span><span class="o">=</span><span class="mi">9000</span><span class="p">,</span>
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>                      <span class="n">allow</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;api.anthropic.com&quot;</span><span class="p">,</span> <span class="s2">&quot;registry.npmjs.org&quot;</span><span class="p">,</span> <span class="s2">&quot;pypi.org&quot;</span><span class="p">])</span>  <span class="c1"># least privilege; store port default 443</span>
+</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="n">runtime</span> <span class="o">=</span> <span class="n">K8sSandboxRuntime</span><span class="p">(</span>
+</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>    <span class="n">namespace</span><span class="o">=</span><span class="s2">&quot;resoluto-sandboxes&quot;</span><span class="p">,</span>
+</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>    <span class="n">context</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;RESOLUTO_SANDBOX_KUBECONTEXT&quot;</span><span class="p">),</span>
+</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>    <span class="n">egress</span><span class="o">=</span><span class="n">egress</span><span class="p">,</span>
+</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="p">)</span>
+</span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a><span class="n">sb</span> <span class="o">=</span> <span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">SubstrateBackend</span><span class="p">(</span>
+</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>    <span class="n">runtime</span><span class="o">=</span><span class="n">runtime</span><span class="p">,</span>
+</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>    <span class="n">conduit</span><span class="o">=</span><span class="n">store_from_env</span><span class="p">(),</span>
+</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>    <span class="n">image</span><span class="o">=</span><span class="s2">&quot;&lt;registry&gt;/resoluto-sandbox-base:0.1.0&quot;</span><span class="p">,</span>
+</span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>    <span class="n">store_env</span><span class="o">=</span><span class="n">store_env_for_pod</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">),</span>
+</span><span id="__span-1-23"><a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a><span class="p">))</span>
+</span></code></pre></div>
+<p><code>EgressConfig</code> is imported from <code>resoluto.sandbox.runtime.k8s</code>. Do not add it to the top-level
+<code>resoluto.sandbox</code> import — that would pull in <code>kubernetes_asyncio</code> eagerly.</p>
+<h3 id="what-the-networkpolicy-allows">What the NetworkPolicy allows<a class="headerlink" href="#what-the-networkpolicy-allows" title="Permanent link">&para;</a></h3>
+<p>The generated policy is default-deny egress. It ALWAYS allows the store and DNS; the other rows are
+opt-in:</p>
+<table>
+<thead>
+<tr>
+<th>Destination</th>
+<th>Port</th>
+<th>Protocol</th>
+<th>When</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>store_cidr</code></td>
+<td><code>store_port</code></td>
+<td>TCP</td>
+<td>always</td>
+</tr>
+<tr>
+<td><code>0.0.0.0/0</code> (DNS)</td>
+<td>53</td>
+<td>UDP + TCP</td>
+<td>always</td>
+</tr>
+<tr>
+<td>each <code>allow</code> entry (hostname/CIDR)</td>
+<td><code>allow_port</code> (443 default)</td>
+<td>TCP</td>
+<td>when <code>allow=[...]</code> is set</td>
+</tr>
+<tr>
+<td><code>0.0.0.0/0</code> (public HTTPS)</td>
+<td>443</td>
+<td>TCP</td>
+<td>ONLY when <code>public_https=True</code></td>
+</tr>
+</tbody>
+</table>
+<p>The broad <code>0.0.0.0/0</code> rules include <code>except: ["169.254.169.254/32"]</code> so the cloud metadata endpoint
+(IMDS) is unreachable; the <code>store_cidr</code> rule is a specific host so it carries no <code>except</code> (k8s
+requires <code>except ⊂ cidr</code>). Prefer <code>allow=[...]</code> (least privilege) for untrusted code; on the
+<strong>local</strong> backend the preferred way to open egress is per-run <code>Sandbox.run(egress=["api.anthropic.com"])</code>
+(enforced by DOMAIN via the built-in SNI proxy, so it never goes stale for CDN-backed hosts); use
+<code>public_https=True</code> only as a deliberate escape hatch for trusted workloads.</p>
+<h3 id="cidr-only-no-fqdns-for-the-store">CIDR-only: no FQDNs for the store<a class="headerlink" href="#cidr-only-no-fqdns-for-the-store" title="Permanent link">&para;</a></h3>
+<p>Kubernetes <code>NetworkPolicy</code> <code>ipBlock</code> does not accept hostnames, so <code>store_cidr</code> must be a CIDR
+(<code>EgressConfig.__post_init__</code> rejects anything without <code>/</code>). Hostname entries in <code>allow</code>
+resolve to CIDRs at render time. Build the config from the env with <code>EgressConfig.from_store_env()</code>,
+which resolves <code>RESOLUTO_STORE_ENDPOINT</code> (or honors the <code>RESOLUTO_STORE_EGRESS_CIDR/PORT</code> override
+for a DNAT'd store — NetworkPolicy is evaluated post-DNAT).</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">EgressConfig</span><span class="p">(</span><span class="n">store_cidr</span><span class="o">=</span><span class="s2">&quot;api.anthropic.com&quot;</span><span class="p">)</span>  <span class="c1"># raises ValueError — no &#39;/&#39;</span>
+</span></code></pre></div>
+<h3 id="cni-requirement">CNI requirement<a class="headerlink" href="#cni-requirement" title="Permanent link">&para;</a></h3>
+<p>NetworkPolicy enforcement requires a NetworkPolicy-capable CNI (e.g. Calico, Cilium, Flannel
+with NetworkPolicy support). Some distributions (e.g. k3s) ship with Flannel + the NetworkPolicy
+controller enabled by default; managed clusters (EKS, GKE, AKS) may need it enabled separately.
+On a cluster without a NetworkPolicy controller the manifested policy is silently <strong>not enforced</strong> —
+the in-guest egress canary (see below) is the empirical backstop.</p>
+<h3 id="egress-canary">Egress canary<a class="headerlink" href="#egress-canary" title="Permanent link">&para;</a></h3>
+<p>Before the workload runs, the pod self-verifies isolation with three probes:</p>
+<ol>
+<li><strong>Non-allowlisted external TCP</strong> — must be blocked (NetworkPolicy enforced).</li>
+<li><strong>IMDS TCP <code>169.254.169.254:80</code></strong> — must be blocked (no cloud-metadata leakage).</li>
+<li><strong>Store PUT sentinel</strong> — must succeed (the only permitted egress channel).</li>
+</ol>
+<p>If any probe returns an unexpected result the sandbox aborts with a reason string naming every
+failed probe. This catch fires when the CNI enforces the policy incorrectly, or when the policy
+was not applied before the pod started.</p>
+<p>The canary always runs and is fail-closed. Host AWS credentials are never forwarded to the pod; a
+scoped store token is the only credential it receives. The <code>evaluate_verdict</code> pure function (the
+pass/fail logic) is unit-tested in <code>tests/test_egress_canary.py</code>; the in-guest execution is the live
+check.</p>
+<h2 id="modifying-the-egress-allowlist-one-config-both-backends">Modifying the egress allowlist — ONE config, both backends<a class="headerlink" href="#modifying-the-egress-allowlist-one-config-both-backends" title="Permanent link">&para;</a></h2>
+<p>Egress is configured by a single backend-neutral value object, <code>resoluto.sandbox.egress.EgressConfig</code>,
+which each backend renders to its own mechanism (k8s → NetworkPolicy, local → host <code>iptables</code>). It is
+<strong>deny-by-default</strong>: <code>EgressConfig()</code> allows ONLY the store + DNS; IMDS (and on local, RFC1918) are
+always denied. So github, api.anthropic.com, package mirrors, etc. do NOT work until you open them.
+You opt in with <code>allow=[...]</code> (least privilege) or, for trusted code, <code>public_https=True</code> (all :443).</p>
+<p>Three simple knobs (no CIDRs or code edits needed):</p>
+<table>
+<thead>
+<tr>
+<th>Knob</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>allow=[...]</code></td>
+<td>extra destinations — <strong>hostnames</strong> OR <strong>CIDRs</strong> — allowed on <code>allow_port</code>. Hostnames resolve to CIDRs when rendered. The least-privilege way to open egress.</td>
+</tr>
+<tr>
+<td><code>allow_port</code></td>
+<td>port for <code>allow</code> (default 443; e.g. <strong>22</strong> for git-over-SSH, or a private service port)</td>
+</tr>
+<tr>
+<td><code>public_https</code></td>
+<td><code>False</code> (default) = deny all outbound except store + <code>allow</code> + DNS; set <strong><code>True</code></strong> to allow ALL <code>:443</code> (escape hatch for trusted code)</td>
+</tr>
+</tbody>
+</table>
+<p>So a sandbox that needs the LLM + npm/pypi reads
+<code>EgressConfig(allow=["api.anthropic.com", "registry.npmjs.org", "pypi.org"])</code> (or
+<code>RESOLUTO_EGRESS_ALLOW="api.anthropic.com,registry.npmjs.org"</code>). Hostname entries resolve to
+<strong>current</strong> IPs when the policy is rendered; these APIs are CDN-backed (rotating IPs), so a pinned
+allowlist is best-effort and needs periodic re-resolve. On the <strong>local</strong> backend prefer per-run
+<code>Sandbox.run(egress=["api.anthropic.com"])</code> (enforced by DOMAIN via the built-in SNI proxy, so it
+never goes stale for CDN-backed hosts); <code>EgressConfig(allow=[...])</code> (CIDR-based) is the k8s
+per-runtime path. When you need reliable access from otherwise-restricted code, <code>public_https=True</code>
+(all :443, trusted code) is the pragmatic escape hatch.</p>
+<h3 id="allow-by-domain-per-step-runegress-the-primary-knob">Allow by DOMAIN, PER STEP — <code>run(egress=[...])</code> (the primary knob)<a class="headerlink" href="#allow-by-domain-per-step-runegress-the-primary-knob" title="Permanent link">&para;</a></h3>
+<p><code>allow=[...]</code> (below) is CIDR-based (resolves hostnames to IPs at render time), so it goes stale for
+CDN-backed APIs (rotating IPs) and can never match a URL path — TLS encrypts everything but the
+destination IP:port and the <strong>SNI</strong> hostname. For a domain allowlist that scales AND is set per step,
+pass <code>egress=[domains]</code> to each <code>run()</code>:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="s2">&quot;local&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">argv</span><span class="p">,</span> <span class="n">egress</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;api.anthropic.com&quot;</span><span class="p">])</span>    <span class="c1"># this step reaches ONLY Anthropic</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="s2">&quot;local&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">argv</span><span class="p">,</span> <span class="n">egress</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;registry.npmjs.org&quot;</span><span class="p">])</span>   <span class="c1"># this step reaches ONLY the npm registry</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="s2">&quot;local&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">argv</span><span class="p">)</span>                                  <span class="c1"># egress=None → deny all (secure default)</span>
+</span></code></pre></div>
+<p>Each <code>run()</code> sets that step's allowed domains on the fly and clears them after — <strong>no re-provision</strong>.
+Under the hood the built-in <strong>SNI proxy</strong> (<code>resoluto.sandbox.egress_proxy</code>) reads the step's allowlist
+LIVE (from a file each run rewrites) and splices the (still-encrypted) stream to the original
+destination ONLY if the TLS SNI matches — exact (<code>api.anthropic.com</code>) or <code>*.wildcard</code> (<code>*.openai.com</code>).
+No IP pinning, no CA/MITM, works under any CNI; it refuses internal/IMDS destinations even on an SNI
+match (no SSRF). The mechanism is <code>KataNerdctlSandboxRuntime.apply_egress()</code> writing the proxy's live
+allowlist file; <code>SubstrateBackend.run</code> applies it before the sandbox and clears it after.</p>
+<p>One-time setup runs the proxy + the static <code>:443</code> redirect: <code>scripts/local-backend-up.sh</code> (it also
+seeds the file from <code>RESOLUTO_EGRESS_DOMAINS</code> if set — a default, overridden per run).</p>
+<p>Verified end-to-end, back-to-back with NO re-provision: <code>run(egress=["registry.npmjs.org"])</code> → a sandbox's
+<code>pnpm add is-odd</code> installs from the registry; <code>run(egress=["api.anthropic.com"])</code> → the same install is
+blocked (ECONNRESET) while a real Claude agent answers. A URL <em>path</em> still can't be enforced at this
+layer (that needs a MITM proxy). DNS and the CIDR FORWARD chain handle everything else; <code>allow=[...]</code>
+(below) remains for non-443 ports / explicit CIDRs. NOTE: <code>egress=</code> is applied by the <code>local</code> backend
+today; on <code>k8s</code> use <code>EgressConfig</code> (per-runtime).</p>
+<p><strong>In code (k8s):</strong>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox.egress</span><span class="w"> </span><span class="kn">import</span> <span class="n">EgressConfig</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">EgressConfig</span><span class="p">(</span><span class="n">store_cidr</span><span class="o">=</span><span class="s2">&quot;10.0.0.5/32&quot;</span><span class="p">,</span> <span class="n">store_port</span><span class="o">=</span><span class="mi">9100</span><span class="p">,</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>             <span class="n">allow</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;github.com&quot;</span><span class="p">],</span> <span class="n">allow_port</span><span class="o">=</span><span class="mi">22</span><span class="p">)</span>        <span class="c1"># least privilege: + git-over-SSH</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">EgressConfig</span><span class="p">(</span><span class="n">store_cidr</span><span class="o">=</span><span class="s2">&quot;10.0.0.5/32&quot;</span><span class="p">,</span> <span class="n">public_https</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>  <span class="c1"># escape hatch: all outbound :443</span>
+</span></code></pre></div></p>
+<p><strong>Via env (works for BOTH backends — k8s reads these in <code>from_store_env()</code>, the local provisioner
+reads them too):</strong>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RESOLUTO_EGRESS_ALLOW</span><span class="o">=</span><span class="s2">&quot;github.com,198.51.100.0/24&quot;</span><span class="w">   </span><span class="c1"># comma list of hostnames/CIDRs</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RESOLUTO_EGRESS_ALLOW_PORT</span><span class="o">=</span><span class="m">22</span><span class="w">                        </span><span class="c1"># default 443</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RESOLUTO_EGRESS_PUBLIC_HTTPS</span><span class="o">=</span><span class="m">1</span><span class="w">                       </span><span class="c1"># opt IN to all :443 (default 0 = deny)</span>
+</span></code></pre></div></p>
+<ul>
+<li><strong>local</strong>: <code>scripts/local-backend-up.sh</code> renders the firewall from these env knobs via the SAME
+  renderer (<code>python -m resoluto.sandbox.egress local-iptables</code>). Set them and re-run the script; the
+  Kata canary re-verifies enforcement.</li>
+<li><strong>k8s</strong>: pass an <code>EgressConfig</code> to <code>K8sSandboxRuntime(egress=...)</code>, or <code>EgressConfig.from_store_env()</code>
+  (which reads the same env). <code>egress=None</code> = opt OUT of isolation entirely (no NetworkPolicy,
+  unrestricted egress) — distinct from <code>EgressConfig()</code>, which denies by default.</li>
+</ul>
+<p>There is no per-rule <em>blacklist</em> primitive (the model is default-deny; IMDS/RFC1918 are hardcoded
+denies). "Blacklist a host" = enumerate the hosts you DO want in <code>allow=[...]</code> and leave
+<code>public_https=False</code>. To add a NEW backend, write a renderer that maps <code>EgressConfig</code> to its
+mechanism (see <code>src/resoluto/sandbox/egress.py</code>).</p>
+<h2 id="what-you-can-manage">What you can manage<a class="headerlink" href="#what-you-can-manage" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Knob</th>
+<th>Local backend</th>
+<th>k8s backend</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Egress allowlist</td>
+<td>host-side iptables on the CNI bridge (default-deny; DNS + store; opt-in <code>allow</code>/<code>public_https</code>; REJECT IMDS + RFC1918)</td>
+<td><code>EgressConfig.from_store_env()</code> → default-deny NetworkPolicy (store + DNS always; opt-in <code>allow</code>/public-443; IMDS denied), enforced by the cluster's NetworkPolicy controller (k3s kube-router)</td>
+</tr>
+<tr>
+<td>IMDS block</td>
+<td>always on (host-side REJECT of <code>169.254.169.254</code>)</td>
+<td>always on when <code>EgressConfig</code> is passed</td>
+</tr>
+<tr>
+<td>Egress canary</td>
+<td>on by default, fail-closed</td>
+<td>on by default, fail-closed</td>
+</tr>
+<tr>
+<td>Runtime class</td>
+<td>Kata (pinned, unconditional)</td>
+<td>Kata (pinned, unconditional)</td>
+</tr>
+<tr>
+<td>Kubecontext</td>
+<td>not applicable</td>
+<td><code>RESOLUTO_SANDBOX_KUBECONTEXT</code> (fails closed if unset)</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../backends/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Backends">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Backends
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../concurrency/" class="md-footer__link md-footer__link--next" aria-label="Next: Concurrency">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Concurrency
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/DeepBlueCoding/resoluto-sandbox" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://pypi.org/project/resoluto-sandbox/" target="_blank" rel="noopener" title="pypi.org" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.8 200.5c-7.7-30.9-22.3-54.2-53.4-54.2h-40.1v47.4c0 36.8-31.2 67.8-66.8 67.8H172.7c-29.2 0-53.4 25-53.4 54.3v101.8c0 29 25.2 46 53.4 54.3 33.8 9.9 66.3 11.7 106.8 0 26.9-7.8 53.4-23.5 53.4-54.3v-40.7H226.2v-13.6h160.2c31.1 0 42.6-21.7 53.4-54.2 11.2-33.5 10.7-65.7 0-108.6M286.2 444.7a20.4 20.4 0 1 1 0-40.7 20.4 20.4 0 1 1 0 40.7M167.8 248.1h106.8c29.7 0 53.4-24.5 53.4-54.3V91.9c0-29-24.4-50.7-53.4-55.6-35.8-5.9-74.7-5.6-106.8.1-45.2 8-53.4 24.7-53.4 55.6v40.7h106.9v13.6h-147c-31.1 0-58.3 18.7-66.8 54.2-9.8 40.7-10.2 66.1 0 108.6 7.6 31.6 25.7 54.2 56.8 54.2H101v-48.8c0-35.3 30.5-66.4 66.8-66.4m-6.6-183.4a20.4 20.4 0 1 1 0 40.8 20.4 20.4 0 1 1 0-40.8"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.instant.progress", "navigation.tracking", "navigation.tabs", "navigation.sections", "navigation.top", "navigation.footer", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.tabs.link"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
