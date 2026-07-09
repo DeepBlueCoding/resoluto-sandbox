@@ -12,13 +12,13 @@
         <meta name="author" content="DeepBlueCoding">
       
       
-        <link rel="canonical" href="https://deepbluecoding.github.io/resoluto-sandbox/main/auth/">
+        <link rel="canonical" href="https://deepbluecoding.github.io/resoluto-sandbox/main/examples/">
       
       
-        <link rel="prev" href="../concurrency/">
+        <link rel="prev" href="../protocol/">
       
       
-        <link rel="next" href="../api/sandbox/">
+        <link rel="next" href="../backends/">
       
       
         
@@ -29,7 +29,7 @@
     
     
       
-        <title>Credentials - Resoluto Sandbox</title>
+        <title>Examples - Resoluto Sandbox</title>
       
     
     
@@ -84,7 +84,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#credentials-giving-your-program-its-secrets" class="md-skip">
+        <a href="#examples" class="md-skip">
           Skip to content
         </a>
       
@@ -122,7 +122,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Credentials
+              Examples
             
           </span>
         </div>
@@ -309,9 +309,11 @@
   
   
   
+    
   
-    <li class="md-tabs__item">
-      <a href="../examples/" class="md-tabs__link">
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
         
   
   
@@ -385,11 +387,9 @@
   
   
   
-    
   
-  
-    <li class="md-tabs__item md-tabs__item--active">
-      <a href="./" class="md-tabs__link">
+    <li class="md-tabs__item">
+      <a href="../auth/" class="md-tabs__link">
         
   
   
@@ -617,10 +617,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../examples/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -636,6 +663,70 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-the-program-the-cargo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. The program (the cargo)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-drive-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Drive it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-collect-outputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Collect outputs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#runnable-drivers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runnable drivers
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -725,37 +816,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Credentials
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../auth/" class="md-nav__link">
         
   
   
@@ -771,76 +835,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#which-credential-each-provider-image-needs" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Which credential each provider image needs
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#how-to-pass-it" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        How to pass it
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#claude-subscription-auth-local-dev-only" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Claude subscription auth — LOCAL DEV ONLY
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Claude subscription auth — LOCAL DEV ONLY">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#gotcha-e-claude_code_oauth_token-with-nothing-exported" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Gotcha: -e CLAUDE_CODE_OAUTH_TOKEN with nothing exported
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1209,10 +1203,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#which-credential-each-provider-image-needs" class="md-nav__link">
+  <a href="#1-the-program-the-cargo" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Which credential each provider image needs
+        1. The program (the cargo)
       
     </span>
   </a>
@@ -1220,10 +1214,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#how-to-pass-it" class="md-nav__link">
+  <a href="#2-drive-it" class="md-nav__link">
     <span class="md-ellipsis">
       
-        How to pass it
+        2. Drive it
       
     </span>
   </a>
@@ -1231,30 +1225,24 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#claude-subscription-auth-local-dev-only" class="md-nav__link">
+  <a href="#3-collect-outputs" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Claude subscription auth — LOCAL DEV ONLY
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Claude subscription auth — LOCAL DEV ONLY">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#gotcha-e-claude_code_oauth_token-with-nothing-exported" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Gotcha: -e CLAUDE_CODE_OAUTH_TOKEN with nothing exported
+        3. Collect outputs
       
     </span>
   </a>
   
 </li>
-        
-      </ul>
-    </nav>
+      
+        <li class="md-nav__item">
+  <a href="#runnable-drivers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runnable drivers
+      
+    </span>
+  </a>
   
 </li>
       
@@ -1278,86 +1266,59 @@
   
 
 
-<h1 id="credentials-giving-your-program-its-secrets">Credentials: giving your program its secrets<a class="headerlink" href="#credentials-giving-your-program-its-secrets" title="Permanent link">&para;</a></h1>
-<p><strong>The sandbox never handles credentials.</strong> It runs your program and forwards whatever you hand it —
-via <code>env=</code>, <code>env_file=</code>, <code>secrets=</code>, or a mount — into the guest, untouched. It never reads, parses, or
-knows the format of any provider's credential file. Auth is the <em>program's</em> concern: its SDK/CLI
-resolves the credential from the environment you passed.</p>
-<h2 id="which-credential-each-provider-image-needs">Which credential each provider image needs<a class="headerlink" href="#which-credential-each-provider-image-needs" title="Permanent link">&para;</a></h2>
-<p>Each prebuilt provider image runs a program that talks to that provider's API; supply its credential:</p>
-<table>
-<thead>
-<tr>
-<th>Provider image</th>
-<th>Credential env var</th>
-<th>How to obtain</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>resoluto-sandbox:claude-agent-sdk-&lt;ver&gt;</code></td>
-<td><code>CLAUDE_CODE_OAUTH_TOKEN</code> (subscription) <strong>or</strong> <code>ANTHROPIC_API_KEY</code></td>
-<td><code>claude setup-token</code>, or an Anthropic API key</td>
-</tr>
-<tr>
-<td><code>resoluto-sandbox:langchain-&lt;ver&gt;</code></td>
-<td><code>ANTHROPIC_API_KEY</code></td>
-<td>an Anthropic API key</td>
-</tr>
-<tr>
-<td><code>resoluto-sandbox:openai-agents-&lt;ver&gt;</code></td>
-<td><code>OPENAI_API_KEY</code></td>
-<td>an OpenAI API key</td>
-</tr>
-</tbody>
-</table>
-<h2 id="how-to-pass-it">How to pass it<a class="headerlink" href="#how-to-pass-it" title="Permanent link">&para;</a></h2>
-<p>The guest does NOT inherit your host environment — deliver the credential explicitly:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox</span><span class="w"> </span><span class="kn">import</span> <span class="n">Sandbox</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># local or k8s — the plain, universal path: forward the env var you already hold</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="s2">&quot;local&quot;</span><span class="p">,</span> <span class="n">image</span><span class="o">=</span><span class="s2">&quot;&lt;provider-image&gt;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="p">[</span><span class="s2">&quot;python&quot;</span><span class="p">,</span> <span class="s2">&quot;openai_agent.py&quot;</span><span class="p">,</span> <span class="s2">&quot;Say hi&quot;</span><span class="p">],</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">workspace</span><span class="o">=</span><span class="s2">&quot;examples/payloads&quot;</span><span class="p">,</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">env</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;OPENAI_API_KEY&quot;</span><span class="p">:</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;OPENAI_API_KEY&quot;</span><span class="p">]},</span>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="p">)</span>
+<h1 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h1>
+<p>A minimal end to end: write a plain program, stage it into a sandbox, and drive it with
+<a href="../api/sandbox/#resoluto.sandbox.Sandbox"><code>Sandbox.run</code></a>. The program is ordinary — it never imports
+<code>resoluto.sandbox</code>. That is the whole point: a program that runs as <code>python hello.py</code> on your host runs
+unchanged inside the guest.</p>
+<h2 id="1-the-program-the-cargo">1. The program (the cargo)<a class="headerlink" href="#1-the-program-the-cargo" title="Permanent link">&para;</a></h2>
+<p>A payload is a plain script. It reads its inputs from <code>argv</code> / <code>env</code> and writes its outputs to stdout
+or to files in its working directory.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># hello.py</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">who</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="k">else</span> <span class="s2">&quot;world&quot;</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">greeting</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;GREETING&quot;</span><span class="p">,</span> <span class="s2">&quot;hello&quot;</span><span class="p">)</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">greeting</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">who</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </span></code></pre></div>
+<h2 id="2-drive-it">2. Drive it<a class="headerlink" href="#2-drive-it" title="Permanent link">&para;</a></h2>
+<p><code>Sandbox(backend=...)</code> picks the isolation; <code>.run(argv, ...)</code> stages the workspace, runs the program on
+the <strong>guest's</strong> interpreter, and returns a <a href="../api/sandbox/#resoluto.sandbox.RunResult"><code>RunResult</code></a>.
+Paths in <code>argv</code> are relative to the staged <code>workspace</code>, never host absolute paths.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox</span><span class="w"> </span><span class="kn">import</span> <span class="n">Sandbox</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">result</span> <span class="o">=</span> <span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="s2">&quot;local&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="p">[</span><span class="s2">&quot;python&quot;</span><span class="p">,</span> <span class="s2">&quot;hello.py&quot;</span><span class="p">,</span> <span class="s2">&quot;sandbox&quot;</span><span class="p">],</span>   <span class="c1"># guest python; path relative to the workspace</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">workspace</span><span class="o">=</span><span class="s2">&quot;/path/to/project&quot;</span><span class="p">,</span>        <span class="c1"># staged into the guest as cwd</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">env</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;GREETING&quot;</span><span class="p">:</span> <span class="s2">&quot;hi&quot;</span><span class="p">},</span>              <span class="c1"># overlaid on the guest environment</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="p">)</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">output</span><span class="p">)</span>     <span class="c1"># hi, sandbox</span>
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">ok</span><span class="p">)</span>         <span class="c1"># True  → exit_code == 0</span>
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">exit_code</span><span class="p">)</span>  <span class="c1"># 0</span>
+</span></code></pre></div>
+<h2 id="3-collect-outputs">3. Collect outputs<a class="headerlink" href="#3-collect-outputs" title="Permanent link">&para;</a></h2>
+<p>Declare <code>output_paths</code> globs; matching files in the workspace are returned in <code>RunResult.artifacts</code>
+after the program exits. If the program writes a <code>result.json</code>, it is parsed into <code>RunResult.result</code>.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">result</span> <span class="o">=</span> <span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="s2">&quot;local&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="p">[</span><span class="s2">&quot;python&quot;</span><span class="p">,</span> <span class="s2">&quot;run_task.py&quot;</span><span class="p">,</span> <span class="s2">&quot;--mode&quot;</span><span class="p">,</span> <span class="s2">&quot;fast&quot;</span><span class="p">],</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">workspace</span><span class="o">=</span><span class="s2">&quot;/path/to/project&quot;</span><span class="p">,</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">output_paths</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;out/*.json&quot;</span><span class="p">],</span>         <span class="c1"># collected into result.artifacts</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="p">)</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">data</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">artifacts</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">))</span>
+</span></code></pre></div>
+<h2 id="runnable-drivers">Runnable drivers<a class="headerlink" href="#runnable-drivers" title="Permanent link">&para;</a></h2>
+<p>The repository ships complete, runnable drivers under <code>examples/</code>:</p>
 <ul>
-<li><strong><code>env=</code></strong> — simplest; the value lands as a literal env entry in the guest (and, on k8s, in the pod
-  spec — prefer <code>secrets=</code> there).</li>
-<li><strong><code>secrets=</code></strong> — the production path on k8s: <code>run(secrets={"OPENAI_API_KEY": SecretKeyRef("openai", "key")})</code>
-  references an existing Kubernetes Secret via <code>valueFrom.secretKeyRef</code>, so the value never appears in
-  the pod spec or any log. See <a href="https://github.com/DeepBlueCoding/resoluto-sandbox#secrets">the README's Secrets section</a>.</li>
-<li><strong><code>env_file=</code></strong> — a dotenv file merged host-side (convenience, not a security boundary).</li>
-<li><strong>mount</strong> — bind a credential file read-only into the guest (see the subscription note below).</li>
+<li><code>examples/run_hello_in_sandbox.py</code> — the bare mechanics above, on the base image.</li>
+<li><code>examples/run_agent_in_sandbox.py</code> — run a provider's agent isolated in a Kata microVM.</li>
 </ul>
-<h2 id="claude-subscription-auth-local-dev-only">Claude subscription auth — LOCAL DEV ONLY<a class="headerlink" href="#claude-subscription-auth-local-dev-only" title="Permanent link">&para;</a></h2>
-<blockquote>
-<p>⚠️ <strong>The Claude Max/Pro subscription path is a local-dev convenience — do NOT use it in cloud or
-production.</strong> A subscription OAuth token (<code>CLAUDE_CODE_OAUTH_TOKEN</code> from <code>claude setup-token</code>, or the
-<code>~/.claude/.credentials.json</code> login file) is a <strong>personal, single-user, long-lived</strong> credential: it
-cannot be scoped or rotated per workload, it bills one human's subscription, and mounting a personal
-credential file into shared/cloud pods is a credential-leak anti-pattern. For cloud or production,
-give each workload a <strong>provider API key</strong> delivered via <code>secrets=</code> (above).</p>
-</blockquote>
-<p>For local iteration on a Max/Pro plan, forward a token (or mount the login file) and keep
-<code>ANTHROPIC_API_KEY</code> <strong>unset</strong> so the <code>claude</code> CLI bills your subscription instead of the API:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">CLAUDE_CODE_OAUTH_TOKEN</span><span class="o">=</span><span class="k">$(</span>claude<span class="w"> </span>setup-token<span class="k">)</span><span class="w">   </span><span class="c1"># long-lived token; keep ANTHROPIC_API_KEY unset</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>examples/run_agent_in_sandbox.py<span class="w"> </span>claude<span class="w"> </span><span class="s2">&quot;Say hello in five words&quot;</span>
-</span></code></pre></div>
-<p>Or mount the single login file read-only (not the whole <code>~/.claude</code> dir — the CLI writes cache into
-its config dir and would fail against a read-only mount of the entire directory):</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$HOME</span><span class="s2">/.claude/.credentials.json:/root/.claude/.credentials.json:ro&quot;</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">/examples/payloads:/workspace&quot;</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span>resoluto-sandbox:claude-agent-sdk-&lt;ver&gt;<span class="w"> </span>python<span class="w"> </span>claude_agent.py<span class="w"> </span><span class="s2">&quot;Say hello in five words&quot;</span>
-</span></code></pre></div>
-<h3 id="gotcha-e-claude_code_oauth_token-with-nothing-exported">Gotcha: <code>-e CLAUDE_CODE_OAUTH_TOKEN</code> with nothing exported<a class="headerlink" href="#gotcha-e-claude_code_oauth_token-with-nothing-exported" title="Permanent link">&para;</a></h3>
-<p><code>docker run -e CLAUDE_CODE_OAUTH_TOKEN</code> (no <code>=value</code>) forwards the host's value — empty if you never
-exported it. The container then has no auth and the CLI returns <code>Not logged in</code>, which the SDK rethrows
-as the confusing <code>Claude Code returned an error result: success</code>. Either <code>export</code> the token first, or
-use the credentials-file mount above.</p>
+<p>The <code>local</code> backend needs a sandbox image in its dedicated containerd; provision it with
+<code>scripts/local-backend-up.sh</code> (which writes <code>local.env</code>), then <code>set -a; source local.env; set +a</code>
+before running a driver. See <strong><a href="../getting-started/">Getting Started</a></strong> for the backend details.</p>
 
 
 
@@ -1395,7 +1356,7 @@ use the credentials-file mount above.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../concurrency/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Concurrency">
+          <a href="../protocol/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Protocol">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1405,20 +1366,20 @@ use the credentials-file mount above.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Concurrency
+                Protocol
               </div>
             </div>
           </a>
         
         
           
-          <a href="../api/sandbox/" class="md-footer__link md-footer__link--next" aria-label="Next: Sandbox">
+          <a href="../backends/" class="md-footer__link md-footer__link--next" aria-label="Next: Backends">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Sandbox
+                Backends
               </div>
             </div>
             <div class="md-footer__button md-icon">

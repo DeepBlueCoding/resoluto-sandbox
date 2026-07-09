@@ -1,6 +1,6 @@
 # Pool
 
-Bounded concurrency over sandbox slots: acquire a lease, run inside it, release it back.
+Bounded concurrency over sandbox slots: acquire a lease, run inside it, release it back. `Admission` is the concurrency-admission decision and `Lease` the granted slot the pool hands out.
 
 ## resoluto.sandbox.SandboxPool
 
@@ -109,3 +109,15 @@ def __init__(self, pool: "SandboxPool", handle: SandboxHandle) -> None:
     self.handle = handle
     self._released = False
 ```
+
+## resoluto.sandbox.Admission
+
+Bases: `Protocol`
+
+Decides whether/when a launch is allowed, then launches and returns a Lease.
+
+## resoluto.sandbox.Lease
+
+Bases: `Protocol`
+
+An acquired sandbox slot as an async context manager exposing the live handle.

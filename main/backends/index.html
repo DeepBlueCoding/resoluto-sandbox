@@ -15,7 +15,7 @@
         <link rel="canonical" href="https://deepbluecoding.github.io/resoluto-sandbox/main/backends/">
       
       
-        <link rel="prev" href="../concepts/">
+        <link rel="prev" href="../examples/">
       
       
         <link rel="next" href="../networking/">
@@ -290,6 +290,44 @@
   
   
   
+  
+    <li class="md-tabs__item">
+      <a href="../protocol/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Protocol
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../examples/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Examples
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
     
   
   
@@ -397,6 +435,25 @@
     
   
   Changelog
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../versioning/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Versioning
 
       </a>
     </li>
@@ -517,6 +574,60 @@
     
   
     Concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
   
 
     
@@ -909,10 +1020,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
         
           
-          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
             
   
   
@@ -930,8 +1041,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_8">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1053,6 +1164,118 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/driver/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Driver
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/staging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Staging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/telemetry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telemetry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1075,6 +1298,33 @@
     
   
     Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../versioning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Versioning
   
 
     
@@ -1374,9 +1624,9 @@ built-in backends, how to install the k8s stack, and how to wire in a custom bac
 exchange). The backends differ only in which runtime and conduit are wired in.</p>
 <blockquote>
 <p>For the components glossary, the layered local-vs-k8s architecture diagram, the Conduit
-data-flow table, and the security-layers table, see the <a href="../README.md#how-it-works">README's "How it works"
-section</a> — this page picks up from there with per-backend
-setup detail.</p>
+data-flow table, and the security-layers table, see the <a href="https://github.com/DeepBlueCoding/resoluto-sandbox#how-it-works">README's "How it works"
+section</a> — this page
+picks up from there with per-backend setup detail.</p>
 </blockquote>
 <h2 id="run-lifecycle">Run lifecycle<a class="headerlink" href="#run-lifecycle" title="Permanent link">&para;</a></h2>
 <p>One flow for both backends; only the runtime and conduit differ. Liveness is a silence
@@ -1430,7 +1680,7 @@ trusted-local bypass.</p>
 <h3 id="what-you-need">What you need<a class="headerlink" href="#what-you-need" title="Permanent link">&para;</a></h3>
 <ul>
 <li>KVM + Kata + a <code>nerdctl-full</code> bundle + Docker + a <code>localhost:5000</code> registry on this Linux host —
-  see the README's <a href="../README.md#requirements-host">Requirements</a> for how to install each. Provision
+  see the README's <a href="https://github.com/DeepBlueCoding/resoluto-sandbox#requirements-host">Requirements</a> for how to install each. Provision
   the rest with <code>scripts/local-backend-up.sh</code> (ends with a green Kata-microVM canary).</li>
 <li>An image with python + the resoluto-sandbox wheel + your program's deps. Default:
   <code>default_local_image()</code> = the base image, registry-qualified (<code>localhost:5000/resoluto-sandbox-base:&lt;installed
@@ -1442,7 +1692,7 @@ trusted-local bypass.</p>
   <strong>pushes</strong> there, and the backend <strong>pulls on demand</strong> (<code>localhost</code> is insecure/HTTP by default). For
   your own image, <code>docker build … &amp;&amp; resoluto-sandbox image push &lt;tag&gt;</code>, then reference
   <code>localhost:5000/&lt;tag&gt;</code>. Opt out with <code>RESOLUTO_SANDBOX_REGISTRY=""</code> (bare tags + <code>docker save |
-  nerdctl load</code>). See the README's <a href="../README.md#prebuilt-provider-images">Prebuilt provider images</a>.</li>
+  nerdctl load</code>). See the README's <a href="https://github.com/DeepBlueCoding/resoluto-sandbox#prebuilt-provider-images">Prebuilt provider images</a>.</li>
 </ul>
 <h2 id="k8s">k8s<a class="headerlink" href="#k8s" title="Permanent link">&para;</a></h2>
 <p>Each <code>run()</code> call launches one short-lived Kata microVM pod. The host and pod exchange
@@ -1640,9 +1890,10 @@ and wire it into <code>SubstrateBackend</code>:</p>
 </span><span id="__span-17-7"><a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>
 </span><span id="__span-17-8"><a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">MyBackend</span><span class="p">(</span><span class="o">...</span><span class="p">))</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">argv</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
 </span></code></pre></div>
-<p>No facade changes are needed — <code>Sandbox</code> holds any <code>Backend</code> instance. For a full guide
-including <code>Conduit</code> and <code>SandboxRuntime</code> extension points, see
-<a href="../.claude/skills/resoluto-sandbox-dev/references/extending.md"><code>../.claude/skills/resoluto-sandbox-dev/references/extending.md</code></a>.</p>
+<p>No facade changes are needed — <code>Sandbox</code> holds any <code>Backend</code> instance. <code>Conduit</code> and
+<code>SandboxRuntime</code> are the other two extension points: implement the ABC, pass your instance
+to <code>Sandbox</code>, and the facade drives it unchanged. See the <a href="../api/runtime/">Runtime &amp; Contracts</a>
+reference for the full protocol each one must satisfy.</p>
 
 
 
@@ -1680,7 +1931,7 @@ including <code>Conduit</code> and <code>SandboxRuntime</code> extension points,
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../concepts/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Concepts">
+          <a href="../examples/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Examples">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1690,7 +1941,7 @@ including <code>Conduit</code> and <code>SandboxRuntime</code> extension points,
                 Previous
               </span>
               <div class="md-ellipsis">
-                Concepts
+                Examples
               </div>
             </div>
           </a>

@@ -29,7 +29,7 @@ Sandbox(backend="local", image="<provider-image>").run(
 ```
 
 - **`env=`** — simplest; the value lands as a literal env entry in the guest (and, on k8s, in the pod spec — prefer `secrets=` there).
-- **`secrets=`** — the production path on k8s: `run(secrets={"OPENAI_API_KEY": SecretKeyRef("openai", "key")})` references an existing Kubernetes Secret via `valueFrom.secretKeyRef`, so the value never appears in the pod spec or any log. See [README: Secrets](https://deepbluecoding.github.io/resoluto-sandbox/main/README.md#secrets).
+- **`secrets=`** — the production path on k8s: `run(secrets={"OPENAI_API_KEY": SecretKeyRef("openai", "key")})` references an existing Kubernetes Secret via `valueFrom.secretKeyRef`, so the value never appears in the pod spec or any log. See [the README's Secrets section](https://github.com/DeepBlueCoding/resoluto-sandbox#secrets).
 - **`env_file=`** — a dotenv file merged host-side (convenience, not a security boundary).
 - **mount** — bind a credential file read-only into the guest (see the subscription note below).
 

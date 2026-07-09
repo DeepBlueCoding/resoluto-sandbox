@@ -49,6 +49,18 @@ The base install is pydantic-only; concrete runtimes and conduits with platform 
 For AI agents
 
 This site publishes `/llms.txt` (index) and `/llms-full.txt` (full corpus) — point any LLM tool at them to consume these docs directly.
+
+## The Resoluto ecosystem
+
+Three independent, plug-and-play packages under one `resoluto.*` namespace and one design language. Each stands alone — use any without the others.
+
+| Package                                                                | Role                                                          |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------- |
+| [resoluto-sandbox](https://deepbluecoding.github.io/resoluto-sandbox/) | Store-mediated, Kata-isolated execution substrate             |
+| [resoluto-agent](https://deepbluecoding.github.io/resoluto-agent/)     | Pluggable LLM agent-provider plugins                          |
+| [resoluto-engine](https://deepbluecoding.github.io/resoluto-engine/)   | Durable orchestrator of sandboxed, gate-verified agentic work |
+
+`resoluto-engine` builds on `resoluto-agent` (the provider contract) and optionally `resoluto-sandbox` (isolation); `resoluto-sandbox` and `resoluto-agent` depend on nothing else in the ecosystem.
 # Usage
 
 # Getting started
@@ -76,7 +88,7 @@ The [`RunResult`](https://deepbluecoding.github.io/resoluto-sandbox/main/api/san
 result = Sandbox(backend="local").run(
     ["python", "run_task.py", "--mode", "fast"],
     workspace="/path/to/project",         # staged into the sandbox as cwd
-    env={"TASK_ID": "RES-42"},            # overlaid on the guest environment
+    env={"GREETING": "hello"},            # overlaid on the guest environment
     output_paths=["out/*.json"],          # globs collected into result.artifacts
 )
 ```
@@ -181,6 +193,186 @@ Chunks are immutable and append-only. The reader tails via `list_prefix` + whole
 
 The wire encoding is UTF-8 JSON for structured objects and gzip-tar for file archives. See `spec/PROTOCOL.md` for the full key namespace and JSON Schemas.
 
+# Wire Protocol
+
+The host and the sandbox never share memory, a socket, or a process — they rendezvous only through the durable [`Conduit`](https://deepbluecoding.github.io/resoluto-sandbox/main/api/conduit/index.md). The contract below is **language-neutral**: any runtime that can read and write JSON and gzip-tar archives to the conduit can act as a host or a guest. The Python package in this repo is one reference implementation of it.
+
+The full specification, kept in `spec/PROTOCOL.md` in the repository and embedded verbatim here:
+
+# Host ↔ Sandbox Wire Protocol
+
+This document describes the protocol between a host and a sandbox (guest) in language-neutral terms. A Python reference implementation lives in `src/resoluto/sandbox/`. Any language that can read/write JSON and gzip-tar archives can implement a client.
+
+## Transport: Conduit
+
+Communication is mediated by a **Conduit** — a durable key/value store. The interface is three operations:
+
+- `put(key: str, data: bytes) -> void` — write an immutable object
+- `get(key: str) -> bytes` — read an object by key
+- `list_prefix(prefix: str) -> list[key]` — enumerate all keys under a prefix
+
+Backends can be local filesystem, S3/MinIO, GCS, or any compatible object store. No streaming, no in-sandbox server, no long-lived TCP connection. Chunks are immutable; ordering is established by sequence numbers embedded in the key name.
+
+Encoding is always **UTF-8 JSON** for structured objects and **gzip-tar** for file archives. No Python-specific serialization (no pickle, no msgpack) is used anywhere on the wire.
+
+## Key Namespace
+
+All objects for a run live under a single prefix:
+
+```text
+run/<run_id>/nodes/<node_id>/
+```
+
+| Key (relative to run prefix) | Direction      | Description                                                   |
+| ---------------------------- | -------------- | ------------------------------------------------------------- |
+| `inbox/<name>.tar.gz`        | host → sandbox | Workspace content, gzip-tarred                                |
+| `task.json`                  | host → sandbox | Reserved; not read by the reference runner (see schema below) |
+| `events-<NNNNNN>.jsonl`      | sandbox → host | Progress events, one JSON object per line                     |
+| `result.json`                | sandbox → host | Final verdict and output metadata                             |
+| `outbox/<name>.tar.gz`       | sandbox → host | Output artifacts, gzip-tarred                                 |
+| `_manifest.json`             | sandbox → host | EOF marker: `{"total_chunks": N}`                             |
+
+Sequence numbers in event chunk names are zero-padded six-digit integers (`000001`, `000002`, …). Chunks are immutable once written. The host tails `list_prefix` for new chunk keys, fetches each in order, and reads lines as they arrive. `_manifest.json` signals that all chunks have been written; the host stops tailing once the chunk count matches `total_chunks`.
+
+## Schemas
+
+| File                   | Validates                     |
+| ---------------------- | ----------------------------- |
+| `event.schema.json`    | Each line in `events-*.jsonl` |
+| `result.schema.json`   | `result.json`                 |
+| `task.schema.json`     | `task.json`                   |
+| `manifest.schema.json` | `_manifest.json`              |
+
+All schemas use JSON Schema draft 2020-12.
+
+### SpanEvent (`events-*.jsonl`)
+
+Each line is a UTF-8 JSON object. Required fields:
+
+| Field            | Type   | Values                                                                                                  |
+| ---------------- | ------ | ------------------------------------------------------------------------------------------------------- |
+| `run_id`         | string | Identifies the run                                                                                      |
+| `span_id`        | string | Unique identifier for this span                                                                         |
+| `parent_span_id` | string | Parent span; empty string for root spans                                                                |
+| `kind`           | string | advisory; any string permitted. Common: `run` / `phase` / `node` / `attempt` / `agent` / `tool` / `log` |
+| `name`           | string | Human-readable span name (empty for log events)                                                         |
+| `event`          | string | `open` / `close` / `log`                                                                                |
+| `ts`             | number | Unix epoch seconds (float), stamped by the emitter                                                      |
+| `status`         | string | On `close`: `success` / `failure` / other; empty otherwise                                              |
+| `data`           | object | Inputs, outputs, or log payload — all sensitive fields redacted by the sandbox                          |
+
+### NodeResult (`result.json`)
+
+Written once by the sandbox when work is complete. The host reads this after the manifest arrives. Fields filled by the host (`observed_phase`, `reason`, `substrate_logs`) are appended from out-of-guest signals and must not be trusted as the in-guest verdict.
+
+| Field            | Type           | Description                                      |
+| ---------------- | -------------- | ------------------------------------------------ |
+| `node_id`        | string         | Node identifier (empty if not applicable)        |
+| `status`         | string         | `success` or `failure`                           |
+| `exit_code`      | integer / null | Exit code of the main process, if available      |
+| `output_archive` | string / null  | Key of the primary output archive in the conduit |
+| `observed_phase` | string         | Host-observed substrate phase                    |
+| `reason`         | string         | Human-readable failure reason                    |
+| `substrate_logs` | string         | Forensic substrate logs (untrusted)              |
+
+### task.json (reserved)
+
+**Reserved — not consumed by the reference runner.** The reference runner is configured via environment variables (`RESOLUTO_WORKLOAD_ARGV`, `RESOLUTO_WORKSPACE_DIR`, `RESOLUTO_OUTPUT_PATHS`), not by reading `task.json`. The schema is published for backends that prefer a file-based contract.
+
+| Field           | Type            | Required | Description                        |
+| --------------- | --------------- | -------- | ---------------------------------- |
+| `workspace_dir` | string          | yes      | Path inside the sandbox to work in |
+| `prompt`        | string          | no       | Natural-language task description  |
+| `env`           | object          | no       | Extra environment variables        |
+| `output_paths`  | array of string | no       | Paths to collect into the outbox   |
+
+### \_manifest.json
+
+Written last by the sandbox to signal that all event chunks are complete.
+
+| Field          | Type    | Required | Description                              |
+| -------------- | ------- | -------- | ---------------------------------------- |
+| `total_chunks` | integer | yes      | Total number of `events-*.jsonl` objects |
+
+## Liveness
+
+Liveness is determined by **chunk arrival rate** and **heartbeat events**, not wall-clock time.
+
+- The sandbox emits periodic `kind=log, event=log` heartbeat records into the event stream.
+- The host treats absence of new chunks for a configurable silence window as a liveness failure.
+- There are no hardcoded wall-clock timeouts. If the sandbox is doing work, it keeps running.
+- Unstartable sandboxes (e.g., image pull failures) are detected via substrate status polling and fail fast; sandboxes held for resource admission keep waiting until a slot is available.
+
+## Sequence
+
+1. Host writes `inbox/<name>.tar.gz` (workspace) and optionally `task.json` (for backends that read it).
+1. Host launches the sandbox, passing the run prefix, a write-scoped token, and workload configuration via env vars.
+1. Sandbox reads `inbox/`, performs its work (the reference runner is driven by env vars, not `task.json`).
+1. Sandbox appends `events-<NNNNNN>.jsonl` chunks as work progresses.
+1. Sandbox writes `result.json` and any `outbox/<name>.tar.gz` artifacts.
+1. Sandbox writes `_manifest.json` with the final chunk count.
+1. Host reads events in sequence, fetches `result.json`, collects outbox archives.
+
+# Examples
+
+A minimal end to end: write a plain program, stage it into a sandbox, and drive it with [`Sandbox.run`](https://deepbluecoding.github.io/resoluto-sandbox/main/api/sandbox/#resoluto.sandbox.Sandbox). The program is ordinary — it never imports `resoluto.sandbox`. That is the whole point: a program that runs as `python hello.py` on your host runs unchanged inside the guest.
+
+## 1. The program (the cargo)
+
+A payload is a plain script. It reads its inputs from `argv` / `env` and writes its outputs to stdout or to files in its working directory.
+
+```python
+# hello.py
+import os
+import sys
+
+who = sys.argv[1] if len(sys.argv) > 1 else "world"
+greeting = os.environ.get("GREETING", "hello")
+print(f"{greeting}, {who}")
+```
+
+## 2. Drive it
+
+`Sandbox(backend=...)` picks the isolation; `.run(argv, ...)` stages the workspace, runs the program on the **guest's** interpreter, and returns a [`RunResult`](https://deepbluecoding.github.io/resoluto-sandbox/main/api/sandbox/#resoluto.sandbox.RunResult). Paths in `argv` are relative to the staged `workspace`, never host absolute paths.
+
+```python
+from resoluto.sandbox import Sandbox
+
+result = Sandbox(backend="local").run(
+    ["python", "hello.py", "sandbox"],   # guest python; path relative to the workspace
+    workspace="/path/to/project",        # staged into the guest as cwd
+    env={"GREETING": "hi"},              # overlaid on the guest environment
+)
+
+print(result.output)     # hi, sandbox
+print(result.ok)         # True  → exit_code == 0
+print(result.exit_code)  # 0
+```
+
+## 3. Collect outputs
+
+Declare `output_paths` globs; matching files in the workspace are returned in `RunResult.artifacts` after the program exits. If the program writes a `result.json`, it is parsed into `RunResult.result`.
+
+```python
+result = Sandbox(backend="local").run(
+    ["python", "run_task.py", "--mode", "fast"],
+    workspace="/path/to/project",
+    output_paths=["out/*.json"],         # collected into result.artifacts
+)
+
+for name, data in result.artifacts.items():
+    print(name, len(data))
+```
+
+## Runnable drivers
+
+The repository ships complete, runnable drivers under `examples/`:
+
+- `examples/run_hello_in_sandbox.py` — the bare mechanics above, on the base image.
+- `examples/run_agent_in_sandbox.py` — run a provider's agent isolated in a Kata microVM.
+
+The `local` backend needs a sandbox image in its dedicated containerd; provision it with `scripts/local-backend-up.sh` (which writes `local.env`), then `set -a; source local.env; set +a` before running a driver. See **[Getting Started](https://deepbluecoding.github.io/resoluto-sandbox/main/getting-started/index.md)** for the backend details.
+
 # Backends
 
 `Sandbox` delegates every run to a pluggable `Backend`. This page covers the two built-in backends, how to install the k8s stack, and how to wire in a custom backend.
@@ -194,7 +386,7 @@ The wire encoding is UTF-8 JSON for structured objects and gzip-tar for file arc
 
 Both backends share one substrate: `SubstrateBackend` drives a run through a `SandboxRuntime` (the isolation/placement seam) and a `Conduit` (the host/sandbox exchange). The backends differ only in which runtime and conduit are wired in.
 
-> For the components glossary, the layered local-vs-k8s architecture diagram, the Conduit data-flow table, and the security-layers table, see the [README's "How it works" section](https://deepbluecoding.github.io/resoluto-sandbox/main/README.md#how-it-works) — this page picks up from there with per-backend setup detail.
+> For the components glossary, the layered local-vs-k8s architecture diagram, the Conduit data-flow table, and the security-layers table, see the [README's "How it works" section](https://github.com/DeepBlueCoding/resoluto-sandbox#how-it-works) — this page picks up from there with per-backend setup detail.
 
 ## Run lifecycle
 
@@ -241,9 +433,9 @@ Egress is enforced host-side on the CNI bridge and is default-deny (secure by de
 
 ### What you need
 
-- KVM + Kata + a `nerdctl-full` bundle + Docker + a `localhost:5000` registry on this Linux host — see the README's [Requirements](https://deepbluecoding.github.io/resoluto-sandbox/main/README.md#requirements-host) for how to install each. Provision the rest with `scripts/local-backend-up.sh` (ends with a green Kata-microVM canary).
+- KVM + Kata + a `nerdctl-full` bundle + Docker + a `localhost:5000` registry on this Linux host — see the README's [Requirements](https://github.com/DeepBlueCoding/resoluto-sandbox#requirements-host) for how to install each. Provision the rest with `scripts/local-backend-up.sh` (ends with a green Kata-microVM canary).
 - An image with python + the resoluto-sandbox wheel + your program's deps. Default: `default_local_image()` = the base image, registry-qualified (`localhost:5000/resoluto-sandbox-base:<installed wheel version>`) — computed from the running package version, never a floating tag. Override with `Sandbox(backend="local", image="…")`.
-- **How a built image reaches this backend — via the registry.** `docker build` (including `resoluto-sandbox image build`) lands the image in your regular Docker daemon, a **separate** store from the dedicated containerd this backend reads. The bridge is the on-box registry: `image build` **pushes** there, and the backend **pulls on demand** (`localhost` is insecure/HTTP by default). For your own image, `docker build … && resoluto-sandbox image push <tag>`, then reference `localhost:5000/<tag>`. Opt out with `RESOLUTO_SANDBOX_REGISTRY=""` (bare tags + `docker save | nerdctl load`). See the README's [Prebuilt provider images](https://deepbluecoding.github.io/resoluto-sandbox/main/README.md#prebuilt-provider-images).
+- **How a built image reaches this backend — via the registry.** `docker build` (including `resoluto-sandbox image build`) lands the image in your regular Docker daemon, a **separate** store from the dedicated containerd this backend reads. The bridge is the on-box registry: `image build` **pushes** there, and the backend **pulls on demand** (`localhost` is insecure/HTTP by default). For your own image, `docker build … && resoluto-sandbox image push <tag>`, then reference `localhost:5000/<tag>`. Opt out with `RESOLUTO_SANDBOX_REGISTRY=""` (bare tags + `docker save | nerdctl load`). See the README's [Prebuilt provider images](https://github.com/DeepBlueCoding/resoluto-sandbox#prebuilt-provider-images).
 
 ## k8s
 
@@ -474,7 +666,7 @@ class MyBackend(Backend):
 Sandbox(backend=MyBackend(...)).run(argv, ...)
 ```
 
-No facade changes are needed — `Sandbox` holds any `Backend` instance. For a full guide including `Conduit` and `SandboxRuntime` extension points, see [`../.claude/skills/resoluto-sandbox-dev/references/extending.md`](https://deepbluecoding.github.io/resoluto-sandbox/main/.claude/skills/resoluto-sandbox-dev/references/extending.md).
+No facade changes are needed — `Sandbox` holds any `Backend` instance. `Conduit` and `SandboxRuntime` are the other two extension points: implement the ABC, pass your instance to `Sandbox`, and the facade drives it unchanged. See the [Runtime & Contracts](https://deepbluecoding.github.io/resoluto-sandbox/main/api/runtime/index.md) reference for the full protocol each one must satisfy.
 
 # Networking
 
@@ -726,7 +918,7 @@ Sandbox(backend="local", image="<provider-image>").run(
 ```
 
 - **`env=`** — simplest; the value lands as a literal env entry in the guest (and, on k8s, in the pod spec — prefer `secrets=` there).
-- **`secrets=`** — the production path on k8s: `run(secrets={"OPENAI_API_KEY": SecretKeyRef("openai", "key")})` references an existing Kubernetes Secret via `valueFrom.secretKeyRef`, so the value never appears in the pod spec or any log. See [README: Secrets](https://deepbluecoding.github.io/resoluto-sandbox/main/README.md#secrets).
+- **`secrets=`** — the production path on k8s: `run(secrets={"OPENAI_API_KEY": SecretKeyRef("openai", "key")})` references an existing Kubernetes Secret via `valueFrom.secretKeyRef`, so the value never appears in the pod spec or any log. See [the README's Secrets section](https://github.com/DeepBlueCoding/resoluto-sandbox#secrets).
 - **`env_file=`** — a dotenv file merged host-side (convenience, not a security boundary).
 - **mount** — bind a credential file read-only into the guest (see the subscription note below).
 
@@ -753,11 +945,38 @@ docker run --rm \
 ### Gotcha: `-e CLAUDE_CODE_OAUTH_TOKEN` with nothing exported
 
 `docker run -e CLAUDE_CODE_OAUTH_TOKEN` (no `=value`) forwards the host's value — empty if you never exported it. The container then has no auth and the CLI returns `Not logged in`, which the SDK rethrows as the confusing `Claude Code returned an error result: success`. Either `export` the token first, or use the credentials-file mount above.
+
+# Versioning & releases
+
+Every `resoluto-*` package follows [Semantic Versioning](https://semver.org/) and is versioned **independently** — there is no lockstep release train.
+
+## Pre-1.0 (`0.y.z`)
+
+While a package is `0.y.z`:
+
+- **`0.MINOR`** may introduce breaking changes — always called out in the [changelog](https://deepbluecoding.github.io/resoluto-sandbox/main/changelog/index.md).
+- **`0.x.PATCH`** is bug-fixes only, never breaking.
+- The **latest minor always upgrades cleanly** from the previous one within the same `0.x` line.
+
+`1.0.0` is a stability promise, not a maturity milestone — it ships when the public API is one we're ready to keep.
+
+## Deprecations
+
+A public API slated for removal emits a `DeprecationWarning` for at least one minor release before it goes.
+
+## Releases
+
+Releases are **tag-driven** and published via **PyPI Trusted Publishing (OIDC)** — no stored tokens.
+
+- Final tags (`vX.Y.Z`) publish to **PyPI**.
+- Pre-release tags (`vX.Y.Z-rcN`, `vX.Y.Z.devN`) publish to **TestPyPI** for verification first.
+
+Cross-package dependencies are pinned to compatible ranges, so installing one package pulls compatible siblings.
 # API
 
 # Conduit
 
-The durable key/value rendezvous between host and sandbox — the only channel between the two halves.
+The durable key/value rendezvous between host and sandbox — the only channel between the two halves. `store_from_env` selects a concrete backend from the environment; every backend implements the same three-operation `Conduit` interface. `ObjectInfo` describes a listed object.
 
 ## resoluto.sandbox.Conduit
 
@@ -781,7 +1000,7 @@ async def copy_prefix(self, src_prefix: str, dst_prefix: str) -> int:
     src, dst = src_prefix.rstrip("/"), dst_prefix.rstrip("/")
     objs = await self.list_prefix(src)
     for o in objs:
-        rel = o.key[len(src):].lstrip("/")
+        rel = o.key[len(src) :].lstrip("/")
         await self.put(f"{dst}/{rel}", await self.get(o.key))
     return len(objs)
 ```
@@ -800,6 +1019,71 @@ Source code in `src/resoluto/sandbox/contracts.py`
 async def aclose(self) -> None:
     """Release any cached client/session. Default no-op; override where there's something to
     release (a cached HTTP session, connection pool, etc). One name across every Conduit."""
+```
+
+## resoluto.sandbox.ObjectInfo
+
+Bases: `BaseModel`
+
+## resoluto.sandbox.conduit.factory.store_from_env
+
+```python
+store_from_env(env=None)
+```
+
+Build a Conduit from environment variables. Inputs: optional env dict (defaults to os.environ). Output: a concrete Conduit for the requested RESOLUTO_STORE_KIND.
+
+Source code in `src/resoluto/sandbox/conduit/factory.py`
+
+```python
+def store_from_env(env: dict[str, str] | None = None) -> Conduit:
+    """Build a Conduit from environment variables. Inputs: optional env dict (defaults
+    to os.environ). Output: a concrete Conduit for the requested RESOLUTO_STORE_KIND."""
+    env = env if env is not None else os.environ
+    kind = env["RESOLUTO_STORE_KIND"]
+    if kind == "stdout":
+        from resoluto.sandbox.conduit.stdout import StdoutConduit
+
+        return StdoutConduit()
+    if kind == "localfs":
+        from resoluto.sandbox.conduit import LocalConduit
+
+        return LocalConduit(env["RESOLUTO_STORE_ROOT"])
+    if kind == "s3":
+        from resoluto.sandbox.conduit.s3 import S3Conduit
+
+        write_token = env.get("RESOLUTO_STORE_WRITE_TOKEN")
+        if write_token:
+            tok = json.loads(write_token)
+            return S3Conduit(
+                tok["bucket"],
+                endpoint_url=tok.get("endpoint_url"),
+                region_name=tok.get("region", "us-east-1"),
+                aws_access_key_id=tok["access_key_id"],
+                aws_secret_access_key=tok["secret_access_key"],
+                aws_session_token=tok.get("session_token"),
+            )
+        return S3Conduit(
+            env["RESOLUTO_STORE_BUCKET"],
+            endpoint_url=env.get("RESOLUTO_STORE_ENDPOINT") or None,
+            region_name=env.get("RESOLUTO_STORE_REGION", "us-east-1"),
+            aws_access_key_id=env.get("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=env.get("AWS_SECRET_ACCESS_KEY"),
+        )
+    if kind == "gcs":
+        from resoluto.sandbox.conduit.gcs import GcsConduit
+
+        if env.get("RESOLUTO_STORE_WRITE_TOKEN"):
+            raise RuntimeError(
+                "RESOLUTO_STORE_KIND=gcs cannot honor a prefix-scoped RESOLUTO_STORE_WRITE_TOKEN "
+                "(that is the s3 STS path) — GcsConduit is a single-tenant host-side store. "
+                "Refusing rather than silently granting whole-service-account access."
+            )
+        return GcsConduit(
+            env["RESOLUTO_STORE_BUCKET"],
+            service_file=env.get("RESOLUTO_GCS_SERVICE_FILE"),
+        )
+    raise RuntimeError(f"unknown RESOLUTO_STORE_KIND={kind!r}")
 ```
 
 ## resoluto.sandbox.LocalConduit
@@ -836,9 +1120,397 @@ def __init__(self, *, sink: IO[str] | None = None) -> None:
     self._sink = sink if sink is not None else sys.stdout
 ```
 
+## resoluto.sandbox.conduit.s3.S3Conduit
+
+```python
+S3Conduit(
+    bucket,
+    *,
+    endpoint_url=None,
+    region_name=None,
+    aws_access_key_id=None,
+    aws_secret_access_key=None,
+    aws_session_token=None,
+)
+```
+
+Bases: `Conduit`
+
+Source code in `src/resoluto/sandbox/conduit/s3.py`
+
+```python
+def __init__(
+    self,
+    bucket: str,
+    *,
+    endpoint_url: str | None = None,
+    region_name: str | None = None,
+    aws_access_key_id: str | None = None,
+    aws_secret_access_key: str | None = None,
+    aws_session_token: str | None = None,
+) -> None:
+    self._bucket = bucket
+    self._client_kwargs = {
+        "endpoint_url": endpoint_url,
+        "region_name": region_name,
+        "aws_access_key_id": aws_access_key_id,
+        "aws_secret_access_key": aws_secret_access_key,
+        "aws_session_token": aws_session_token,
+    }
+    self._session = None
+```
+
+### aclose
+
+```python
+aclose()
+```
+
+Drop the cached session so a stale one isn't reused after teardown.
+
+Source code in `src/resoluto/sandbox/conduit/s3.py`
+
+```python
+async def aclose(self) -> None:
+    """Drop the cached session so a stale one isn't reused after teardown."""
+    self._session = None
+```
+
+### ensure_bucket
+
+```python
+ensure_bucket()
+```
+
+Create the bucket if absent.
+
+Source code in `src/resoluto/sandbox/conduit/s3.py`
+
+```python
+async def ensure_bucket(self) -> None:
+    """Create the bucket if absent."""
+    from botocore.exceptions import ClientError
+
+    async with self._client() as c:
+        try:
+            await c.head_bucket(Bucket=self._bucket)
+        except ClientError:
+            await c.create_bucket(Bucket=self._bucket)
+```
+
+## resoluto.sandbox.conduit.gcs.GcsConduit
+
+```python
+GcsConduit(bucket, *, service_file=None)
+```
+
+Bases: `Conduit`
+
+Source code in `src/resoluto/sandbox/conduit/gcs.py`
+
+```python
+def __init__(self, bucket: str, *, service_file: str | None = None) -> None:
+    self._bucket = bucket
+    self._service_file = service_file
+    self._storage = None
+```
+
+# Driver
+
+Drive one node through a sandbox end to end: stage its inputs, run it, collect its outputs, and map the raw exit into a typed outcome. `drive_node` is the high-level entry; `drive_node_raw` exposes the un-mapped result; `run_node_in_sandbox` is the low-level single-shot runner.
+
+## resoluto.sandbox.drive_node
+
+```python
+drive_node(
+    runtime,
+    store,
+    spec,
+    *,
+    admit=None,
+    on_event=None,
+    poll_interval_s=2.0,
+    dead_after_s=120.0,
+    clock=monotonic,
+)
+```
+
+Drive one node and read its work product from result.json as a `NodeResult`.
+
+Source code in `src/resoluto/sandbox/driver.py`
+
+```python
+async def drive_node(
+    runtime: SandboxRuntime,
+    store: Conduit,
+    spec: SandboxLaunchSpec,
+    *,
+    admit: Admission | None = None,
+    on_event: OnEvent | None = None,
+    poll_interval_s: float = 2.0,
+    dead_after_s: float = 120.0,
+    clock: Callable[[], float] = time.monotonic,
+) -> NodeResult:
+    """Drive one node and read its work product from result.json as a `NodeResult`."""
+    node_id = spec.labels.get("resoluto.node_id", "")
+    outcome = await drive_node_raw(
+        runtime,
+        store,
+        spec,
+        admit=admit,
+        on_event=on_event,
+        poll_interval_s=poll_interval_s,
+        dead_after_s=dead_after_s,
+        clock=clock,
+    )
+    if outcome.disposition != "completed":
+        return NodeResult(
+            node_id=node_id,
+            status="failure",
+            observed_phase=outcome.observed_phase,
+            reason=outcome.reason,
+            substrate_logs=outcome.substrate_logs,
+        )
+    try:
+        raw = await store.get(result_key(spec.store_prefix))
+    except (ConduitError, OSError):
+        return NodeResult(
+            node_id=node_id,
+            status="failure",
+            observed_phase=outcome.observed_phase,
+            reason="no result.json in store",
+        )
+    try:
+        result = NodeResult.model_validate_json(raw)
+    except ValidationError as e:
+        return NodeResult(
+            node_id=node_id,
+            status="failure",
+            observed_phase=outcome.observed_phase,
+            reason=f"result.json failed to parse: {e.error_count()} validation error(s)",
+        )
+    result.observed_phase = outcome.observed_phase
+    return result
+```
+
+## resoluto.sandbox.drive_node_raw
+
+```python
+drive_node_raw(
+    runtime,
+    store,
+    spec,
+    *,
+    admit=None,
+    on_event=None,
+    result_ready=None,
+    poll_interval_s=2.0,
+    dead_after_s=120.0,
+    unstartable_polls=15,
+    external_gone_polls=15,
+    clock=monotonic,
+)
+```
+
+Launch, tail telemetry, and reap; returns a `NodeOutcome`. Optional `result_ready` completes as soon as the work product appears.
+
+Source code in `src/resoluto/sandbox/driver.py`
+
+```python
+async def drive_node_raw(
+    runtime: SandboxRuntime,
+    store: Conduit,
+    spec: SandboxLaunchSpec,
+    *,
+    admit: Admission | None = None,
+    on_event: OnEvent | None = None,
+    result_ready: Callable[[], Awaitable[bool]] | None = None,
+    poll_interval_s: float = 2.0,
+    dead_after_s: float = 120.0,
+    unstartable_polls: int = 15,
+    external_gone_polls: int = 15,
+    clock: Callable[[], float] = time.monotonic,
+) -> NodeOutcome:
+    """Launch, tail telemetry, and reap; returns a `NodeOutcome`. Optional `result_ready` completes as soon as the work product appears."""
+    lease_cm = (await admit.acquire(spec)) if admit is not None else _direct_lease(runtime, spec)
+    async with lease_cm as leased:
+        handle = leased.handle
+        reader = ChunkReader(store, spec.store_prefix, dead_after_s=dead_after_s, clock=clock)
+        phase = "unknown"
+        unknown_streak = 0
+        unstartable_streak = 0
+        while True:
+            for ev in await reader.poll():
+                await _fire(on_event, ev)
+            if result_ready is not None and await result_ready():
+                return NodeOutcome(disposition="completed", observed_phase=phase)
+            st = await runtime.status(handle)
+            phase = st.phase
+            if phase == "running":
+                reader.arm()
+            if st.terminal:
+                for ev in await reader.poll():
+                    await _fire(on_event, ev)
+                return NodeOutcome(disposition="completed", observed_phase=phase)
+            unstartable_streak = (
+                unstartable_streak + 1
+                if (phase != "running" and st.reason in _FATAL_WAITING)
+                else 0
+            )
+            if unstartable_streak >= unstartable_polls:
+                return NodeOutcome(
+                    disposition="unstartable",
+                    observed_phase=phase,
+                    reason=f"{st.reason} (sustained {unstartable_streak} polls)",
+                )
+            unknown_streak = unknown_streak + 1 if phase == "unknown" else 0
+            if unknown_streak >= external_gone_polls and reader.is_dead():
+                return NodeOutcome(
+                    disposition="external",
+                    observed_phase=phase,
+                    reason="pod terminated externally (sustained 'unknown' + telemetry silence)",
+                )
+            if reader.is_dead():
+                try:
+                    logs = await runtime.logs(handle)
+                except Exception:  # noqa: BLE001
+                    logs = "(unavailable)"
+                return NodeOutcome(
+                    disposition="silent",
+                    observed_phase=phase,
+                    reason="substrate dead — no telemetry within death window",
+                    substrate_logs=logs[-4000:],
+                )
+            await asyncio.sleep(poll_interval_s)
+```
+
+## resoluto.sandbox.NodeOutcome
+
+```python
+NodeOutcome(
+    disposition,
+    observed_phase,
+    reason="",
+    substrate_logs="",
+)
+```
+
+Substrate-level disposition of one driven node: 'completed', 'unstartable', 'external', or 'silent'.
+
+## resoluto.sandbox.NodeResult
+
+Bases: `BaseModel`
+
+Typed work product the in-sandbox runner writes to `<prefix>/result.json`.
+
+## resoluto.sandbox.run_node_in_sandbox
+
+```python
+run_node_in_sandbox(
+    *,
+    store,
+    prefix,
+    run_id,
+    node_id,
+    workload_argv,
+    workspace_dir=None,
+    output_paths=None,
+    setup_argv=None,
+    cleanup_argv=None,
+    heartbeat_interval_s=5.0,
+    clock=time,
+    canary_probe_host="1.1.1.1",
+    canary_probe_port=80,
+    run_canary=None,
+)
+```
+
+Run one node's workload (with optional setup/cleanup hooks and input/output staging), self-report telemetry to the store, and return the NodeResult (also written to `<prefix>/result.json`). `run_canary` overrides the egress-isolation canary (tests inject a stub); the canary always runs.
+
+Source code in `src/resoluto/sandbox/runner.py`
+
+```python
+async def run_node_in_sandbox(
+    *,
+    store: Conduit,
+    prefix: str,
+    run_id: str,
+    node_id: str,
+    workload_argv: list[str],
+    workspace_dir: str | None = None,
+    output_paths: list[str] | None = None,
+    setup_argv: list[str] | None = None,
+    cleanup_argv: list[str] | None = None,
+    heartbeat_interval_s: float = 5.0,
+    clock: Callable[[], float] = time.time,
+    canary_probe_host: str = "1.1.1.1",
+    canary_probe_port: int = 80,
+    run_canary: CanaryRunner | None = None,
+) -> NodeResult:
+    """Run one node's workload (with optional setup/cleanup hooks and input/output staging), self-report telemetry to the store, and return the NodeResult (also written to `<prefix>/result.json`). `run_canary` overrides the egress-isolation canary (tests inject a stub); the canary always runs."""
+    shipper = ChunkShipper(store, prefix, clock=clock)
+    em = SpanEmitter(shipper, run_id, clock=clock)
+    hb = asyncio.ensure_future(_heartbeat(shipper, heartbeat_interval_s))
+    result = NodeResult(node_id=node_id)
+    canary = run_canary or _default_canary(canary_probe_host, canary_probe_port)
+    try:
+        async with em.span("", "node", node_id, inputs={"argv": workload_argv}) as node_sid:
+            async with em.span(node_sid, "egress_canary", "egress_canary") as canary_sid:
+                verdict = await canary(store, prefix)
+                for r in verdict.results:
+                    await em.log(
+                        canary_sid,
+                        f"probe {r.target}: passed={r.passed} "
+                        f"(expected_reachable={r.expected_reachable}, actual={r.actual_reachable})",
+                    )
+                canary_ok = verdict.passed
+                if not verdict.passed:
+                    result.status = "failure"
+                    result.reason = verdict.reason
+
+            if canary_ok:
+                if workspace_dir is not None:
+                    Path(workspace_dir).mkdir(parents=True, exist_ok=True)
+                    staged = await stage_inputs(store, prefix, workspace_dir)
+                    await em.log(
+                        node_sid, f"staged {len(staged)} input archive(s) → {workspace_dir}"
+                    )
+                setup_ok = True
+                if setup_argv:
+                    src = await _exec_logged(
+                        em, node_sid, "setup", "setup", setup_argv, workspace_dir
+                    )
+                    if src != 0:
+                        result.exit_code, result.status, setup_ok = src, "failure", False
+                        await em.log(
+                            node_sid, f"setup hook failed (exit {src}) — skipping workload"
+                        )
+                if setup_ok:
+                    rc = await _exec_logged(
+                        em, node_sid, "workload", node_id, workload_argv, workspace_dir
+                    )
+                    result.exit_code = rc
+                    result.status = "success" if rc == 0 else "failure"
+                    if rc == 0 and workspace_dir is not None and output_paths:
+                        result.output_archive = await collect_outputs(
+                            store, prefix, workspace_dir, output_paths
+                        )
+                        await em.log(node_sid, f"collected outputs → {result.output_archive}")
+    finally:
+        if cleanup_argv:
+            try:
+                await _exec_logged(em, "", "cleanup", "cleanup", cleanup_argv, workspace_dir)
+            except Exception:  # noqa: BLE001
+                pass
+        hb.cancel()
+        await store.put(result_key(prefix), result.model_dump_json().encode("utf-8"))
+        await shipper.close()
+    return result
+```
+
 # Pool
 
-Bounded concurrency over sandbox slots: acquire a lease, run inside it, release it back.
+Bounded concurrency over sandbox slots: acquire a lease, run inside it, release it back. `Admission` is the concurrency-admission decision and `Lease` the granted slot the pool hands out.
 
 ## resoluto.sandbox.SandboxPool
 
@@ -948,9 +1620,21 @@ def __init__(self, pool: "SandboxPool", handle: SandboxHandle) -> None:
     self._released = False
 ```
 
+## resoluto.sandbox.Admission
+
+Bases: `Protocol`
+
+Decides whether/when a launch is allowed, then launches and returns a Lease.
+
+## resoluto.sandbox.Lease
+
+Bases: `Protocol`
+
+An acquired sandbox slot as an async context manager exposing the live handle.
+
 # Runtime & Contracts
 
-The isolation/placement seam (`SandboxRuntime`), the backend that drives the stage → run → collect flow, and the platform-neutral launch spec.
+The isolation/placement seam (`SandboxRuntime`), the backend that drives the stage → run → collect flow, the platform-neutral launch spec, and the two concrete runtimes (`K8sSandboxRuntime`, `KataNerdctlSandboxRuntime`). `store_env_for_pod` derives the store environment a pod needs from the host environment.
 
 ## resoluto.sandbox.SandboxRuntime
 
@@ -989,6 +1673,12 @@ async def logs(self, handle: SandboxHandle, *, tail: int = 200) -> str:
     """Return tail lines of substrate-side logs for forensics."""
     raise NotImplementedError
 ```
+
+## resoluto.sandbox.Backend
+
+Bases: `ABC`
+
+Runs a program and returns a RunResult.
 
 ## resoluto.sandbox.SubstrateBackend
 
@@ -1036,6 +1726,351 @@ def __init__(
 Bases: `BaseModel`
 
 Platform-neutral spec the caller hands a runtime to launch one sandbox.
+
+## resoluto.sandbox.SandboxHandle
+
+Bases: `BaseModel`
+
+## resoluto.sandbox.SandboxStatus
+
+Bases: `BaseModel`
+
+## resoluto.sandbox.backends.substrate.store_env_for_pod
+
+```python
+store_env_for_pod(environ)
+```
+
+Select the RESOLUTO_STORE\_\* env the sandbox may inherit; host AWS creds are never forwarded.
+
+Source code in `src/resoluto/sandbox/backends/substrate.py`
+
+```python
+def store_env_for_pod(environ: "os._Environ[str] | dict[str, str]") -> dict[str, str]:
+    """Select the RESOLUTO_STORE_* env the sandbox may inherit; host AWS creds are never forwarded."""
+    selected = {k: v for k, v in environ.items() if k.startswith("RESOLUTO_STORE_")}
+    if selected.get("RESOLUTO_STORE_WRITE_TOKEN"):
+        return selected
+    if any(k.startswith("AWS_") for k in environ) and selected.get("RESOLUTO_STORE_KIND") == "s3":
+        raise RuntimeError(
+            "the sandbox needs a scoped RESOLUTO_STORE_WRITE_TOKEN for an s3 store — "
+            "host AWS creds are never forwarded (no trusted-local bypass)."
+        )
+    return selected
+```
+
+## resoluto.sandbox.runtime.k8s.K8sSandboxRuntime
+
+```python
+K8sSandboxRuntime(
+    *,
+    namespace="resoluto-sandboxes",
+    kubeconfig=None,
+    context=None,
+    image_pull_policy="IfNotPresent",
+    egress=None,
+    node_allocatable_memory=None,
+    runtime_class="kata",
+)
+```
+
+Bases: `SandboxRuntime`
+
+Source code in `src/resoluto/sandbox/runtime/k8s.py`
+
+```python
+def __init__(
+    self,
+    *,
+    namespace: str = "resoluto-sandboxes",
+    kubeconfig: str | None = None,
+    context: str | None = None,
+    image_pull_policy: str = "IfNotPresent",
+    egress: EgressConfig | None = None,
+    node_allocatable_memory: str | None = None,
+    runtime_class: str = "kata",
+) -> None:
+    self._ns = namespace
+    self._kubeconfig = kubeconfig
+    self._runtime_class = runtime_class
+    self._context = context
+    self._ipp = image_pull_policy
+    self._egress = egress
+    self._node_allocatable_memory = node_allocatable_memory
+    self._api = None
+    self._net_api = None
+```
+
+### node_allocatable_memory
+
+```python
+node_allocatable_memory()
+```
+
+Return minimum allocatable RAM in bytes across Ready nodes, 0 if unknown.
+
+Source code in `src/resoluto/sandbox/runtime/k8s.py`
+
+```python
+async def node_allocatable_memory(self) -> int:
+    """Return minimum allocatable RAM in bytes across Ready nodes, 0 if unknown."""
+    return await self._get_node_allocatable_ram()
+```
+
+### ensure_run_owner
+
+```python
+ensure_run_owner(run_id)
+```
+
+Create-or-get the per-run owner ConfigMap; return (name, uid).
+
+Source code in `src/resoluto/sandbox/runtime/k8s.py`
+
+```python
+async def ensure_run_owner(self, run_id: str) -> tuple[str, str]:
+    """Create-or-get the per-run owner ConfigMap; return (name, uid)."""
+    from kubernetes_asyncio.client.exceptions import ApiException
+
+    api = await self._client()
+    name = f"run-owner-{_dns_safe(run_id)}"
+    body = {
+        "apiVersion": "v1",
+        "kind": "ConfigMap",
+        "metadata": {
+            "name": name,
+            "namespace": self._ns,
+            "labels": {"resoluto.run_id": run_id[:63]},
+        },
+    }
+    try:
+        cm = await api.create_namespaced_config_map(namespace=self._ns, body=body)
+        return (name, cm.metadata.uid)
+    except ApiException as exc:
+        if exc.status == 409:
+            cm = await api.read_namespaced_config_map(name=name, namespace=self._ns)
+            return (name, cm.metadata.uid)
+        raise
+```
+
+### delete_run_owner
+
+```python
+delete_run_owner(run_id)
+```
+
+Delete the per-run owner ConfigMap, triggering k8s cascade GC (404-safe).
+
+Source code in `src/resoluto/sandbox/runtime/k8s.py`
+
+```python
+async def delete_run_owner(self, run_id: str) -> None:
+    """Delete the per-run owner ConfigMap, triggering k8s cascade GC (404-safe)."""
+    from kubernetes_asyncio.client.exceptions import ApiException
+
+    api = await self._client()
+    name = f"run-owner-{_dns_safe(run_id)}"
+    try:
+        await api.delete_namespaced_config_map(name=name, namespace=self._ns)
+    except ApiException as exc:
+        if exc.status != 404:
+            raise
+```
+
+### reap_stale_run_owners
+
+```python
+reap_stale_run_owners(keep_run_id, max_age_s=7200.0)
+```
+
+Delete run-owner ConfigMaps older than max_age_s and not keep_run_id; return count.
+
+Source code in `src/resoluto/sandbox/runtime/k8s.py`
+
+```python
+async def reap_stale_run_owners(self, keep_run_id: str, max_age_s: float = 7200.0) -> int:
+    """Delete run-owner ConfigMaps older than max_age_s and not keep_run_id; return count."""
+    from datetime import UTC, datetime
+
+    api = await self._client()
+    cms = await api.list_namespaced_config_map(
+        namespace=self._ns, label_selector="resoluto.run_id"
+    )
+    n = 0
+    for cm in cms.items:
+        rid = (cm.metadata.labels or {}).get("resoluto.run_id", "")
+        if not rid or rid == keep_run_id[:63]:
+            continue
+        created = cm.metadata.creation_timestamp
+        if created is not None and (datetime.now(UTC) - created).total_seconds() < max_age_s:
+            continue
+        await self.delete_run_owner(rid)
+        n += 1
+    return n
+```
+
+### count_active_pods
+
+```python
+count_active_pods(kind=None)
+```
+
+Count non-terminal sandbox pods in the namespace, optionally filtered by resoluto.kind.
+
+Source code in `src/resoluto/sandbox/runtime/k8s.py`
+
+```python
+async def count_active_pods(self, kind: str | None = None) -> int:
+    """Count non-terminal sandbox pods in the namespace, optionally filtered by resoluto.kind."""
+    api = await self._client()
+    label_selector = "resoluto_sandbox=true"
+    if kind is not None:
+        label_selector += f",resoluto.kind={kind}"
+    pods = await api.list_namespaced_pod(namespace=self._ns, label_selector=label_selector)
+    terminal = {"Succeeded", "Failed"}
+    return sum(1 for pod in pods.items if (pod.status.phase or "") not in terminal)
+```
+
+## resoluto.sandbox.runtime.kata_nerdctl.KataNerdctlSandboxRuntime
+
+```python
+KataNerdctlSandboxRuntime(
+    *,
+    address,
+    namespace,
+    conduit_host_dir,
+    conduit_mount="/conduit",
+    runtime="io.containerd.kata.v2",
+    cni_path=None,
+    cni_netconfpath=None,
+    network="bridge",
+    nerdctl="nerdctl",
+    sudo=False,
+    egress_domains_file=None,
+    dind_graph_dir="/var/lib/resoluto-local/dind-graph",
+)
+```
+
+Bases: `SandboxRuntime`
+
+Launches each sandbox as a Kata microVM via nerdctl against a dedicated containerd.
+
+Source code in `src/resoluto/sandbox/runtime/kata_nerdctl.py`
+
+```python
+def __init__(
+    self,
+    *,
+    address: str,
+    namespace: str,
+    conduit_host_dir: str,
+    conduit_mount: str = "/conduit",
+    runtime: str = "io.containerd.kata.v2",
+    cni_path: str | None = None,
+    cni_netconfpath: str | None = None,
+    network: str = "bridge",
+    nerdctl: str = "nerdctl",
+    sudo: bool = False,
+    egress_domains_file: str | None = None,
+    dind_graph_dir: str = "/var/lib/resoluto-local/dind-graph",
+) -> None:
+    check_runtime_class_guard(runtime)
+    self._address = address
+    self._namespace = namespace
+    self._conduit_host_dir = conduit_host_dir
+    self._conduit_mount = conduit_mount
+    self._runtime = runtime
+    self._cni_path = cni_path
+    self._cni_netconfpath = cni_netconfpath
+    self._network = network
+    self._nerdctl = nerdctl
+    self._sudo = sudo
+    # the live SNI allowlist file the persistent egress proxy reads (set per-run, see apply_egress)
+    self._egress_domains_file = egress_domains_file
+    # Base dir (on real DISK, never /run tmpfs) for a block-backed dind graph: each dind step
+    # binds its own subdir at /var/lib/docker so image layers live on disk, keeping RAM free.
+    self._dind_graph_dir = dind_graph_dir
+    self._graph_dirs: dict[str, str] = {}  # container id → its host graph dir (for cleanup)
+```
+
+### apply_egress
+
+```python
+apply_egress(domains)
+```
+
+Set THIS run's SNI egress allowlist by writing the proxy's live domains file — per-step networking with no re-provision. Empty/None = deny all (secure). Idempotent; fail-fast if the proxy file dir is missing (run scripts/local-backend-up.sh once to set it up).
+
+Source code in `src/resoluto/sandbox/runtime/kata_nerdctl.py`
+
+```python
+async def apply_egress(self, domains: "list[str] | None") -> None:
+    """Set THIS run's SNI egress allowlist by writing the proxy's live domains file — per-step
+    networking with no re-provision. Empty/None = deny all (secure). Idempotent; fail-fast if the
+    proxy file dir is missing (run scripts/local-backend-up.sh once to set it up)."""
+    if not self._egress_domains_file:
+        return
+    text = ",".join(d.strip() for d in (domains or []) if d.strip())
+    with open(self._egress_domains_file, "w", encoding="utf-8") as f:
+        f.write(text)
+```
+
+### clear_egress
+
+```python
+clear_egress()
+```
+
+Reset this run's egress allowlist to deny-all (write the domains file empty).
+
+Source code in `src/resoluto/sandbox/runtime/kata_nerdctl.py`
+
+```python
+async def clear_egress(self) -> None:
+    """Reset this run's egress allowlist to deny-all (write the domains file empty)."""
+    await self.apply_egress([])
+```
+
+### from_env
+
+```python
+from_env(*, conduit_host_dir, conduit_mount='/conduit')
+```
+
+Builds an instance from the RESOLUTO_LOCAL\_\* environment knobs.
+
+Source code in `src/resoluto/sandbox/runtime/kata_nerdctl.py`
+
+```python
+@classmethod
+def from_env(
+    cls, *, conduit_host_dir: str, conduit_mount: str = "/conduit"
+) -> "KataNerdctlSandboxRuntime":
+    """Builds an instance from the RESOLUTO_LOCAL_* environment knobs."""
+    return cls(
+        address=os.environ.get(
+            "RESOLUTO_LOCAL_CONTAINERD_ADDRESS",
+            "/run/resoluto-local/containerd/containerd.sock",
+        ),
+        namespace=os.environ.get("RESOLUTO_LOCAL_CONTAINERD_NAMESPACE", "resoluto-local"),
+        conduit_host_dir=conduit_host_dir,
+        conduit_mount=conduit_mount,
+        runtime=os.environ.get("RESOLUTO_LOCAL_KATA_RUNTIME", "io.containerd.kata.v2"),
+        cni_path=os.environ.get("RESOLUTO_LOCAL_CNI_PATH", "/opt/resoluto-local/libexec/cni"),
+        cni_netconfpath=os.environ.get(
+            "RESOLUTO_LOCAL_CNI_NETCONFPATH", "/etc/resoluto-local/cni/net.d"
+        ),
+        network=os.environ.get("RESOLUTO_LOCAL_NETWORK", "resoluto-local"),
+        nerdctl=os.environ.get("RESOLUTO_LOCAL_NERDCTL", "/opt/resoluto-local/bin/nerdctl"),
+        sudo=_resolve_sudo(),
+        egress_domains_file=os.environ.get(
+            "RESOLUTO_LOCAL_EGRESS_DOMAINS_FILE", "/run/resoluto-local/egress-domains"
+        ),
+        dind_graph_dir=os.environ.get(
+            "RESOLUTO_LOCAL_DIND_GRAPH_DIR", "/var/lib/resoluto-local/dind-graph"
+        ),
+    )
+```
 
 # Sandbox
 
@@ -1121,8 +2156,17 @@ def run(
     networking set up on the fly and torn down after, with no re-provisioning. ``None``/``[]`` =
     deny all outbound (secure default). Currently applied by the ``local`` backend's SNI proxy.
     """
-    return self._backend.run(argv, workspace=workspace, stdin=stdin, env=env, env_file=env_file,
-                             secrets=secrets, output_paths=output_paths, stream=stream, egress=egress)
+    return self._backend.run(
+        argv,
+        workspace=workspace,
+        stdin=stdin,
+        env=env,
+        env_file=env_file,
+        secrets=secrets,
+        output_paths=output_paths,
+        stream=stream,
+        egress=egress,
+    )
 ```
 
 ## resoluto.sandbox.RunResult
@@ -1130,3 +2174,468 @@ def run(
 Bases: `BaseModel`
 
 Outcome of one `run()`: exit code, output/errors, collected `artifacts` paths, parsed `result`, and a substrate `reason`.
+
+# Security
+
+Per-run egress policy (`EgressConfig`) and how a run references a secret without ever seeing its value (`SecretKeyRef`).
+
+## resoluto.sandbox.egress.EgressConfig
+
+```python
+EgressConfig(
+    allow=(),
+    allow_port=443,
+    public_https=False,
+    store_cidr=None,
+    store_port=443,
+)
+```
+
+Backend-neutral egress allowlist. SECURE BY DEFAULT: `EgressConfig()` DENIES all egress except DNS and the object store — a fresh sandbox cannot phone home. You opt IN to what the workload needs. Same knobs on every backend:
+
+- public_https=False (DEFAULT) → deny all outbound except DNS + store. Set **True** to allow ALL HTTPS (:443) — the "let it reach the internet" escape hatch for trusted workloads.
+- allow=[...] opens SPECIFIC destinations — hostnames (e.g. "api.anthropic.com", "registry.npmjs.org") OR CIDRs — on allow_port (443 default; e.g. 22 for git-over-SSH). Hostnames resolve to CIDRs when rendered. This is the RECOMMENDED way to run untrusted code on k8s: least privilege. (On the local backend, prefer per-run `Sandbox.run(egress=[domains])` — enforced by domain via the SNI proxy, so it never goes stale for CDN-backed hosts.)
+- store_cidr/store_port: the k8s object-store endpoint (REQUIRED for the k8s backend; the local backend reaches its store over a file mount, so it ignores these). Always allowed — the sandbox must return results.
+
+IMDS (169.254.169.254) is ALWAYS denied; the local renderer also denies RFC1918 (no lateral movement) unless you explicitly `allow` a private CIDR.
+
+NOTE: NetworkPolicy/iptables are CIDR-based — pinning a CDN-backed host (e.g. api.anthropic.com behind Cloudflare) to its resolved IPs is fragile (they rotate). When you need reliable access to such a host from otherwise-restricted code, `public_https=True` is the pragmatic choice.
+
+### from_store_env
+
+```python
+from_store_env(env=None)
+```
+
+Build the allowlist from RESOLUTO_STORE_ENDPOINT, honoring RESOLUTO_STORE_EGRESS_CIDR/PORT and the simple RESOLUTO_EGRESS_ALLOW / RESOLUTO_EGRESS_PUBLIC_HTTPS knobs; None if no store.
+
+Source code in `src/resoluto/sandbox/egress.py`
+
+```python
+@classmethod
+def from_store_env(cls, env: "dict[str, str] | None" = None) -> "EgressConfig | None":
+    """Build the allowlist from RESOLUTO_STORE_ENDPOINT, honoring RESOLUTO_STORE_EGRESS_CIDR/PORT
+    and the simple RESOLUTO_EGRESS_ALLOW / RESOLUTO_EGRESS_PUBLIC_HTTPS knobs; None if no store."""
+    import os
+    import socket
+    from urllib.parse import urlparse
+
+    e = env if env is not None else os.environ
+    allow = tuple(x for x in (e.get("RESOLUTO_EGRESS_ALLOW") or "").split(",") if x.strip())
+    public_https = e.get("RESOLUTO_EGRESS_PUBLIC_HTTPS", "0").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "",
+    )
+    allow_port = int(e.get("RESOLUTO_EGRESS_ALLOW_PORT", "443"))
+
+    raw = (e.get("RESOLUTO_STORE_ENDPOINT") or "").strip()
+    if not raw:
+        return None
+    u = urlparse(raw if "://" in raw else f"http://{raw}")
+    endpoint_port = u.port or (443 if u.scheme == "https" else 80)
+
+    override = (e.get("RESOLUTO_STORE_EGRESS_CIDR") or "").strip()
+    if override:
+        port = e.get("RESOLUTO_STORE_EGRESS_PORT")
+        return cls(
+            store_cidr=override,
+            store_port=int(port) if port else endpoint_port,
+            allow=allow,
+            allow_port=allow_port,
+            public_https=public_https,
+        )
+    if not u.hostname:
+        return None
+    try:
+        ip = socket.gethostbyname(u.hostname)
+    except OSError:
+        return None
+    return cls(
+        store_cidr=f"{ip}/32",
+        store_port=endpoint_port,
+        allow=allow,
+        allow_port=allow_port,
+        public_https=public_https,
+    )
+```
+
+## resoluto.sandbox.secrets.SecretKeyRef
+
+```python
+SecretKeyRef(name, key)
+```
+
+Reference to an existing Kubernetes Secret's key. k8s-only: rendered as valueFrom.secretKeyRef by K8sSandboxRuntime; ignored by the local backend (KataNerdctlSandboxRuntime never reads SandboxLaunchSpec.k8s_secret_refs). The Secret itself must already exist — created by kubectl, External Secrets Operator, or any other means; resoluto-sandbox never creates or syncs one.
+
+# Staging
+
+The input/output plumbing between the host workspace and the conduit: stage a workspace in before a run, collect and fetch declared output globs back out after it.
+
+## resoluto.sandbox.stage_inputs
+
+```python
+stage_inputs(store, prefix, workspace_dir)
+```
+
+Extract every input archive under `inbox/` into the workspace; returns the keys staged.
+
+Source code in `src/resoluto/sandbox/staging.py`
+
+```python
+async def stage_inputs(store: Conduit, prefix: str, workspace_dir: str) -> list[str]:
+    """Extract every input archive under `inbox/` into the workspace; returns the keys staged."""
+    dest = Path(workspace_dir)
+    staged: list[str] = []
+    for info in await store.list_prefix(f"{prefix.rstrip('/')}/{INBOX}"):
+        if info.key.endswith(_ARCHIVE_SUFFIXES):
+            _extract(await store.get(info.key), dest)
+            staged.append(info.key)
+    return staged
+```
+
+## resoluto.sandbox.put_dir
+
+```python
+put_dir(
+    store,
+    prefix,
+    local_dir,
+    *,
+    name="workspace",
+    exclude=_DEFAULT_EXCLUDES,
+    protect=frozenset(),
+    paths=None,
+)
+```
+
+Tar `local_dir` and put it under `inbox/`; returns the object key.
+
+`paths` (each relative to `local_dir`) scopes the archive to just those subtrees. Pass the caller's paths so a run only ever stages the inputs it uses — never the surrounding workspace (deps, sibling repos, or the object store itself). `None` = the whole dir.
+
+Source code in `src/resoluto/sandbox/staging.py`
+
+```python
+async def put_dir(
+    store: Conduit,
+    prefix: str,
+    local_dir: str,
+    *,
+    name: str = "workspace",
+    exclude: frozenset[str] = _DEFAULT_EXCLUDES,
+    protect: frozenset[str] = frozenset(),
+    paths: list[str] | None = None,
+) -> str:
+    """Tar `local_dir` and put it under `inbox/`; returns the object key.
+
+    `paths` (each relative to `local_dir`) scopes the archive to just those subtrees. Pass the
+    caller's paths so a run only ever stages the inputs it uses — never the surrounding
+    workspace (deps, sibling repos, or the object store itself). `None` = the whole dir."""
+    key = f"{prefix.rstrip('/')}/{INBOX}/{name}.tar.gz"
+    await store.put(key, _archive(Path(local_dir), paths, exclude, protect))
+    return key
+```
+
+## resoluto.sandbox.collect_outputs
+
+```python
+collect_outputs(
+    store, prefix, workspace_dir, paths, *, name="output"
+)
+```
+
+Tar the declared output `paths` and put them under `outbox/`; returns the object key.
+
+Source code in `src/resoluto/sandbox/staging.py`
+
+```python
+async def collect_outputs(
+    store: Conduit, prefix: str, workspace_dir: str, paths: list[str], *, name: str = "output"
+) -> str:
+    """Tar the declared output `paths` and put them under `outbox/`; returns the object key."""
+    key = f"{prefix.rstrip('/')}/{OUTBOX}/{name}.tar.gz"
+    await store.put(key, _archive(Path(workspace_dir), paths))
+    return key
+```
+
+## resoluto.sandbox.fetch_outputs
+
+```python
+fetch_outputs(store, prefix, dest_dir)
+```
+
+Extract every output archive under `outbox/` into `dest_dir`; returns the keys fetched.
+
+Source code in `src/resoluto/sandbox/staging.py`
+
+```python
+async def fetch_outputs(store: Conduit, prefix: str, dest_dir: str) -> list[str]:
+    """Extract every output archive under `outbox/` into `dest_dir`; returns the keys fetched."""
+    dest = Path(dest_dir)
+    fetched: list[str] = []
+    for info in await store.list_prefix(f"{prefix.rstrip('/')}/{OUTBOX}"):
+        if info.key.endswith(_ARCHIVE_SUFFIXES):
+            _extract(await store.get(info.key), dest)
+            fetched.append(info.key)
+    return fetched
+```
+
+# Telemetry
+
+The self-reporting channel: the guest ships immutable JSONL chunks to the conduit (`ChunkShipper`) and the host tails them back (`ChunkReader`). `SpanEmitter` records structured `SpanEvent` spans over the run.
+
+## resoluto.sandbox.ChunkShipper
+
+```python
+ChunkShipper(
+    store,
+    prefix,
+    *,
+    flush_bytes=64 * 1024,
+    flush_interval_s=5.0,
+    heartbeat_s=30.0,
+    heartbeat_factory=_default_heartbeat,
+    clock=time,
+)
+```
+
+In-sandbox writer that buffers JSONL lines and flushes immutable chunks to the store, emitting a heartbeat when quiet.
+
+Source code in `src/resoluto/sandbox/telemetry.py`
+
+```python
+def __init__(
+    self,
+    store: Conduit,
+    prefix: str,
+    *,
+    flush_bytes: int = 64 * 1024,
+    flush_interval_s: float = 5.0,
+    heartbeat_s: float = 30.0,
+    heartbeat_factory: Callable[[float], str] = _default_heartbeat,
+    clock: Callable[[], float] = time.time,
+) -> None:
+    self._store = store
+    self._prefix = prefix.rstrip("/")
+    self._flush_bytes = flush_bytes
+    self._flush_interval_s = flush_interval_s
+    self._heartbeat_s = heartbeat_s
+    self._heartbeat_factory = heartbeat_factory
+    self._clock = clock
+    self._buf: list[str] = []
+    self._buf_bytes = 0
+    self._index = 0
+    self._last_flush = clock()
+    self._closed = False
+    self._flush_lock = asyncio.Lock()
+```
+
+### emit_line
+
+```python
+emit_line(line)
+```
+
+Buffer one JSONL record, flushing if the byte threshold is reached.
+
+Source code in `src/resoluto/sandbox/telemetry.py`
+
+```python
+async def emit_line(self, line: str) -> None:
+    """Buffer one JSONL record, flushing if the byte threshold is reached."""
+    self._buf.append(line)
+    self._buf_bytes += len(line) + 1
+    if self._buf_bytes >= self._flush_bytes:
+        await self.flush()
+```
+
+### tick
+
+```python
+tick()
+```
+
+Flush on the interval, or emit a heartbeat when idle.
+
+Source code in `src/resoluto/sandbox/telemetry.py`
+
+```python
+async def tick(self) -> None:
+    """Flush on the interval, or emit a heartbeat when idle."""
+    now = self._clock()
+    if self._buf and (now - self._last_flush) >= self._flush_interval_s:
+        await self.flush()
+    elif not self._buf and (now - self._last_flush) >= self._heartbeat_s:
+        await self.emit_line(self._heartbeat_factory(now))
+        await self.flush()
+```
+
+### close
+
+```python
+close()
+```
+
+Final flush plus a manifest naming the highest chunk index.
+
+Source code in `src/resoluto/sandbox/telemetry.py`
+
+```python
+async def close(self) -> None:
+    """Final flush plus a manifest naming the highest chunk index."""
+    if self._closed:
+        return
+    await self.flush()
+    manifest = json.dumps({"total_chunks": self._index}).encode("utf-8")
+    await self._store.put(f"{self._prefix}/{_MANIFEST}", manifest)
+    self._closed = True
+```
+
+## resoluto.sandbox.ChunkReader
+
+```python
+ChunkReader(
+    store,
+    prefix,
+    *,
+    dead_after_s=120.0,
+    clock=monotonic,
+    progress_filter=None,
+)
+```
+
+Host-side tail of a run's chunk objects in contiguous index order, with a silence-based death signal.
+
+Source code in `src/resoluto/sandbox/telemetry.py`
+
+```python
+def __init__(
+    self,
+    store: Conduit,
+    prefix: str,
+    *,
+    dead_after_s: float = 120.0,
+    clock: Callable[[], float] = time.monotonic,
+    progress_filter: Callable[[str], bool] | None = None,
+) -> None:
+    self._store = store
+    self._prefix = prefix.rstrip("/")
+    self._dead_after_s = dead_after_s
+    self._clock = clock
+    self._progress_filter = progress_filter
+    self._seen = 0
+    self._last_progress = clock()
+    self._last_arrival = clock()
+    self._total: int | None = None
+    self._armed = False
+```
+
+### substrate_silent
+
+```python
+substrate_silent
+```
+
+True when no chunk has arrived within the death window; false until armed.
+
+### poll_lines
+
+```python
+poll_lines()
+```
+
+Return newly-available JSONL records in contiguous index order, updating liveness.
+
+Source code in `src/resoluto/sandbox/telemetry.py`
+
+```python
+async def poll_lines(self) -> list[str]:
+    """Return newly-available JSONL records in contiguous index order, updating liveness."""
+    infos = await self._store.list_prefix(self._prefix)
+    present: set[int] = set()
+    for info in infos:
+        m = _CHUNK_RE.search(info.key)
+        if m:
+            present.add(int(m.group(1)))
+        elif info.key.endswith(_MANIFEST) and self._total is None:
+            self._total = json.loads(await self._store.get(info.key)).get("total_chunks")
+
+    lines: list[str] = []
+    nxt = self._seen + 1
+    while nxt in present:
+        raw = await self._store.get(_chunk_key(self._prefix, nxt))
+        lines.extend(line for line in raw.decode("utf-8").splitlines() if line.strip())
+        self._seen = nxt
+        nxt += 1
+
+    if lines:
+        self._last_arrival = self._clock()
+        if self._progress_filter is None:
+            self._last_progress = self._clock()
+        else:
+            verdicts = [self._progress_filter(line) for line in lines]
+            if any(verdicts):
+                self._last_progress = self._clock()
+    return lines
+```
+
+### arm
+
+```python
+arm()
+```
+
+Start the silence window, idempotently; until armed both death signals stay false.
+
+Source code in `src/resoluto/sandbox/telemetry.py`
+
+```python
+def arm(self) -> None:
+    """Start the silence window, idempotently; until armed both death signals stay false."""
+    if self._armed:
+        return
+    self._armed = True
+    self._last_progress = self._last_arrival = self._clock()
+```
+
+### is_dead
+
+```python
+is_dead()
+```
+
+True when no progress line has arrived within the death window; false until armed or finished.
+
+Source code in `src/resoluto/sandbox/telemetry.py`
+
+```python
+def is_dead(self) -> bool:
+    """True when no progress line has arrived within the death window; false until armed or finished."""
+    if not self._armed or self.finished:
+        return False
+    return (self._clock() - self._last_progress) > self._dead_after_s
+```
+
+## resoluto.sandbox.SpanEmitter
+
+```python
+SpanEmitter(shipper, run_id, *, clock=time)
+```
+
+Source code in `src/resoluto/sandbox/spans.py`
+
+```python
+def __init__(
+    self, shipper: ChunkShipper, run_id: str, *, clock: Callable[[], float] = time.time
+) -> None:
+    self._ship = shipper
+    self._run_id = run_id
+    self._clock = clock
+```
+
+## resoluto.sandbox.SpanEvent
+
+Bases: `BaseModel`
+
+One observability record on the JSONL wire: a span open/close or a log line.

@@ -23,7 +23,7 @@ The [`RunResult`](https://deepbluecoding.github.io/resoluto-sandbox/main/api/san
 result = Sandbox(backend="local").run(
     ["python", "run_task.py", "--mode", "fast"],
     workspace="/path/to/project",         # staged into the sandbox as cwd
-    env={"TASK_ID": "RES-42"},            # overlaid on the guest environment
+    env={"GREETING": "hello"},            # overlaid on the guest environment
     output_paths=["out/*.json"],          # globs collected into result.artifacts
 )
 ```

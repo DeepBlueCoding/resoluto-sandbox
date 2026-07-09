@@ -12,13 +12,13 @@
         <meta name="author" content="DeepBlueCoding">
       
       
-        <link rel="canonical" href="https://deepbluecoding.github.io/resoluto-sandbox/main/auth/">
+        <link rel="canonical" href="https://deepbluecoding.github.io/resoluto-sandbox/main/protocol/">
       
       
-        <link rel="prev" href="../concurrency/">
+        <link rel="prev" href="../concepts/">
       
       
-        <link rel="next" href="../api/sandbox/">
+        <link rel="next" href="../examples/">
       
       
         
@@ -29,7 +29,7 @@
     
     
       
-        <title>Credentials - Resoluto Sandbox</title>
+        <title>Protocol - Resoluto Sandbox</title>
       
     
     
@@ -84,7 +84,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#credentials-giving-your-program-its-secrets" class="md-skip">
+        <a href="#wire-protocol" class="md-skip">
           Skip to content
         </a>
       
@@ -122,7 +122,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Credentials
+              Protocol
             
           </span>
         </div>
@@ -290,9 +290,11 @@
   
   
   
+    
   
-    <li class="md-tabs__item">
-      <a href="../protocol/" class="md-tabs__link">
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
         
   
   
@@ -385,11 +387,9 @@
   
   
   
-    
   
-  
-    <li class="md-tabs__item md-tabs__item--active">
-      <a href="./" class="md-tabs__link">
+    <li class="md-tabs__item">
+      <a href="../auth/" class="md-tabs__link">
         
   
   
@@ -590,10 +590,19 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../protocol/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -609,6 +618,7 @@
   
 
       </a>
+      
     </li>
   
 
@@ -725,37 +735,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Credentials
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../auth/" class="md-nav__link">
         
   
   
@@ -771,76 +754,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#which-credential-each-provider-image-needs" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Which credential each provider image needs
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#how-to-pass-it" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        How to pass it
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#claude-subscription-auth-local-dev-only" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Claude subscription auth — LOCAL DEV ONLY
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Claude subscription auth — LOCAL DEV ONLY">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#gotcha-e-claude_code_oauth_token-with-nothing-exported" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Gotcha: -e CLAUDE_CODE_OAUTH_TOKEN with nothing exported
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1202,64 +1115,6 @@
     
   
   
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#which-credential-each-provider-image-needs" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Which credential each provider image needs
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#how-to-pass-it" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        How to pass it
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#claude-subscription-auth-local-dev-only" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Claude subscription auth — LOCAL DEV ONLY
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Claude subscription auth — LOCAL DEV ONLY">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#gotcha-e-claude_code_oauth_token-with-nothing-exported" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Gotcha: -e CLAUDE_CODE_OAUTH_TOKEN with nothing exported
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-    </ul>
-  
 </nav>
                   </div>
                 </div>
@@ -1278,86 +1133,294 @@
   
 
 
-<h1 id="credentials-giving-your-program-its-secrets">Credentials: giving your program its secrets<a class="headerlink" href="#credentials-giving-your-program-its-secrets" title="Permanent link">&para;</a></h1>
-<p><strong>The sandbox never handles credentials.</strong> It runs your program and forwards whatever you hand it —
-via <code>env=</code>, <code>env_file=</code>, <code>secrets=</code>, or a mount — into the guest, untouched. It never reads, parses, or
-knows the format of any provider's credential file. Auth is the <em>program's</em> concern: its SDK/CLI
-resolves the credential from the environment you passed.</p>
-<h2 id="which-credential-each-provider-image-needs">Which credential each provider image needs<a class="headerlink" href="#which-credential-each-provider-image-needs" title="Permanent link">&para;</a></h2>
-<p>Each prebuilt provider image runs a program that talks to that provider's API; supply its credential:</p>
+<h1 id="wire-protocol">Wire Protocol<a class="headerlink" href="#wire-protocol" title="Permanent link">&para;</a></h1>
+<p>The host and the sandbox never share memory, a socket, or a process — they rendezvous only through the
+durable <a href="../api/conduit/"><code>Conduit</code></a>. The contract below is <strong>language-neutral</strong>: any runtime that can
+read and write JSON and gzip-tar archives to the conduit can act as a host or a guest. The Python
+package in this repo is one reference implementation of it.</p>
+<p>The full specification, kept in <code>spec/PROTOCOL.md</code> in the repository and embedded verbatim here:</p>
+<h1 id="host-sandbox-wire-protocol">Host ↔ Sandbox Wire Protocol<a class="headerlink" href="#host-sandbox-wire-protocol" title="Permanent link">&para;</a></h1>
+<p>This document describes the protocol between a host and a sandbox (guest) in
+language-neutral terms. A Python reference implementation lives in <code>src/resoluto/sandbox/</code>.
+Any language that can read/write JSON and gzip-tar archives can implement a client.</p>
+<h2 id="transport-conduit">Transport: Conduit<a class="headerlink" href="#transport-conduit" title="Permanent link">&para;</a></h2>
+<p>Communication is mediated by a <strong>Conduit</strong> — a durable key/value store. The interface is three
+operations:</p>
+<ul>
+<li><code>put(key: str, data: bytes) -&gt; void</code> — write an immutable object</li>
+<li><code>get(key: str) -&gt; bytes</code> — read an object by key</li>
+<li><code>list_prefix(prefix: str) -&gt; list[key]</code> — enumerate all keys under a prefix</li>
+</ul>
+<p>Backends can be local filesystem, S3/MinIO, GCS, or any compatible object store. No streaming,
+no in-sandbox server, no long-lived TCP connection. Chunks are immutable; ordering is
+established by sequence numbers embedded in the key name.</p>
+<p>Encoding is always <strong>UTF-8 JSON</strong> for structured objects and <strong>gzip-tar</strong> for file archives. No
+Python-specific serialization (no pickle, no msgpack) is used anywhere on the wire.</p>
+<h2 id="key-namespace">Key Namespace<a class="headerlink" href="#key-namespace" title="Permanent link">&para;</a></h2>
+<p>All objects for a run live under a single prefix:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>run/&lt;run_id&gt;/nodes/&lt;node_id&gt;/
+</span></code></pre></div>
 <table>
 <thead>
 <tr>
-<th>Provider image</th>
-<th>Credential env var</th>
-<th>How to obtain</th>
+<th>Key (relative to run prefix)</th>
+<th>Direction</th>
+<th>Description</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>resoluto-sandbox:claude-agent-sdk-&lt;ver&gt;</code></td>
-<td><code>CLAUDE_CODE_OAUTH_TOKEN</code> (subscription) <strong>or</strong> <code>ANTHROPIC_API_KEY</code></td>
-<td><code>claude setup-token</code>, or an Anthropic API key</td>
+<td><code>inbox/&lt;name&gt;.tar.gz</code></td>
+<td>host → sandbox</td>
+<td>Workspace content, gzip-tarred</td>
 </tr>
 <tr>
-<td><code>resoluto-sandbox:langchain-&lt;ver&gt;</code></td>
-<td><code>ANTHROPIC_API_KEY</code></td>
-<td>an Anthropic API key</td>
+<td><code>task.json</code></td>
+<td>host → sandbox</td>
+<td>Reserved; not read by the reference runner (see schema below)</td>
 </tr>
 <tr>
-<td><code>resoluto-sandbox:openai-agents-&lt;ver&gt;</code></td>
-<td><code>OPENAI_API_KEY</code></td>
-<td>an OpenAI API key</td>
+<td><code>events-&lt;NNNNNN&gt;.jsonl</code></td>
+<td>sandbox → host</td>
+<td>Progress events, one JSON object per line</td>
+</tr>
+<tr>
+<td><code>result.json</code></td>
+<td>sandbox → host</td>
+<td>Final verdict and output metadata</td>
+</tr>
+<tr>
+<td><code>outbox/&lt;name&gt;.tar.gz</code></td>
+<td>sandbox → host</td>
+<td>Output artifacts, gzip-tarred</td>
+</tr>
+<tr>
+<td><code>_manifest.json</code></td>
+<td>sandbox → host</td>
+<td>EOF marker: <code>{"total_chunks": N}</code></td>
 </tr>
 </tbody>
 </table>
-<h2 id="how-to-pass-it">How to pass it<a class="headerlink" href="#how-to-pass-it" title="Permanent link">&para;</a></h2>
-<p>The guest does NOT inherit your host environment — deliver the credential explicitly:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">resoluto.sandbox</span><span class="w"> </span><span class="kn">import</span> <span class="n">Sandbox</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># local or k8s — the plain, universal path: forward the env var you already hold</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="s2">&quot;local&quot;</span><span class="p">,</span> <span class="n">image</span><span class="o">=</span><span class="s2">&quot;&lt;provider-image&gt;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="p">[</span><span class="s2">&quot;python&quot;</span><span class="p">,</span> <span class="s2">&quot;openai_agent.py&quot;</span><span class="p">,</span> <span class="s2">&quot;Say hi&quot;</span><span class="p">],</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">workspace</span><span class="o">=</span><span class="s2">&quot;examples/payloads&quot;</span><span class="p">,</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">env</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;OPENAI_API_KEY&quot;</span><span class="p">:</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;OPENAI_API_KEY&quot;</span><span class="p">]},</span>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="p">)</span>
-</span></code></pre></div>
+<p>Sequence numbers in event chunk names are zero-padded six-digit integers (<code>000001</code>, <code>000002</code>, …).
+Chunks are immutable once written. The host tails <code>list_prefix</code> for new chunk keys,
+fetches each in order, and reads lines as they arrive. <code>_manifest.json</code> signals that all chunks
+have been written; the host stops tailing once the chunk count matches <code>total_chunks</code>.</p>
+<h2 id="schemas">Schemas<a class="headerlink" href="#schemas" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Validates</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>event.schema.json</code></td>
+<td>Each line in <code>events-*.jsonl</code></td>
+</tr>
+<tr>
+<td><code>result.schema.json</code></td>
+<td><code>result.json</code></td>
+</tr>
+<tr>
+<td><code>task.schema.json</code></td>
+<td><code>task.json</code></td>
+</tr>
+<tr>
+<td><code>manifest.schema.json</code></td>
+<td><code>_manifest.json</code></td>
+</tr>
+</tbody>
+</table>
+<p>All schemas use JSON Schema draft 2020-12.</p>
+<h3 id="spanevent-events-jsonl">SpanEvent (<code>events-*.jsonl</code>)<a class="headerlink" href="#spanevent-events-jsonl" title="Permanent link">&para;</a></h3>
+<p>Each line is a UTF-8 JSON object. Required fields:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Values</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>run_id</code></td>
+<td>string</td>
+<td>Identifies the run</td>
+</tr>
+<tr>
+<td><code>span_id</code></td>
+<td>string</td>
+<td>Unique identifier for this span</td>
+</tr>
+<tr>
+<td><code>parent_span_id</code></td>
+<td>string</td>
+<td>Parent span; empty string for root spans</td>
+</tr>
+<tr>
+<td><code>kind</code></td>
+<td>string</td>
+<td>advisory; any string permitted. Common: <code>run</code> / <code>phase</code> / <code>node</code> / <code>attempt</code> / <code>agent</code> / <code>tool</code> / <code>log</code></td>
+</tr>
+<tr>
+<td><code>name</code></td>
+<td>string</td>
+<td>Human-readable span name (empty for log events)</td>
+</tr>
+<tr>
+<td><code>event</code></td>
+<td>string</td>
+<td><code>open</code> / <code>close</code> / <code>log</code></td>
+</tr>
+<tr>
+<td><code>ts</code></td>
+<td>number</td>
+<td>Unix epoch seconds (float), stamped by the emitter</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td>string</td>
+<td>On <code>close</code>: <code>success</code> / <code>failure</code> / other; empty otherwise</td>
+</tr>
+<tr>
+<td><code>data</code></td>
+<td>object</td>
+<td>Inputs, outputs, or log payload — all sensitive fields redacted by the sandbox</td>
+</tr>
+</tbody>
+</table>
+<h3 id="noderesult-resultjson">NodeResult (<code>result.json</code>)<a class="headerlink" href="#noderesult-resultjson" title="Permanent link">&para;</a></h3>
+<p>Written once by the sandbox when work is complete. The host reads this after the manifest
+arrives. Fields filled by the host (<code>observed_phase</code>, <code>reason</code>, <code>substrate_logs</code>) are
+appended from out-of-guest signals and must not be trusted as the in-guest verdict.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>node_id</code></td>
+<td>string</td>
+<td>Node identifier (empty if not applicable)</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td>string</td>
+<td><code>success</code> or <code>failure</code></td>
+</tr>
+<tr>
+<td><code>exit_code</code></td>
+<td>integer / null</td>
+<td>Exit code of the main process, if available</td>
+</tr>
+<tr>
+<td><code>output_archive</code></td>
+<td>string / null</td>
+<td>Key of the primary output archive in the conduit</td>
+</tr>
+<tr>
+<td><code>observed_phase</code></td>
+<td>string</td>
+<td>Host-observed substrate phase</td>
+</tr>
+<tr>
+<td><code>reason</code></td>
+<td>string</td>
+<td>Human-readable failure reason</td>
+</tr>
+<tr>
+<td><code>substrate_logs</code></td>
+<td>string</td>
+<td>Forensic substrate logs (untrusted)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="taskjson-reserved">task.json (reserved)<a class="headerlink" href="#taskjson-reserved" title="Permanent link">&para;</a></h3>
+<p><strong>Reserved — not consumed by the reference runner.</strong> The reference runner is configured via
+environment variables (<code>RESOLUTO_WORKLOAD_ARGV</code>, <code>RESOLUTO_WORKSPACE_DIR</code>, <code>RESOLUTO_OUTPUT_PATHS</code>),
+not by reading <code>task.json</code>. The schema is published for backends that prefer a file-based contract.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>workspace_dir</code></td>
+<td>string</td>
+<td>yes</td>
+<td>Path inside the sandbox to work in</td>
+</tr>
+<tr>
+<td><code>prompt</code></td>
+<td>string</td>
+<td>no</td>
+<td>Natural-language task description</td>
+</tr>
+<tr>
+<td><code>env</code></td>
+<td>object</td>
+<td>no</td>
+<td>Extra environment variables</td>
+</tr>
+<tr>
+<td><code>output_paths</code></td>
+<td>array of string</td>
+<td>no</td>
+<td>Paths to collect into the outbox</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_manifestjson">_manifest.json<a class="headerlink" href="#_manifestjson" title="Permanent link">&para;</a></h3>
+<p>Written last by the sandbox to signal that all event chunks are complete.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>total_chunks</code></td>
+<td>integer</td>
+<td>yes</td>
+<td>Total number of <code>events-*.jsonl</code> objects</td>
+</tr>
+</tbody>
+</table>
+<h2 id="liveness">Liveness<a class="headerlink" href="#liveness" title="Permanent link">&para;</a></h2>
+<p>Liveness is determined by <strong>chunk arrival rate</strong> and <strong>heartbeat events</strong>, not wall-clock time.</p>
 <ul>
-<li><strong><code>env=</code></strong> — simplest; the value lands as a literal env entry in the guest (and, on k8s, in the pod
-  spec — prefer <code>secrets=</code> there).</li>
-<li><strong><code>secrets=</code></strong> — the production path on k8s: <code>run(secrets={"OPENAI_API_KEY": SecretKeyRef("openai", "key")})</code>
-  references an existing Kubernetes Secret via <code>valueFrom.secretKeyRef</code>, so the value never appears in
-  the pod spec or any log. See <a href="https://github.com/DeepBlueCoding/resoluto-sandbox#secrets">the README's Secrets section</a>.</li>
-<li><strong><code>env_file=</code></strong> — a dotenv file merged host-side (convenience, not a security boundary).</li>
-<li><strong>mount</strong> — bind a credential file read-only into the guest (see the subscription note below).</li>
+<li>The sandbox emits periodic <code>kind=log, event=log</code> heartbeat records into the event stream.</li>
+<li>The host treats absence of new chunks for a configurable silence window as a liveness
+  failure.</li>
+<li>There are no hardcoded wall-clock timeouts. If the sandbox is doing work, it keeps running.</li>
+<li>Unstartable sandboxes (e.g., image pull failures) are detected via substrate status polling
+  and fail fast; sandboxes held for resource admission keep waiting until a slot is available.</li>
 </ul>
-<h2 id="claude-subscription-auth-local-dev-only">Claude subscription auth — LOCAL DEV ONLY<a class="headerlink" href="#claude-subscription-auth-local-dev-only" title="Permanent link">&para;</a></h2>
-<blockquote>
-<p>⚠️ <strong>The Claude Max/Pro subscription path is a local-dev convenience — do NOT use it in cloud or
-production.</strong> A subscription OAuth token (<code>CLAUDE_CODE_OAUTH_TOKEN</code> from <code>claude setup-token</code>, or the
-<code>~/.claude/.credentials.json</code> login file) is a <strong>personal, single-user, long-lived</strong> credential: it
-cannot be scoped or rotated per workload, it bills one human's subscription, and mounting a personal
-credential file into shared/cloud pods is a credential-leak anti-pattern. For cloud or production,
-give each workload a <strong>provider API key</strong> delivered via <code>secrets=</code> (above).</p>
-</blockquote>
-<p>For local iteration on a Max/Pro plan, forward a token (or mount the login file) and keep
-<code>ANTHROPIC_API_KEY</code> <strong>unset</strong> so the <code>claude</code> CLI bills your subscription instead of the API:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">CLAUDE_CODE_OAUTH_TOKEN</span><span class="o">=</span><span class="k">$(</span>claude<span class="w"> </span>setup-token<span class="k">)</span><span class="w">   </span><span class="c1"># long-lived token; keep ANTHROPIC_API_KEY unset</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>examples/run_agent_in_sandbox.py<span class="w"> </span>claude<span class="w"> </span><span class="s2">&quot;Say hello in five words&quot;</span>
-</span></code></pre></div>
-<p>Or mount the single login file read-only (not the whole <code>~/.claude</code> dir — the CLI writes cache into
-its config dir and would fail against a read-only mount of the entire directory):</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$HOME</span><span class="s2">/.claude/.credentials.json:/root/.claude/.credentials.json:ro&quot;</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">/examples/payloads:/workspace&quot;</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span>resoluto-sandbox:claude-agent-sdk-&lt;ver&gt;<span class="w"> </span>python<span class="w"> </span>claude_agent.py<span class="w"> </span><span class="s2">&quot;Say hello in five words&quot;</span>
-</span></code></pre></div>
-<h3 id="gotcha-e-claude_code_oauth_token-with-nothing-exported">Gotcha: <code>-e CLAUDE_CODE_OAUTH_TOKEN</code> with nothing exported<a class="headerlink" href="#gotcha-e-claude_code_oauth_token-with-nothing-exported" title="Permanent link">&para;</a></h3>
-<p><code>docker run -e CLAUDE_CODE_OAUTH_TOKEN</code> (no <code>=value</code>) forwards the host's value — empty if you never
-exported it. The container then has no auth and the CLI returns <code>Not logged in</code>, which the SDK rethrows
-as the confusing <code>Claude Code returned an error result: success</code>. Either <code>export</code> the token first, or
-use the credentials-file mount above.</p>
+<h2 id="sequence">Sequence<a class="headerlink" href="#sequence" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Host writes <code>inbox/&lt;name&gt;.tar.gz</code> (workspace) and optionally <code>task.json</code> (for backends that read it).</li>
+<li>Host launches the sandbox, passing the run prefix, a write-scoped token, and workload configuration via env vars.</li>
+<li>Sandbox reads <code>inbox/</code>, performs its work (the reference runner is driven by env vars, not <code>task.json</code>).</li>
+<li>Sandbox appends <code>events-&lt;NNNNNN&gt;.jsonl</code> chunks as work progresses.</li>
+<li>Sandbox writes <code>result.json</code> and any <code>outbox/&lt;name&gt;.tar.gz</code> artifacts.</li>
+<li>Sandbox writes <code>_manifest.json</code> with the final chunk count.</li>
+<li>Host reads events in sequence, fetches <code>result.json</code>, collects outbox archives.</li>
+</ol>
 
 
 
@@ -1395,7 +1458,7 @@ use the credentials-file mount above.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../concurrency/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Concurrency">
+          <a href="../concepts/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Concepts">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1405,20 +1468,20 @@ use the credentials-file mount above.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Concurrency
+                Concepts
               </div>
             </div>
           </a>
         
         
           
-          <a href="../api/sandbox/" class="md-footer__link md-footer__link--next" aria-label="Next: Sandbox">
+          <a href="../examples/" class="md-footer__link md-footer__link--next" aria-label="Next: Examples">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Sandbox
+                Examples
               </div>
             </div>
             <div class="md-footer__button md-icon">

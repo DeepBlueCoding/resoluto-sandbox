@@ -43,3 +43,15 @@ The base install is pydantic-only; concrete runtimes and conduits with platform 
 For AI agents
 
 This site publishes `/llms.txt` (index) and `/llms-full.txt` (full corpus) — point any LLM tool at them to consume these docs directly.
+
+## The Resoluto ecosystem
+
+Three independent, plug-and-play packages under one `resoluto.*` namespace and one design language. Each stands alone — use any without the others.
+
+| Package                                                                | Role                                                          |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------- |
+| [resoluto-sandbox](https://deepbluecoding.github.io/resoluto-sandbox/) | Store-mediated, Kata-isolated execution substrate             |
+| [resoluto-agent](https://deepbluecoding.github.io/resoluto-agent/)     | Pluggable LLM agent-provider plugins                          |
+| [resoluto-engine](https://deepbluecoding.github.io/resoluto-engine/)   | Durable orchestrator of sandboxed, gate-verified agentic work |
+
+`resoluto-engine` builds on `resoluto-agent` (the provider contract) and optionally `resoluto-sandbox` (isolation); `resoluto-sandbox` and `resoluto-agent` depend on nothing else in the ecosystem.

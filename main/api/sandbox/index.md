@@ -82,8 +82,17 @@ def run(
     networking set up on the fly and torn down after, with no re-provisioning. ``None``/``[]`` =
     deny all outbound (secure default). Currently applied by the ``local`` backend's SNI proxy.
     """
-    return self._backend.run(argv, workspace=workspace, stdin=stdin, env=env, env_file=env_file,
-                             secrets=secrets, output_paths=output_paths, stream=stream, egress=egress)
+    return self._backend.run(
+        argv,
+        workspace=workspace,
+        stdin=stdin,
+        env=env,
+        env_file=env_file,
+        secrets=secrets,
+        output_paths=output_paths,
+        stream=stream,
+        egress=egress,
+    )
 ```
 
 ## resoluto.sandbox.RunResult
