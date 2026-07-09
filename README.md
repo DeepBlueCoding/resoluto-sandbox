@@ -1,6 +1,6 @@
 # resoluto-sandbox
 
-[![PyPI](https://img.shields.io/pypi/v/resoluto-sandbox)](https://pypi.org/project/resoluto-sandbox/) [![Python](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/) [![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE) [![CI](https://github.com/DeepBlueCoding/resoluto-sandbox/actions/workflows/ci.yml/badge.svg)](https://github.com/DeepBlueCoding/resoluto-sandbox/actions/workflows/ci.yml) [![Docs](https://img.shields.io/badge/docs-latest-blue)](https://deepbluecoding.github.io/resoluto-sandbox/)
+[![PyPI](https://img.shields.io/pypi/v/resoluto-sandbox)](https://pypi.org/project/resoluto-sandbox/) [![Python](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/) [![License](https://img.shields.io/badge/license-Apache--2.0-green)](https://github.com/DeepBlueCoding/resoluto-sandbox/blob/master/LICENSE) [![CI](https://github.com/DeepBlueCoding/resoluto-sandbox/actions/workflows/ci.yml/badge.svg)](https://github.com/DeepBlueCoding/resoluto-sandbox/actions/workflows/ci.yml) [![Docs](https://img.shields.io/badge/docs-latest-blue)](https://deepbluecoding.github.io/resoluto-sandbox/)
 
 Run a program in isolation and exchange data through a durable store. Your program stays plain — it
 reads `argv`, writes `stdout`/files, exits, and never imports `resoluto.sandbox`. A script that runs
@@ -211,7 +211,7 @@ S3Conduit (minio / S3 bucket)
 `local` needs `/dev/kvm` + `nerdctl` + a dedicated containerd, provisioned by
 `scripts/local-backend-up.sh` (ends in a green Kata-microVM canary). `k8s` needs a cluster with Kata
 Containers installed, an S3-compatible store, and a pinned kube context. Full setup —
-including the vendor-neutral k8s stack — is in [`docs/backends.md`](docs/backends.md).
+including the vendor-neutral k8s stack — is in [`docs/backends.md`](https://github.com/DeepBlueCoding/resoluto-sandbox/blob/master/docs/backends.md).
 
 ### Data flow — the Conduit
 
@@ -264,7 +264,7 @@ Verified end-to-end, back-to-back with **no re-provision**: `pnpm add is-odd` in
 > `run(egress=[...])` is enforced by the `local` backend today. On `k8s`, egress is set per-runtime via
 > a backend-neutral `EgressConfig` (renders to a default-deny `NetworkPolicy`); `public_https=True` is
 > the escape hatch to allow ALL outbound HTTPS for trusted code. Details in
-> [`docs/networking.md`](docs/networking.md).
+> [`docs/networking.md`](https://github.com/DeepBlueCoding/resoluto-sandbox/blob/master/docs/networking.md).
 
 ---
 
@@ -352,7 +352,7 @@ resoluto-sandbox image build --provider all      # base once, then every overlay
 
 | Provider | Bakes | Example agent | Auth |
 |---|---|---|---|
-| `claude` | `@anthropic-ai/claude-code` + `claude-agent-sdk` | `examples/payloads/claude_agent.py` | Claude Max/Pro subscription (`claude setup-token`) or `ANTHROPIC_API_KEY` — see [`docs/auth.md`](docs/auth.md) |
+| `claude` | `@anthropic-ai/claude-code` + `claude-agent-sdk` | `examples/payloads/claude_agent.py` | Claude Max/Pro subscription (`claude setup-token`) or `ANTHROPIC_API_KEY` — see [`docs/auth.md`](https://github.com/DeepBlueCoding/resoluto-sandbox/blob/master/docs/auth.md) |
 | `langchain` | bare `langchain` + `langgraph` — **no LLM integration** | `examples/payloads/langchain_agent.py` | Depends which integration you add — see below |
 | `openai` | `openai-agents` | `examples/payloads/openai_agent.py` | `OPENAI_API_KEY` — pay-as-you-go API only, `OPENAI_MODEL` override |
 | `openrouter` | *(reuses the `openai` image)* | `examples/payloads/openai_agent.py` (via `OPENAI_BASE_URL`) | `OPENROUTER_API_KEY` — OpenAI-compatible endpoint `https://openrouter.ai/api/v1`, default model `mistralai/mistral-small-3.2-24b-instruct`, `OPENROUTER_MODEL` override |
@@ -459,7 +459,7 @@ resoluto-sandbox run --workspace examples/payloads --image resoluto-sandbox:open
 ```
 
 On `k8s`, retag + push to your registry (`docs/backends.md`), then inject the same tag through
-`SubstrateBackend(image=...)` — see [`docs/concepts.md`](docs/concepts.md#k8s) for the full wiring.
+`SubstrateBackend(image=...)` — see [`docs/concepts.md`](https://github.com/DeepBlueCoding/resoluto-sandbox/blob/master/docs/concepts.md#k8s) for the full wiring.
 
 ---
 
@@ -500,4 +500,4 @@ Three independent, plug-and-play packages under one `resoluto.*` namespace and o
 - `examples/` — `run_agent_in_sandbox.py <claude|langchain|openai>` runs any provider's agent isolated
   (symmetric across all three images); `run_hello_in_sandbox.py` is the bare mechanics. `payloads/`
   holds the plain programs run inside (`hello.py`, `claude_agent.py`, `langchain_agent.py`,
-  `openai_agent.py`, one per prebuilt provider image). See [`examples/README.md`](examples/README.md).
+  `openai_agent.py`, one per prebuilt provider image). See [`examples/README.md`](https://github.com/DeepBlueCoding/resoluto-sandbox/blob/master/examples/README.md).

@@ -23,7 +23,7 @@ Dockerfile with one line:
 same pattern, different package and Chat* class). `uv run` on your host works unconditionally
 since the script's own dependency header pulls in `langchain-anthropic` directly.
 
-Unlike the `claude` provider (examples/claude_agent.py), langchain-anthropic calls the
+Unlike the `claude` provider (examples/payloads/claude_agent.py), langchain-anthropic calls the
 Anthropic API directly — there is no Max/Pro subscription path here. It needs
 ANTHROPIC_API_KEY. Model defaults to claude-sonnet-4-5; override with ANTHROPIC_MODEL.
 """
