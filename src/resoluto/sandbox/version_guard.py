@@ -1,4 +1,5 @@
 """Refuse a baked image whose tag minor doesn't match the installed wheel (drift guard)."""
+
 from __future__ import annotations
 
 
@@ -13,4 +14,5 @@ def assert_image_matches_wheel(image_version: str, wheel_version: str) -> None:
     if _major_minor(image_version) != _major_minor(wheel_version):
         raise RuntimeError(
             f"image/wheel version drift: image baked at {image_version!r} but wheel is "
-            f"{wheel_version!r} (major.minor must match)")
+            f"{wheel_version!r} (major.minor must match)"
+        )

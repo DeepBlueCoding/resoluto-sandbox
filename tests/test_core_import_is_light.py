@@ -1,5 +1,8 @@
 """Guards that the core import stays pydantic-only (no heavy backend deps)."""
-import subprocess, sys
+
+import subprocess
+import sys
+
 
 def test_core_import_pulls_no_heavy_deps():
     code = (

@@ -1,4 +1,5 @@
 """A fair, byte-budgeted async semaphore for RAM admission."""
+
 from __future__ import annotations
 
 import asyncio

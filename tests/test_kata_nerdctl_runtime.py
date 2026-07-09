@@ -1,4 +1,5 @@
 """Unit tests for KataNerdctlSandboxRuntime — nerdctl is stubbed (no real VM)."""
+
 import pytest
 
 from resoluto.sandbox.contracts import SandboxLaunchSpec
@@ -21,7 +22,9 @@ def _spec(**kw) -> SandboxLaunchSpec:
 
 
 def _rt(**kw) -> KataNerdctlSandboxRuntime:
-    base = dict(address=_ADDR, namespace=_NS, conduit_host_dir="/host/store", conduit_mount="/conduit")
+    base = dict(
+        address=_ADDR, namespace=_NS, conduit_host_dir="/host/store", conduit_mount="/conduit"
+    )
     base.update(kw)
     return KataNerdctlSandboxRuntime(**base)
 
@@ -54,6 +57,7 @@ def test_sudo_prefixes_nerdctl_calls():
 
 def test_resolve_sudo_env_override(monkeypatch):
     from resoluto.sandbox.runtime.kata_nerdctl import _resolve_sudo
+
     monkeypatch.setenv("RESOLUTO_LOCAL_NERDCTL_SUDO", "1")
     assert _resolve_sudo() is True
     monkeypatch.setenv("RESOLUTO_LOCAL_NERDCTL_SUDO", "0")
@@ -84,7 +88,7 @@ async def test_launch_builds_kata_run_argv(monkeypatch):
     assert "-e" in argv and "RESOLUTO_STORE_KIND=localfs" in argv and "K=V" in argv
     assert argv[argv.index("-v") + 1] == "/host/store:/conduit"
     img_idx = argv.index("img:0.1.0")
-    assert argv[img_idx + 1:] == ["python", "-m", "resoluto.sandbox.runner_main"]
+    assert argv[img_idx + 1 :] == ["python", "-m", "resoluto.sandbox.runner_main"]
     # plain step: no inner dockerd, default uid, no dind graph
     assert "--privileged" not in argv and "--user" not in argv and "--tmpfs" not in argv
     # neutral Resources rendered privately — raw bytes/cores, no k8s notation
@@ -96,6 +100,7 @@ async def test_launch_builds_kata_run_argv(monkeypatch):
 @pytest.mark.asyncio
 async def test_launch_dind_is_privileged_with_tmpfs_graph(monkeypatch):
     from resoluto.sandbox.contracts import Resources
+
     rt = _rt()
     calls = _stub_run(monkeypatch, rt, returns={"run": (0, "vm\n", "")})
     res = Resources(memory_bytes=12 * 1024**3, cpu_cores=4.0, dind_graph_bytes=10 * 1024**3)
@@ -135,6 +140,7 @@ def _stub_run_seq_none(monkeypatch, rt):
 @pytest.mark.asyncio
 async def test_status_maps_exit_code(monkeypatch):
     from resoluto.sandbox.contracts import SandboxHandle
+
     rt = _rt()
     _stub_run(monkeypatch, rt, returns={"inspect": (0, "exited|0\n", "")})
     st = await rt.status(SandboxHandle(id="vm"))

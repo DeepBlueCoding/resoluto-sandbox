@@ -6,6 +6,7 @@ If the docs/skills/examples ever reference the dead surface again, an agent foll
 hard-crashes (`Sandbox(backend="docker")` raises ValueError) or the isolation story regresses.
 These tests fail the build if that happens. They scan ONLY the agent-facing surface — src/tests
 may legitimately name RESOLUTO_TRUSTED_LOCAL to PROVE it is inert."""
+
 import py_compile
 import re
 from pathlib import Path

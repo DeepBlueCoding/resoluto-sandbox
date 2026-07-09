@@ -1,4 +1,5 @@
 """Staging round-trip — repo in via inbox/, artifact out via outbox/, traversal-safe."""
+
 import io
 import tarfile
 from pathlib import Path
@@ -44,9 +45,11 @@ async def test_paths_scopes_seed_to_task_repos_only(store, tmp_path):
     (root / "repoA" / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
     (root / "repoA" / "src.py").write_text("A\n")
     (root / "repoB").mkdir(parents=True)
-    (root / "repoB" / "src.py").write_text("B\n")                       # sibling repo NOT in the task
+    (root / "repoB" / "src.py").write_text("B\n")  # sibling repo NOT in the task
     (root / ".resoluto" / "local-store").mkdir(parents=True)
-    (root / ".resoluto" / "local-store" / "huge.tar.gz").write_text("prior run archive")  # the store
+    (root / ".resoluto" / "local-store" / "huge.tar.gz").write_text(
+        "prior run archive"
+    )  # the store
 
     await put_dir(store, "run/r1/nodes/n", str(root), paths=["repoA"])
 
@@ -54,9 +57,9 @@ async def test_paths_scopes_seed_to_task_repos_only(store, tmp_path):
     await stage_inputs(store, "run/r1/nodes/n", str(ws))
 
     assert (ws / "repoA" / "src.py").read_text() == "A\n"
-    assert (ws / "repoA" / ".git" / "HEAD").exists()      # the task repo's history rides along
-    assert not (ws / "repoB").exists()                    # sibling repo never staged
-    assert not (ws / ".resoluto").exists()                # the object store never seeds itself
+    assert (ws / "repoA" / ".git" / "HEAD").exists()  # the task repo's history rides along
+    assert not (ws / "repoB").exists()  # sibling repo never staged
+    assert not (ws / ".resoluto").exists()  # the object store never seeds itself
 
 
 async def test_excluded_dir_is_dropped_but_protected_path_survives(store, tmp_path):
@@ -77,8 +80,12 @@ async def test_excluded_dir_is_dropped_but_protected_path_survives(store, tmp_pa
     ws = tmp_path / "ws"
     await stage_inputs(store, "run/r1/nodes/n", str(ws))
 
-    assert (ws / ".claude" / "skills" / "kept.md").read_text() == "TRACKED\n"  # protected → survives
-    assert not (ws / ".claude" / "settings.local.json").exists()  # unprotected under .claude → dropped
+    assert (
+        ws / ".claude" / "skills" / "kept.md"
+    ).read_text() == "TRACKED\n"  # protected → survives
+    assert not (
+        ws / ".claude" / "settings.local.json"
+    ).exists()  # unprotected under .claude → dropped
     assert not (ws / "node_modules").exists()  # ordinary exclude still applies
     assert (ws / "README.md").read_text() == "ORIGINAL\n"
 

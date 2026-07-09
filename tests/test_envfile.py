@@ -18,7 +18,7 @@ def test_parse_skips_blank_lines_and_comments(tmp_path):
 
 def test_parse_strips_matching_quotes(tmp_path):
     f = tmp_path / ".env"
-    f.write_text('DOUBLE="quoted value"\nSINGLE=\'quoted value\'\nUNQUOTED=plain\n')
+    f.write_text("DOUBLE=\"quoted value\"\nSINGLE='quoted value'\nUNQUOTED=plain\n")
     assert parse_env_file(str(f)) == {
         "DOUBLE": "quoted value",
         "SINGLE": "quoted value",

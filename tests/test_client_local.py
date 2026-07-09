@@ -2,6 +2,7 @@
 NO real microVM launches. Asserts the SubstrateBackend the local backend builds: the spec env
 (RESOLUTO_WORKLOAD_ARGV), the localfs/conduit store_env (no trusted-local), and the
 NodeResult→RunResult mapping."""
+
 import pytest
 
 from resoluto.sandbox import RunResult, Sandbox
@@ -30,8 +31,11 @@ def _patch_local_substrate(monkeypatch, *, on_event_payload=None, captured=None,
         def from_env(cls, **kw):
             return cls(**kw)
 
-    async def fake_put_dir(store, prefix, src): return []
-    async def fake_fetch_outputs(store, prefix, dest): return []
+    async def fake_put_dir(store, prefix, src):
+        return []
+
+    async def fake_fetch_outputs(store, prefix, dest):
+        return []
 
     monkeypatch.setattr(driver, "drive_node", fake_drive_node)
     monkeypatch.setattr(rt, "KataNerdctlSandboxRuntime", FakeRuntime)
@@ -59,8 +63,11 @@ def test_local_default_image_and_override(monkeypatch):
 
     from resoluto.sandbox.client import default_local_image
     from resoluto.sandbox.images import pullable
+
     # default is the base tag registry-qualified for the local backend to pull (localhost:5000/…)
-    assert default_local_image() == pullable(f"resoluto-sandbox-base:{pkg_version('resoluto-sandbox')}")
+    assert default_local_image() == pullable(
+        f"resoluto-sandbox-base:{pkg_version('resoluto-sandbox')}"
+    )
     assert Sandbox(backend="local")._backend._image == default_local_image()
     assert Sandbox(backend="local", image="my:img")._backend._image == "my:img"
 

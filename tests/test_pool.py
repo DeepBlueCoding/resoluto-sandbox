@@ -3,7 +3,13 @@ import logging
 
 import pytest
 
-from resoluto.sandbox import SandboxHandle, SandboxLaunchSpec, SandboxPool, SandboxRuntime, SandboxStatus
+from resoluto.sandbox import (
+    SandboxHandle,
+    SandboxLaunchSpec,
+    SandboxPool,
+    SandboxRuntime,
+    SandboxStatus,
+)
 
 
 class _FakeRuntime(SandboxRuntime):

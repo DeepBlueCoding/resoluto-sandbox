@@ -11,6 +11,7 @@ And a role ARN reachable from the minio STS endpoint. For local dev, you can
 set the role ARN to the minio wildcard: "arn:aws:iam::123456789012:role/test".
 Set MINIO_STS_ROLE_ARN env var to override the default used in the test.
 """
+
 import os
 import uuid
 
@@ -20,7 +21,9 @@ from resoluto.sandbox import ChunkReader, ChunkShipper, SpanEvent
 from resoluto.sandbox.conduit.s3 import S3Conduit, mint_scoped_credential
 
 ENDPOINT = "http://localhost:9100"
-CREDS = dict(aws_access_key_id="minioadmin", aws_secret_access_key="minioadmin", region_name="us-east-1")
+CREDS = dict(
+    aws_access_key_id="minioadmin", aws_secret_access_key="minioadmin", region_name="us-east-1"
+)
 
 
 async def _store():
@@ -63,25 +66,35 @@ async def test_cross_prefix_isolation():
 
     # Mint two scoped tokens for different prefixes
     tok_a = await mint_scoped_credential(
-        bucket, run_a, ENDPOINT, "us-east-1",
-        CREDS["aws_access_key_id"], CREDS["aws_secret_access_key"],
+        bucket,
+        run_a,
+        ENDPOINT,
+        "us-east-1",
+        CREDS["aws_access_key_id"],
+        CREDS["aws_secret_access_key"],
         sts_role_arn=role_arn,
     )
     tok_b = await mint_scoped_credential(
-        bucket, run_b, ENDPOINT, "us-east-1",
-        CREDS["aws_access_key_id"], CREDS["aws_secret_access_key"],
+        bucket,
+        run_b,
+        ENDPOINT,
+        "us-east-1",
+        CREDS["aws_access_key_id"],
+        CREDS["aws_secret_access_key"],
         sts_role_arn=role_arn,
     )
 
     store_a = S3Conduit(
-        tok_a["bucket"], endpoint_url=tok_a["endpoint_url"],
+        tok_a["bucket"],
+        endpoint_url=tok_a["endpoint_url"],
         region_name=tok_a["region"],
         aws_access_key_id=tok_a["access_key_id"],
         aws_secret_access_key=tok_a["secret_access_key"],
         aws_session_token=tok_a["session_token"],
     )
     store_b = S3Conduit(
-        tok_b["bucket"], endpoint_url=tok_b["endpoint_url"],
+        tok_b["bucket"],
+        endpoint_url=tok_b["endpoint_url"],
         region_name=tok_b["region"],
         aws_access_key_id=tok_b["access_key_id"],
         aws_secret_access_key=tok_b["secret_access_key"],
@@ -111,11 +124,23 @@ async def test_telemetry_over_s3():
     ship = ChunkShipper(s, prefix, flush_bytes=10_000)
     reader = ChunkReader(s, prefix)
 
-    await ship.emit(SpanEvent(run_id="r", span_id="s1", kind="node", name="start", event="open", ts=0))
+    await ship.emit(
+        SpanEvent(run_id="r", span_id="s1", kind="node", name="start", event="open", ts=0)
+    )
     await ship.flush()
     assert [e.name for e in await reader.poll()] == ["start"]
 
-    await ship.emit(SpanEvent(run_id="r", span_id="s2", kind="node", name="compete", event="close", ts=1, status="success"))
+    await ship.emit(
+        SpanEvent(
+            run_id="r",
+            span_id="s2",
+            kind="node",
+            name="compete",
+            event="close",
+            ts=1,
+            status="success",
+        )
+    )
     await ship.close()
     out = await reader.poll()
     assert [e.name for e in out] == ["compete"]

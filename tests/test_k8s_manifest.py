@@ -1,5 +1,6 @@
 """The pod manifest must carry activeDeadlineSeconds ONLY when the spec sets one —
 no hidden wall-clock deadline on sandboxes (liveness is the watchdog, not a timer)."""
+
 import logging
 
 import pytest
@@ -15,8 +16,10 @@ def _never_touch_a_real_cluster(monkeypatch):
     no cluster", but on a dev box with k3s reachable that assumption is false and launch
     leaks real `img:0.1.0` pods (ImagePullBackOff forever). Stub `_client` so any API call
     raises instead of hitting the cluster — the guard/preflight asserts still hold."""
+
     async def _no_api(self):
         raise RuntimeError("unit test: k8s API access is stubbed out")
+
     monkeypatch.setattr(K8sSandboxRuntime, "_client", _no_api)
 
 
@@ -28,9 +31,12 @@ def test_dind_tmpfs_emits_memory_medium():
     # is a neutral resource. tmpfs → medium:Memory emptyDir, sizeLimit = the graph bytes.
     rt = K8sSandboxRuntime()
     spec = SandboxLaunchSpec(
-        image="img:0.1.0", store_prefix="run/r/nodes/n", flavor="dind",
-        resources=Resources.from_quantities(memory="20Gi", cpu="2", dind_graph="16Gi",
-                                             graph_backend="tmpfs"),
+        image="img:0.1.0",
+        store_prefix="run/r/nodes/n",
+        flavor="dind",
+        resources=Resources.from_quantities(
+            memory="20Gi", cpu="2", dind_graph="16Gi", graph_backend="tmpfs"
+        ),
     )
     manifest = rt._manifest(spec, "sbx-test")
     graph_vol = next(v for v in manifest["spec"]["volumes"] if v["name"] == "docker-graph")
@@ -43,7 +49,9 @@ def test_dind_tmpfs_omits_sizelimit_when_graph_unset():
     # which k8s rejects as an invalid quantity (BadRequest). Omit it instead.
     rt = K8sSandboxRuntime()
     spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n", flavor="dind")
-    graph_vol = next(v for v in rt._manifest(spec, "sbx")["spec"]["volumes"] if v["name"] == "docker-graph")
+    graph_vol = next(
+        v for v in rt._manifest(spec, "sbx")["spec"]["volumes"] if v["name"] == "docker-graph"
+    )
     assert graph_vol["emptyDir"]["medium"] == "Memory"
     assert "sizeLimit" not in graph_vol["emptyDir"]  # never the string "None"
 
@@ -53,9 +61,12 @@ def test_dind_block_emits_no_medium():
     # disk-backed emptyDir (no medium:Memory); sizeLimit = the graph DISK size from the spec.
     rt = K8sSandboxRuntime()
     spec = SandboxLaunchSpec(
-        image="img:0.1.0", store_prefix="run/r/nodes/n", flavor="dind",
-        resources=Resources.from_quantities(memory="6Gi", cpu="2", dind_graph="20Gi",
-                                             graph_backend="block"),
+        image="img:0.1.0",
+        store_prefix="run/r/nodes/n",
+        flavor="dind",
+        resources=Resources.from_quantities(
+            memory="6Gi", cpu="2", dind_graph="20Gi", graph_backend="block"
+        ),
     )
     manifest = rt._manifest(spec, "sbx-test")
     graph_vol = next(v for v in manifest["spec"]["volumes"] if v["name"] == "docker-graph")
@@ -77,7 +88,9 @@ def test_manifest_omits_active_deadline_when_none():
     manifest = rt._manifest(spec, "sbx-test")
     assert "activeDeadlineSeconds" not in manifest["spec"]
 
-    capped = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n", deadline_seconds=900)
+    capped = SandboxLaunchSpec(
+        image="img:0.1.0", store_prefix="run/r/nodes/n", deadline_seconds=900
+    )
     manifest_capped = rt._manifest(capped, "sbx-test")
     assert manifest_capped["spec"]["activeDeadlineSeconds"] == 900
 
@@ -87,14 +100,17 @@ def test_manifest_omits_active_deadline_when_none():
 
 def test_network_policy_default_deny_egress():
     rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32"))
-    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n", labels={"app": "pool_a"})
+    spec = SandboxLaunchSpec(
+        image="img:0.1.0", store_prefix="run/r/nodes/n", labels={"app": "pool_a"}
+    )
     policy = rt._network_policy(spec, "sbx-test", "fake-uid-123")
     assert policy["spec"]["policyTypes"] == ["Egress"]
     assert policy["kind"] == "NetworkPolicy"
     assert policy["apiVersion"] == "networking.k8s.io/v1"
     # SECURE BY DEFAULT: no blanket public 0.0.0.0/0:443 rule unless public_https=True is opted in
     assert not any(
-        r["ports"] == [{"port": 443, "protocol": "TCP"}] and r["to"][0]["ipBlock"]["cidr"] == "0.0.0.0/0"
+        r["ports"] == [{"port": 443, "protocol": "TCP"}]
+        and r["to"][0]["ipBlock"]["cidr"] == "0.0.0.0/0"
         for r in policy["spec"]["egress"]
     )
 
@@ -102,7 +118,12 @@ def test_network_policy_default_deny_egress():
 def test_network_policy_exact_peers_store_https_dns():
     # public_https is graph-declared → carried on the SPEC; the runtime holds only the store base.
     rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32", store_port=9100))
-    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n", egress_public_https=True, labels={"resoluto.run_id": "r", "resoluto.node_id": "n"})
+    spec = SandboxLaunchSpec(
+        image="img:0.1.0",
+        store_prefix="run/r/nodes/n",
+        egress_public_https=True,
+        labels={"resoluto.run_id": "r", "resoluto.node_id": "n"},
+    )
     policy = rt._network_policy(spec, "sbx-test", "fake-uid")
     rules = policy["spec"]["egress"]
     assert len(rules) == 3
@@ -124,7 +145,12 @@ def test_network_policy_imds_blocked_in_broad_rules():
     # IMDS excepted on the broad 0.0.0.0/0 rules; the store rule (specific /32) carries no except
     # (k8s rejects an except that isn't a strict subset of the cidr).
     rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32"))
-    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n", egress_public_https=True, labels={"resoluto.run_id": "r", "resoluto.node_id": "n"})
+    spec = SandboxLaunchSpec(
+        image="img:0.1.0",
+        store_prefix="run/r/nodes/n",
+        egress_public_https=True,
+        labels={"resoluto.run_id": "r", "resoluto.node_id": "n"},
+    )
     rules = rt._network_policy(spec, "sbx-test", "fake-uid")["spec"]["egress"]
     assert "except" not in rules[0]["to"][0]["ipBlock"]
     for rule in rules[1:]:
@@ -133,12 +159,21 @@ def test_network_policy_imds_blocked_in_broad_rules():
 
 def test_network_policy_config_driven():
     rt1 = K8sSandboxRuntime(egress=EgressConfig(store_cidr="192.168.1.100/32"))
-    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n", labels={"resoluto.run_id": "r", "resoluto.node_id": "n"})
+    spec = SandboxLaunchSpec(
+        image="img:0.1.0",
+        store_prefix="run/r/nodes/n",
+        labels={"resoluto.run_id": "r", "resoluto.node_id": "n"},
+    )
     p1 = rt1._network_policy(spec, "sbx", "uid-1")
     assert p1["spec"]["egress"][0]["to"][0]["ipBlock"]["cidr"] == "192.168.1.100/32"
 
     rt2 = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32", store_port=9100))
-    spec2 = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n", egress_public_https=True, labels={"resoluto.run_id": "r", "resoluto.node_id": "n"})
+    spec2 = SandboxLaunchSpec(
+        image="img:0.1.0",
+        store_prefix="run/r/nodes/n",
+        egress_public_https=True,
+        labels={"resoluto.run_id": "r", "resoluto.node_id": "n"},
+    )
     p2 = rt2._network_policy(spec2, "sbx", "uid-2")
     assert p2["spec"]["egress"][0]["ports"] == [{"port": 9100, "protocol": "TCP"}]
     assert len(p2["spec"]["egress"]) == 3
@@ -150,22 +185,30 @@ def test_network_policy_egress_policy_comes_from_the_spec():
     rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32", store_port=9100))
     # spec opts into a specific host on 443 (no public_https)
     spec = SandboxLaunchSpec(
-        image="img:0.1.0", store_prefix="run/r/nodes/n",
-        egress_allow=["10.20.30.40/32"], egress_public_https=False,
+        image="img:0.1.0",
+        store_prefix="run/r/nodes/n",
+        egress_allow=["10.20.30.40/32"],
+        egress_public_https=False,
         labels={"resoluto.run_id": "r", "resoluto.node_id": "n"},
     )
     rules = rt._network_policy(spec, "sbx", "uid")["spec"]["egress"]
     cidrs = [r["to"][0]["ipBlock"]["cidr"] for r in rules]
-    assert "10.20.30.40/32" in cidrs           # the spec's allow host is opened
-    assert "10.0.0.1/32" in cidrs               # store base still present (runtime infra)
+    assert "10.20.30.40/32" in cidrs  # the spec's allow host is opened
+    assert "10.0.0.1/32" in cidrs  # store base still present (runtime infra)
     # no blanket public 443 because the spec did not set public_https
-    assert not any(c == "0.0.0.0/0" and {"port": 443, "protocol": "TCP"} in r["ports"]
-                   for r, c in zip(rules, cidrs))
+    assert not any(
+        c == "0.0.0.0/0" and {"port": 443, "protocol": "TCP"} in r["ports"]
+        for r, c in zip(rules, cidrs)
+    )
 
 
 def test_network_policy_owner_reference():
     rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32"))
-    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n", labels={"resoluto.run_id": "r", "resoluto.node_id": "n"})
+    spec = SandboxLaunchSpec(
+        image="img:0.1.0",
+        store_prefix="run/r/nodes/n",
+        labels={"resoluto.run_id": "r", "resoluto.node_id": "n"},
+    )
     policy = rt._network_policy(spec, "my-pod", "my-pod-uid-456")
     refs = policy["metadata"]["ownerReferences"]
     assert len(refs) == 1
@@ -215,7 +258,8 @@ def test_manifest_without_owner_has_no_owner_references():
 def test_manifest_always_carries_sandbox_label():
     rt = K8sSandboxRuntime()
     spec = SandboxLaunchSpec(
-        image="img:0.1.0", store_prefix="run/r/nodes/n",
+        image="img:0.1.0",
+        store_prefix="run/r/nodes/n",
         labels={"resoluto.run_id": "abc", "resoluto.node_id": "n1"},
     )
     manifest = rt._manifest(spec, "sbx-test")
@@ -228,10 +272,17 @@ def test_manifest_always_carries_sandbox_label():
 
 def test_network_policy_with_configmap_owner():
     rt = K8sSandboxRuntime(egress=EgressConfig(store_cidr="10.0.0.1/32"))
-    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n", labels={"resoluto.run_id": "r", "resoluto.node_id": "n"})
+    spec = SandboxLaunchSpec(
+        image="img:0.1.0",
+        store_prefix="run/r/nodes/n",
+        labels={"resoluto.run_id": "r", "resoluto.node_id": "n"},
+    )
     policy = rt._network_policy(
-        spec, "my-pod", "pod-uid",
-        owner_name="run-owner-abc", owner_uid="cm-uid-123",
+        spec,
+        "my-pod",
+        "pod-uid",
+        owner_name="run-owner-abc",
+        owner_uid="cm-uid-123",
     )
     refs = policy["metadata"]["ownerReferences"]
     assert len(refs) == 1
@@ -293,7 +344,9 @@ def test_limit_range_manifest_env_override(monkeypatch):
 @pytest.mark.asyncio
 async def test_launch_always_refuses_non_kata(rc, monkeypatch):
     # No bypass: a non-Kata runtime class is ALWAYS refused (RESOLUTO_TRUSTED_LOCAL is gone).
-    monkeypatch.setenv("RESOLUTO_TRUSTED_LOCAL", "1")  # even a stale flag must not permit a downgrade
+    monkeypatch.setenv(
+        "RESOLUTO_TRUSTED_LOCAL", "1"
+    )  # even a stale flag must not permit a downgrade
     rt = K8sSandboxRuntime(runtime_class=rc)  # runtime_class is the runtime's own config now
     spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n")
     with pytest.raises(RuntimeError, match="Isolation downgrade refused"):
@@ -306,18 +359,21 @@ async def test_launch_always_refuses_non_kata(rc, monkeypatch):
 from resoluto.sandbox.runtime.k8s import _parse_k8s_memory  # noqa: E402
 
 
-@pytest.mark.parametrize("s,expected", [
-    ("1Ki", 1024),
-    ("1Mi", 1024 ** 2),
-    ("1Gi", 1024 ** 3),
-    ("24Gi", 24 * 1024 ** 3),
-    ("4096Mi", 4096 * 1024 ** 2),
-    ("512", 512),
-    ("2K", 2000),
-    ("2M", 2_000_000),
-    ("2G", 2_000_000_000),
-    ("16Ti", 16 * 1024 ** 4),
-])
+@pytest.mark.parametrize(
+    "s,expected",
+    [
+        ("1Ki", 1024),
+        ("1Mi", 1024**2),
+        ("1Gi", 1024**3),
+        ("24Gi", 24 * 1024**3),
+        ("4096Mi", 4096 * 1024**2),
+        ("512", 512),
+        ("2K", 2000),
+        ("2M", 2_000_000),
+        ("2G", 2_000_000_000),
+        ("16Ti", 16 * 1024**4),
+    ],
+)
 def test_parse_k8s_memory_strings(s, expected):
     assert _parse_k8s_memory(s) == expected
 
@@ -330,7 +386,9 @@ def test_parse_k8s_memory_invalid():
 def _dind_spec(*, memory="24Gi", docker_graph_size="18Gi", **kwargs):
     # graph_backend (tmpfs default) is the K8s runtime's config; memory/graph are neutral resources.
     return SandboxLaunchSpec(
-        image="img:0.1.0", store_prefix="run/r/nodes/n", flavor="dind",
+        image="img:0.1.0",
+        store_prefix="run/r/nodes/n",
+        flavor="dind",
         resources=Resources.from_quantities(memory=memory, cpu="2", dind_graph=docker_graph_size),
         **kwargs,
     )
@@ -421,9 +479,11 @@ def test_manifest_stamps_opaque_scheduling_gates_and_annotations():
     annotations VERBATIM (the seam Kueue composes through), and emits honest requests."""
     from resoluto.sandbox.contracts import SandboxLaunchSpec
     from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
+
     rt = K8sSandboxRuntime()
     spec = SandboxLaunchSpec(
-        image="x", store_prefix="run/x/nodes/n/sbx-0",
+        image="x",
+        store_prefix="run/x/nodes/n/sbx-0",
         labels={"kueue.x-k8s.io/queue-name": "team-a"},
         scheduling_gates=["kueue.x-k8s.io/admission"],
         annotations={"foo": "bar"},
@@ -442,8 +502,10 @@ def test_manifest_no_gates_by_default_normal_scheduling():
     # No scheduling_gates → no schedulingGates key → plain kube-scheduler, no admitter.
     from resoluto.sandbox.contracts import SandboxLaunchSpec
     from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
+
     m = K8sSandboxRuntime()._manifest(
-        SandboxLaunchSpec(image="x", store_prefix="run/x/nodes/n/sbx-0"), "sbx-test")
+        SandboxLaunchSpec(image="x", store_prefix="run/x/nodes/n/sbx-0"), "sbx-test"
+    )
     assert "schedulingGates" not in m["spec"]
     assert "annotations" not in m["metadata"]
 
@@ -454,7 +516,8 @@ def test_manifest_no_gates_by_default_normal_scheduling():
 def test_manifest_renders_k8s_secret_refs_as_valuefrom():
     rt = K8sSandboxRuntime()
     spec = SandboxLaunchSpec(
-        image="img:0.1.0", store_prefix="run/r/nodes/n",
+        image="img:0.1.0",
+        store_prefix="run/r/nodes/n",
         env={"PLAIN": "value"},
         k8s_secret_refs={"ANTHROPIC_API_KEY": ("anthropic-key", "api_key")},
     )

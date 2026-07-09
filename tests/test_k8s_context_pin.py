@@ -1,5 +1,6 @@
 """The runtime must PIN its kube-context, never follow the ambient current-context
 (which can wander to an unrelated/production cluster and run adversarial sandbox pods)."""
+
 import sys
 import types
 
@@ -44,5 +45,5 @@ async def test_client_passes_pinned_context_to_load_kube_config(monkeypatch):
     monkeypatch.setattr(rt, "_ensure_namespace", _noop)
 
     await rt._client()
-    assert recorded["context"] == "local-k3s"   # pinned, not the ambient current-context
+    assert recorded["context"] == "local-k3s"  # pinned, not the ambient current-context
     assert recorded["config_file"] == "/tmp/kc"

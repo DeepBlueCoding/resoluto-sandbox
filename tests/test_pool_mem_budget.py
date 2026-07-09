@@ -5,6 +5,7 @@ on hold), is granted event-driven on release, and per-kind pools are independent
 (RES-287 no-deadlock). The fair-semaphore internals are proven in
 test_resource_semaphore.py; here we prove the POOL's launch/release wiring.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -20,12 +21,12 @@ from resoluto.sandbox.contracts import (
 )
 from resoluto.sandbox.pool import SandboxPool
 
-GiB = 1024 ** 3
+GiB = 1024**3
 
 
 class _FakeRuntime(SandboxRuntime):
     def __init__(self) -> None:
-        self.launched: list[str] = []   # ids, in launch order
+        self.launched: list[str] = []  # ids, in launch order
         self.live: set[str] = set()
         self._n = 0
 
@@ -48,23 +49,26 @@ class _FakeRuntime(SandboxRuntime):
 
 def _spec(kind: str, mem: str, graph: str = "16Gi") -> SandboxLaunchSpec:
     return SandboxLaunchSpec(
-        image="x", flavor="plain",
+        image="x",
+        flavor="plain",
         resources=Resources.from_quantities(memory=mem),
-        store_prefix=f"verify/{kind}", labels={"resoluto.kind": kind},
+        store_prefix=f"verify/{kind}",
+        labels={"resoluto.kind": kind},
     )
 
 
 def _pool(rt: _FakeRuntime, budget_gib: int, *, timeout=5.0) -> SandboxPool:
-    return SandboxPool(rt, max_concurrent=99, acquire_timeout_s=timeout,
-                       mem_budget_bytes=budget_gib * GiB)
+    return SandboxPool(
+        rt, max_concurrent=99, acquire_timeout_s=timeout, mem_budget_bytes=budget_gib * GiB
+    )
 
 
 @pytest.mark.asyncio
 async def test_oversized_spec_parks_then_launches_on_release() -> None:
     rt = _FakeRuntime()
-    pool = _pool(rt, 12)                         # 12Gi budget
+    pool = _pool(rt, 12)  # 12Gi budget
     first = await pool.acquire(_spec("pool_a", "8Gi"))
-    assert rt.launched == ["pod-1"]              # launched
+    assert rt.launched == ["pod-1"]  # launched
     queued: list = []
 
     async def second():
@@ -72,11 +76,11 @@ async def test_oversized_spec_parks_then_launches_on_release() -> None:
 
     t = asyncio.create_task(second())
     await asyncio.sleep(0.1)
-    assert rt.launched == ["pod-1"]              # 2nd did NOT launch — parked, holding no RAM
-    assert queued and queued[0][0] == 8 * GiB    # 'queued for resources' signal fired
-    await first.release()                        # frees 8Gi → wakes the waiter
+    assert rt.launched == ["pod-1"]  # 2nd did NOT launch — parked, holding no RAM
+    assert queued and queued[0][0] == 8 * GiB  # 'queued for resources' signal fired
+    await first.release()  # frees 8Gi → wakes the waiter
     await asyncio.wait_for(asyncio.sleep(0.1), timeout=2)
-    assert rt.launched == ["pod-1", "pod-2"]     # now launched
+    assert rt.launched == ["pod-1", "pod-2"]  # now launched
     t.cancel()
 
 
@@ -88,9 +92,9 @@ async def test_per_kind_pools_are_independent_no_deadlock() -> None:
     pool_a = _pool(rt, 8)
     pool_b = _pool(rt, 12)
     await pool_a.acquire(_spec("pool_a", "4Gi"))
-    await pool_a.acquire(_spec("pool_a", "4Gi"))   # pool_a budget now full
+    await pool_a.acquire(_spec("pool_a", "4Gi"))  # pool_a budget now full
     lease = await asyncio.wait_for(pool_b.acquire(_spec("pool_b", "12Gi")), timeout=2)
-    assert lease.handle.id in rt.live               # pool_b admitted despite pool_a full
+    assert lease.handle.id in rt.live  # pool_b admitted despite pool_a full
 
 
 @pytest.mark.asyncio
@@ -99,13 +103,13 @@ async def test_oversized_beyond_budget_fails_loud() -> None:
     pool = _pool(rt, 8, timeout=30)
     with pytest.raises(RuntimeError, match="can never be admitted"):
         await pool.acquire(_spec("pool_b", "12Gi"))
-    assert rt.launched == []                         # never launched
+    assert rt.launched == []  # never launched
 
 
 @pytest.mark.asyncio
 async def test_no_budget_admits_freely() -> None:
     rt = _FakeRuntime()
-    pool = SandboxPool(rt, max_concurrent=99)        # no mem budget → gate off
+    pool = SandboxPool(rt, max_concurrent=99)  # no mem budget → gate off
     for _ in range(3):
         await pool.acquire(_spec("pool_a", "8Gi"))
     assert len(rt.live) == 3
@@ -123,14 +127,14 @@ async def test_lazy_budget_provider_resolved_once_on_first_acquire() -> None:
         return 12 * GiB
 
     pool = SandboxPool(rt, max_concurrent=99, mem_budget_provider=provider)
-    a = await pool.acquire(_spec("pool_a", "8Gi"))     # resolves budget=12Gi, fits
+    a = await pool.acquire(_spec("pool_a", "8Gi"))  # resolves budget=12Gi, fits
     blocked = asyncio.create_task(pool.acquire(_spec("pool_a", "8Gi")))  # 8+8>12 → parks
     await asyncio.sleep(0.1)
-    assert len(rt.live) == 1                          # provider budget is enforced
-    assert len(calls) == 1                            # resolved exactly once
+    assert len(rt.live) == 1  # provider budget is enforced
+    assert len(calls) == 1  # resolved exactly once
     await a.release()
     await asyncio.sleep(0.1)
-    assert len(calls) == 1                            # not re-resolved on later acquires
+    assert len(calls) == 1  # not re-resolved on later acquires
     blocked.cancel()
 
 
@@ -140,7 +144,7 @@ async def test_lazy_provider_zero_means_gate_off() -> None:
     rt = _FakeRuntime()
     pool = SandboxPool(rt, max_concurrent=99, mem_budget_provider=lambda: _zero())
     for _ in range(3):
-        await pool.acquire(_spec("pool_a", "99Gi"))    # huge, but gate is off
+        await pool.acquire(_spec("pool_a", "99Gi"))  # huge, but gate is off
     assert len(rt.live) == 3
 
 

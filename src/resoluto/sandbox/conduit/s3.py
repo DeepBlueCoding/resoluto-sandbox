@@ -1,4 +1,5 @@
 """S3-backed Conduit (minio or any S3-compatible store)."""
+
 from __future__ import annotations
 
 import json
@@ -6,20 +7,28 @@ from contextlib import asynccontextmanager
 
 from resoluto.sandbox.contracts import Conduit, ConduitError, ObjectInfo
 
-
 # Permanent authorization/authentication denials — NOT transient transport failures. These must
 # propagate as the raw ClientError (e.g. a scoped-credential cross-prefix write being denied), not
 # be masked as a retryable "object store I/O failed".
-_AUTH_ERROR_CODES = frozenset({
-    "AccessDenied", "AccessDeniedException", "InvalidAccessKeyId", "SignatureDoesNotMatch",
-    "ExpiredToken", "ExpiredTokenException", "InvalidToken", "UnauthorizedAccess",
-})
+_AUTH_ERROR_CODES = frozenset(
+    {
+        "AccessDenied",
+        "AccessDeniedException",
+        "InvalidAccessKeyId",
+        "SignatureDoesNotMatch",
+        "ExpiredToken",
+        "ExpiredTokenException",
+        "InvalidToken",
+        "UnauthorizedAccess",
+    }
+)
 
 
 def _is_infra_error(exc: BaseException) -> bool:
     """True for transport/storage failures rather than ordinary application or authorization errors."""
     try:
         from botocore.exceptions import BotoCoreError, ClientError
+
         if isinstance(exc, ClientError):
             code = exc.response.get("Error", {}).get("Code", "")
             return code not in _AUTH_ERROR_CODES
@@ -32,22 +41,24 @@ def _is_infra_error(exc: BaseException) -> bool:
 
 def _build_scoped_policy(bucket: str, prefix: str) -> str:
     """Build an IAM policy JSON scoped to <bucket>/<prefix>/* with prefix-scoped ListBucket."""
-    return json.dumps({
-        "Version": "2012-10-17",
-        "Statement": [
-            {
-                "Effect": "Allow",
-                "Action": ["s3:PutObject", "s3:GetObject"],
-                "Resource": f"arn:aws:s3:::{bucket}/{prefix}/*",
-            },
-            {
-                "Effect": "Allow",
-                "Action": ["s3:ListBucket"],
-                "Resource": f"arn:aws:s3:::{bucket}",
-                "Condition": {"StringLike": {"s3:prefix": [f"{prefix}/*"]}},
-            },
-        ],
-    })
+    return json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": ["s3:PutObject", "s3:GetObject"],
+                    "Resource": f"arn:aws:s3:::{bucket}/{prefix}/*",
+                },
+                {
+                    "Effect": "Allow",
+                    "Action": ["s3:ListBucket"],
+                    "Resource": f"arn:aws:s3:::{bucket}",
+                    "Condition": {"StringLike": {"s3:prefix": [f"{prefix}/*"]}},
+                },
+            ],
+        }
+    )
 
 
 async def mint_scoped_credential(
@@ -137,7 +148,9 @@ class S3Conduit(Conduit):
                 yield c
         except Exception as exc:
             if _is_infra_error(exc):
-                raise ConduitError(f"object store I/O failed (bucket={self._bucket}): {exc}") from exc
+                raise ConduitError(
+                    f"object store I/O failed (bucket={self._bucket}): {exc}"
+                ) from exc
             raise
 
     async def aclose(self) -> None:
@@ -176,7 +189,7 @@ class S3Conduit(Conduit):
         objs = await self.list_prefix(src)
         async with self._io() as c:
             for o in objs:
-                rel = o.key[len(src):].lstrip("/")
+                rel = o.key[len(src) :].lstrip("/")
                 await c.copy_object(
                     Bucket=self._bucket,
                     Key=f"{dst}/{rel}",

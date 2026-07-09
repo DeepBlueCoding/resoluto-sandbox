@@ -14,14 +14,16 @@ To support a NEW provider (firecracker, gVisor, a cloud sandbox, …), add a ren
 
 This module has NO platform dependencies (pure stdlib), so any runtime can import it cheaply.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Sequence
 
-IMDS_CIDR = "169.254.169.254/32"           # cloud metadata (k8s rule `except`)
-IMDS_RANGE = "169.254.0.0/16"              # whole link-local range (local REJECT)
+IMDS_CIDR = "169.254.169.254/32"  # cloud metadata (k8s rule `except`)
+IMDS_RANGE = "169.254.0.0/16"  # whole link-local range (local REJECT)
 RFC1918 = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
+
 
 def _host_or_cidr(entry: str) -> str:
     """Normalize an allow entry to a bare hostname or a CIDR.
@@ -38,9 +40,14 @@ def _host_or_cidr(entry: str) -> str:
     if "://" in e:
         return urlparse(e).hostname or ""
     head, slash, tail = e.partition("/")
-    if slash and tail.isdigit() and head.count(".") == 3 and all(p.isdigit() for p in head.split(".")):
-        return e            # a.b.c.d/nn — a real CIDR
-    return head             # bare host, or host/path → host (path dropped)
+    if (
+        slash
+        and tail.isdigit()
+        and head.count(".") == 3
+        and all(p.isdigit() for p in head.split("."))
+    ):
+        return e  # a.b.c.d/nn — a real CIDR
+    return head  # bare host, or host/path → host (path dropped)
 
 
 def resolve_cidrs(entries: Sequence[str]) -> list[str]:
@@ -117,8 +124,12 @@ class EgressConfig:
 
         e = env if env is not None else os.environ
         allow = tuple(x for x in (e.get("RESOLUTO_EGRESS_ALLOW") or "").split(",") if x.strip())
-        public_https = (e.get("RESOLUTO_EGRESS_PUBLIC_HTTPS", "0").strip().lower()
-                        not in ("0", "false", "no", ""))
+        public_https = e.get("RESOLUTO_EGRESS_PUBLIC_HTTPS", "0").strip().lower() not in (
+            "0",
+            "false",
+            "no",
+            "",
+        )
         allow_port = int(e.get("RESOLUTO_EGRESS_ALLOW_PORT", "443"))
 
         raw = (e.get("RESOLUTO_STORE_ENDPOINT") or "").strip()
@@ -130,41 +141,59 @@ class EgressConfig:
         override = (e.get("RESOLUTO_STORE_EGRESS_CIDR") or "").strip()
         if override:
             port = e.get("RESOLUTO_STORE_EGRESS_PORT")
-            return cls(store_cidr=override, store_port=int(port) if port else endpoint_port,
-                       allow=allow, allow_port=allow_port, public_https=public_https)
+            return cls(
+                store_cidr=override,
+                store_port=int(port) if port else endpoint_port,
+                allow=allow,
+                allow_port=allow_port,
+                public_https=public_https,
+            )
         if not u.hostname:
             return None
         try:
             ip = socket.gethostbyname(u.hostname)
         except OSError:
             return None
-        return cls(store_cidr=f"{ip}/32", store_port=endpoint_port,
-                   allow=allow, allow_port=allow_port, public_https=public_https)
+        return cls(
+            store_cidr=f"{ip}/32",
+            store_port=endpoint_port,
+            allow=allow,
+            allow_port=allow_port,
+            public_https=public_https,
+        )
 
 
 def k8s_egress_rules(cfg: EgressConfig) -> list[dict]:
     """Render `cfg` to k8s NetworkPolicy egress rules (default-deny + these allows)."""
     rules: list[dict] = []
     if cfg.store_cidr:
-        rules.append({
-            "ports": [{"port": cfg.store_port, "protocol": "TCP"}],
-            "to": [{"ipBlock": {"cidr": cfg.store_cidr}}],
-        })
+        rules.append(
+            {
+                "ports": [{"port": cfg.store_port, "protocol": "TCP"}],
+                "to": [{"ipBlock": {"cidr": cfg.store_cidr}}],
+            }
+        )
     if cfg.public_https:
-        rules.append({
-            "ports": [{"port": 443, "protocol": "TCP"}],
+        rules.append(
+            {
+                "ports": [{"port": 443, "protocol": "TCP"}],
+                "to": [{"ipBlock": {"cidr": "0.0.0.0/0", "except": [IMDS_CIDR]}}],
+            }
+        )
+    rules.append(
+        {
+            "ports": [{"port": 53, "protocol": "UDP"}, {"port": 53, "protocol": "TCP"}],
             "to": [{"ipBlock": {"cidr": "0.0.0.0/0", "except": [IMDS_CIDR]}}],
-        })
-    rules.append({
-        "ports": [{"port": 53, "protocol": "UDP"}, {"port": 53, "protocol": "TCP"}],
-        "to": [{"ipBlock": {"cidr": "0.0.0.0/0", "except": [IMDS_CIDR]}}],
-    })
+        }
+    )
     cidrs = resolve_cidrs(cfg.allow)
     if cidrs:
-        rules.append({
-            "ports": [{"port": cfg.allow_port, "protocol": "TCP"}],
-            "to": [{"ipBlock": {"cidr": c}} for c in cidrs],
-        })
+        rules.append(
+            {
+                "ports": [{"port": cfg.allow_port, "protocol": "TCP"}],
+                "to": [{"ipBlock": {"cidr": c}} for c in cidrs],
+            }
+        )
     return rules
 
 
@@ -183,7 +212,9 @@ def local_egress_iptables(cfg: EgressConfig, *, chain: str) -> list[list[str]]:
         ["-A", chain, "-d", IMDS_RANGE, "-j", "REJECT"],
     ]
     for c in resolve_cidrs(cfg.allow):
-        rules.append(["-A", chain, "-p", "tcp", "--dport", str(cfg.allow_port), "-d", c, "-j", "ACCEPT"])
+        rules.append(
+            ["-A", chain, "-p", "tcp", "--dport", str(cfg.allow_port), "-d", c, "-j", "ACCEPT"]
+        )
     for r in RFC1918:
         rules.append(["-A", chain, "-d", r, "-j", "REJECT"])
     if cfg.public_https:
@@ -213,10 +244,14 @@ def _main(argv: "list[str] | None" = None) -> int:
         return 2
 
     cfg = EgressConfig(
-        allow=tuple(x for x in (os.environ.get("RESOLUTO_EGRESS_ALLOW") or "").split(",") if x.strip()),
+        allow=tuple(
+            x for x in (os.environ.get("RESOLUTO_EGRESS_ALLOW") or "").split(",") if x.strip()
+        ),
         allow_port=int(os.environ.get("RESOLUTO_EGRESS_ALLOW_PORT", "443")),
-        public_https=(os.environ.get("RESOLUTO_EGRESS_PUBLIC_HTTPS", "0").strip().lower()
-                      not in ("0", "false", "no", "")),
+        public_https=(
+            os.environ.get("RESOLUTO_EGRESS_PUBLIC_HTTPS", "0").strip().lower()
+            not in ("0", "false", "no", "")
+        ),
     )
     for rule in local_egress_iptables(cfg, chain=args.chain):
         print(" ".join(rule))

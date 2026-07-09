@@ -1,0 +1,9 @@
+# Extends gitleaks' default rules. Allowlists test fixtures whose PURPOSE is to
+# contain fake secrets (the redaction test suite). Verified 2026-07-09: no real
+# credentials in history — `trufflehog --only-verified` reports zero.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "redaction-test fixtures — intentional fake secrets"
+paths = ['''tests/test_redact\.py''']

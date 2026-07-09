@@ -1,4 +1,5 @@
 """Thin CLI for resoluto-sandbox: `run`, `doctor`, and `image` subcommands."""
+
 from __future__ import annotations
 
 import argparse
@@ -16,9 +17,13 @@ def main(argv: list[str] | None = None) -> int:
     run_p.add_argument("--backend", default="local", choices=["local", "k8s"])
     run_p.add_argument("--workspace", default=None)
     run_p.add_argument("--image", default=None)
-    run_p.add_argument("--env-file", default=None, metavar="PATH",
-                       help="dotenv-format file merged into the sandbox env (host-side convenience, "
-                            "not a security mechanism — see docs/auth.md for secrets)")
+    run_p.add_argument(
+        "--env-file",
+        default=None,
+        metavar="PATH",
+        help="dotenv-format file merged into the sandbox env (host-side convenience, "
+        "not a security mechanism — see docs/auth.md for secrets)",
+    )
 
     sub.add_parser("doctor", help="Check local backend readiness")
 
@@ -41,10 +46,13 @@ def main(argv: list[str] | None = None) -> int:
     push_p = image_sub.add_parser(
         "push",
         help="Publish a locally-built image (e.g. your OWN Dockerfile) to the registry the local "
-             "backend pulls from, so it's usable with no manual containerd load.",
+        "backend pulls from, so it's usable with no manual containerd load.",
     )
-    push_p.add_argument("tag", metavar="TAG",
-                        help="local docker image tag — bare (my-agent:1.0) or registry-qualified.")
+    push_p.add_argument(
+        "tag",
+        metavar="TAG",
+        help="local docker image tag — bare (my-agent:1.0) or registry-qualified.",
+    )
 
     args, rest = parser.parse_known_args(argv)
 
@@ -71,31 +79,49 @@ def _cmd_run(args: argparse.Namespace, rest: list[str]) -> int:
         program_argv = []
 
     if not program_argv:
-        print("error: no program specified — use: resoluto-sandbox run [opts] -- <program> [args...]", file=sys.stderr)
+        print(
+            "error: no program specified — use: resoluto-sandbox run [opts] -- <program> [args...]",
+            file=sys.stderr,
+        )
         return 2
 
     from resoluto.sandbox.client import Sandbox
 
     sb = Sandbox(backend=args.backend, image=args.image)
-    result = sb.run(program_argv, workspace=args.workspace, env_file=args.env_file, stream=sys.stdout)
+    result = sb.run(
+        program_argv, workspace=args.workspace, env_file=args.env_file, stream=sys.stdout
+    )
     return result.exit_code
 
 
 def _doctor_checks() -> list[tuple[str, bool, bool, str]]:
     """Readiness checks as (label, ok, critical, note); critical checks gate the exit code."""
     nerdctl = os.environ.get("RESOLUTO_LOCAL_NERDCTL", "/opt/resoluto-local/bin/nerdctl")
-    sock = os.environ.get("RESOLUTO_LOCAL_CONTAINERD_ADDRESS",
-                          "/run/resoluto-local/containerd/containerd.sock")
+    sock = os.environ.get(
+        "RESOLUTO_LOCAL_CONTAINERD_ADDRESS", "/run/resoluto-local/containerd/containerd.sock"
+    )
     return [
         ("local: /dev/kvm", os.path.exists("/dev/kvm"), True, "Kata microVMs need KVM"),
-        ("local: nerdctl", shutil.which(nerdctl) is not None or os.path.exists(nerdctl), True,
-         "container client for the local backend"),
-        ("local: dedicated containerd", os.path.exists(sock), True,
-         f"run scripts/local-backend-up.sh ({sock})"),
+        (
+            "local: nerdctl",
+            shutil.which(nerdctl) is not None or os.path.exists(nerdctl),
+            True,
+            "container client for the local backend",
+        ),
+        (
+            "local: dedicated containerd",
+            os.path.exists(sock),
+            True,
+            f"run scripts/local-backend-up.sh ({sock})",
+        ),
         ("uv", shutil.which("uv") is not None, False, "useful for running Python programs"),
         ("docker", shutil.which("docker") is not None, False, "only needed to build images"),
-        ("k8s: RESOLUTO_SANDBOX_KUBECONTEXT", "RESOLUTO_SANDBOX_KUBECONTEXT" in os.environ, False,
-         "pinned kube context for the k8s backend"),
+        (
+            "k8s: RESOLUTO_SANDBOX_KUBECONTEXT",
+            "RESOLUTO_SANDBOX_KUBECONTEXT" in os.environ,
+            False,
+            "pinned kube context for the k8s backend",
+        ),
     ]
 
 
@@ -115,6 +141,7 @@ def _cmd_doctor() -> int:
 def _cmd_image(args: argparse.Namespace) -> int:
     """Handle `image` subcommand. Returns exit code."""
     import subprocess
+
     from resoluto.sandbox.images import PROVIDERS, build, build_base, pullable, push, registry
 
     cmd = getattr(args, "image_cmd", None)
@@ -140,7 +167,15 @@ def _cmd_image(args: argparse.Namespace) -> int:
         prebuilt_base = build_base(ver=args.version, context=context, runner=subprocess.run)
         _report(prebuilt_base)
         for p in providers:
-            _report(build(p, ver=args.version, context=context, base_tag=prebuilt_base, runner=subprocess.run))
+            _report(
+                build(
+                    p,
+                    ver=args.version,
+                    context=context,
+                    base_tag=prebuilt_base,
+                    runner=subprocess.run,
+                )
+            )
     else:
         _report(build(providers[0], ver=args.version, context=context, runner=subprocess.run))
     return 0

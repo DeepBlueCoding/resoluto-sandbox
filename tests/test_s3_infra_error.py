@@ -1,10 +1,11 @@
 """S3Conduit translates transport failures (e.g. minio storage-full) into a
 typed ConduitError so the host can fail the run fast with the real cause —
 while ordinary application errors pass through unreclassified."""
+
 import pytest
 
-from resoluto.sandbox.contracts import ConduitError
 from resoluto.sandbox.conduit.s3 import S3Conduit
+from resoluto.sandbox.contracts import ConduitError
 
 
 class _FakeClient:
@@ -28,6 +29,7 @@ class _FakeCM:
 
 def _client_error():
     from botocore.exceptions import ClientError
+
     return ClientError(
         {"Error": {"Code": "XMinioStorageFull", "Message": "min free drive threshold"}},
         "PutObject",
@@ -42,7 +44,9 @@ def _client_error():
         (lambda: ValueError("bug"), ValueError, []),  # application error is NOT reclassified
     ],
 )
-async def test_put_reclassifies_only_transport_failures(monkeypatch, make_exc, expected, must_contain):
+async def test_put_reclassifies_only_transport_failures(
+    monkeypatch, make_exc, expected, must_contain
+):
     store = S3Conduit("sandboxes")
     monkeypatch.setattr(store, "_client", lambda: _FakeCM(make_exc()))
     with pytest.raises(expected) as ei:

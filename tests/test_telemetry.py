@@ -37,8 +37,10 @@ async def test_reconnect_resumes_at_index(tmp_path):
     store = LocalConduit(tmp_path)
     prefix = "run/r/nodes/n"
     ship = ChunkShipper(store, prefix, flush_bytes=10_000)
-    await ship.emit(_ev("a")); await ship.flush()
-    await ship.emit(_ev("b")); await ship.flush()
+    await ship.emit(_ev("a"))
+    await ship.flush()
+    await ship.emit(_ev("b"))
+    await ship.flush()
 
     # a fresh reader (simulating host restart) replays from the store
     r1 = ChunkReader(store, prefix)
@@ -57,7 +59,8 @@ async def test_liveness_is_chunk_arrival(tmp_path):
     reader = ChunkReader(store, prefix, dead_after_s=100.0, clock=lambda: clock["t"])
     reader.arm()  # pod is RUNNING — silence now counts (death signals are inert until armed)
 
-    await ship.emit(_ev("x")); await ship.flush()
+    await ship.emit(_ev("x"))
+    await ship.flush()
     await reader.poll()
     assert reader.is_dead() is False
     clock["t"] = 50.0
@@ -92,7 +95,8 @@ async def test_finished_run_is_never_dead(tmp_path):
     prefix = "run/r/nodes/n"
     ship = ChunkShipper(store, prefix, flush_bytes=10_000, clock=lambda: clock["t"])
     reader = ChunkReader(store, prefix, dead_after_s=10.0, clock=lambda: clock["t"])
-    await ship.emit(_ev("only")); await ship.close()
+    await ship.emit(_ev("only"))
+    await ship.close()
     await reader.poll()
     assert reader.finished is True
     clock["t"] = 9999.0
@@ -128,7 +132,9 @@ async def test_injected_heartbeat_factory_ships_custom_line(tmp_path):
     store = LocalConduit(tmp_path)
     prefix = "run/r/nodes/n"
     ship = ChunkShipper(
-        store, prefix, heartbeat_s=10.0,
+        store,
+        prefix,
+        heartbeat_s=10.0,
         heartbeat_factory=lambda ts: '{"event_type":"sandbox_heartbeat"}',
         clock=lambda: clock["t"],
     )
@@ -145,7 +151,10 @@ async def test_chunk_reader_progress_filter(tmp_path):
     prefix = "run/r/nodes/n"
     ship = ChunkShipper(store, prefix, flush_bytes=10_000, clock=lambda: clock["t"])
     reader = ChunkReader(
-        store, prefix, dead_after_s=100.0, clock=lambda: clock["t"],
+        store,
+        prefix,
+        dead_after_s=100.0,
+        clock=lambda: clock["t"],
         progress_filter=lambda line: '"engine_heartbeat"' not in line,
     )
     reader.arm()  # pod is RUNNING — silence now counts (death signals are inert until armed)
@@ -179,7 +188,9 @@ async def test_chunk_reader_default_filter_unchanged(tmp_path):
     await ship.emit_line('{"event_type": "sandbox_heartbeat"}')
     await ship.flush()
     await reader.poll_lines()
-    assert reader.is_dead() is False  # no filter → any line is progress (drive_node regression guard)
+    assert (
+        reader.is_dead() is False
+    )  # no filter → any line is progress (drive_node regression guard)
     assert reader.seconds_since_progress == 0.0
     assert reader.seconds_since_arrival == 0.0
 
@@ -192,11 +203,15 @@ async def test_terminal_gap_surfaces_as_dead(tmp_path):
     reader = ChunkReader(store, prefix, dead_after_s=50.0, clock=lambda: clock["t"])
     reader.arm()  # pod is RUNNING — silence now counts (death signals are inert until armed)
     # write chunk 2 but NOT chunk 1, plus a manifest claiming 2 chunks → a gap
-    await store.put(f"{prefix}/events-000002.jsonl", b'{"run_id":"r","span_id":"b","kind":"node","event":"open","ts":0}\n')
+    await store.put(
+        f"{prefix}/events-000002.jsonl",
+        b'{"run_id":"r","span_id":"b","kind":"node","event":"open","ts":0}\n',
+    )
     import json
+
     await store.put(f"{prefix}/_manifest.json", json.dumps({"total_chunks": 2}).encode())
-    await reader.poll()           # chunk 1 missing → contiguous progress stalls at 0
+    await reader.poll()  # chunk 1 missing → contiguous progress stalls at 0
     assert reader.is_dead() is False  # still within the window
     clock["t"] = 100.0
     await reader.poll()
-    assert reader.is_dead() is True   # past the window, never finished → dead (single signal)
+    assert reader.is_dead() is True  # past the window, never finished → dead (single signal)

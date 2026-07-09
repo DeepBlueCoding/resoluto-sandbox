@@ -1,4 +1,5 @@
 """In-sandbox runner that runs the node's workload, streams telemetry to the store prefix, and writes result.json."""
+
 from __future__ import annotations
 
 import asyncio
@@ -19,9 +20,12 @@ CanaryRunner = Callable[[Conduit, str], Awaitable["CanaryVerdict"]]
 
 def _default_canary(probe_host: str, probe_port: int) -> CanaryRunner:
     """Bind the real egress canary to its probe target as a (store, prefix) -> CanaryVerdict callable."""
+
     async def _run(store: Conduit, prefix: str) -> "CanaryVerdict":
         from resoluto.sandbox.egress_canary import run_egress_canary
+
         return await run_egress_canary(store, prefix, probe_host=probe_host, probe_port=probe_port)
+
     return _run
 
 
@@ -36,8 +40,10 @@ async def _exec_logged(em, parent_sid, kind, name, argv, cwd) -> int:
     """Run one command under its own span, streaming its merged stdout/stderr as log events, and return the exit code."""
     async with em.span(parent_sid, kind, name, inputs={"argv": argv}) as sid:
         proc = await asyncio.create_subprocess_exec(
-            *argv, cwd=cwd,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+            *argv,
+            cwd=cwd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
         )
         assert proc.stdout is not None
         async for raw in proc.stdout:
@@ -87,19 +93,29 @@ async def run_node_in_sandbox(
                 if workspace_dir is not None:
                     Path(workspace_dir).mkdir(parents=True, exist_ok=True)
                     staged = await stage_inputs(store, prefix, workspace_dir)
-                    await em.log(node_sid, f"staged {len(staged)} input archive(s) → {workspace_dir}")
+                    await em.log(
+                        node_sid, f"staged {len(staged)} input archive(s) → {workspace_dir}"
+                    )
                 setup_ok = True
                 if setup_argv:
-                    src = await _exec_logged(em, node_sid, "setup", "setup", setup_argv, workspace_dir)
+                    src = await _exec_logged(
+                        em, node_sid, "setup", "setup", setup_argv, workspace_dir
+                    )
                     if src != 0:
                         result.exit_code, result.status, setup_ok = src, "failure", False
-                        await em.log(node_sid, f"setup hook failed (exit {src}) — skipping workload")
+                        await em.log(
+                            node_sid, f"setup hook failed (exit {src}) — skipping workload"
+                        )
                 if setup_ok:
-                    rc = await _exec_logged(em, node_sid, "workload", node_id, workload_argv, workspace_dir)
+                    rc = await _exec_logged(
+                        em, node_sid, "workload", node_id, workload_argv, workspace_dir
+                    )
                     result.exit_code = rc
                     result.status = "success" if rc == 0 else "failure"
                     if rc == 0 and workspace_dir is not None and output_paths:
-                        result.output_archive = await collect_outputs(store, prefix, workspace_dir, output_paths)
+                        result.output_archive = await collect_outputs(
+                            store, prefix, workspace_dir, output_paths
+                        )
                         await em.log(node_sid, f"collected outputs → {result.output_archive}")
     finally:
         if cleanup_argv:

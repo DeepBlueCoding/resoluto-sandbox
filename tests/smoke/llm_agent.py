@@ -15,6 +15,7 @@ bills your subscription, not the API).
 
     uv run tests/smoke/llm_agent.py "In five words, why do sandboxes matter?"
 """
+
 import asyncio
 import json
 import sys

@@ -4,14 +4,14 @@ Verifies that RESOLUTO_STORE_WRITE_TOKEN is preferred over AWS_* when present
 (AC: prefers scoped token) and that the fallback to AWS_* still works when the
 token is absent (backward compatibility during transition).
 """
+
 import json
 import os
 
 import pytest
 
-from resoluto.sandbox.runner_main import store_from_env
 from resoluto.sandbox.conduit.s3 import S3Conduit
-
+from resoluto.sandbox.runner_main import store_from_env
 
 TOKEN_DICT = {
     "access_key_id": "ASIA_SCOPED_KEY",

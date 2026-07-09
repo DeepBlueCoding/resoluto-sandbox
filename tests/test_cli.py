@@ -6,10 +6,19 @@ from resoluto.sandbox.cli import main
 
 @pytest.mark.integration
 def test_run_streams_and_returns_exit_code(capsys):
-    rc = main([
-        "run", "--backend", "local", "--image", "localhost:5000/resoluto-sandbox-base:0.1.0",
-        "--", "python", "-c", "print('cli-ok')",
-    ])
+    rc = main(
+        [
+            "run",
+            "--backend",
+            "local",
+            "--image",
+            "localhost:5000/resoluto-sandbox-base:0.1.0",
+            "--",
+            "python",
+            "-c",
+            "print('cli-ok')",
+        ]
+    )
     out = capsys.readouterr().out
     assert "cli-ok" in out
     assert rc == 0
@@ -17,19 +26,30 @@ def test_run_streams_and_returns_exit_code(capsys):
 
 @pytest.mark.integration
 def test_run_propagates_nonzero(capsys):
-    rc = main([
-        "run", "--backend", "local", "--image", "localhost:5000/resoluto-sandbox-base:0.1.0",
-        "--", "python", "-c", "import sys; sys.exit(7)",
-    ])
+    rc = main(
+        [
+            "run",
+            "--backend",
+            "local",
+            "--image",
+            "localhost:5000/resoluto-sandbox-base:0.1.0",
+            "--",
+            "python",
+            "-c",
+            "import sys; sys.exit(7)",
+        ]
+    )
     assert rc == 7
 
 
 @pytest.mark.parametrize(
     "argv, err_contains",
     [
-        (["run", "--backend", "local"], None),                                   # no program
-        (["run", "--backend", "local", "junk", "--", "python", "-c", "x"],       # stray args
-         "unexpected arguments before '--'"),
+        (["run", "--backend", "local"], None),  # no program
+        (
+            ["run", "--backend", "local", "junk", "--", "python", "-c", "x"],  # stray args
+            "unexpected arguments before '--'",
+        ),
     ],
 )
 def test_run_usage_errors(capsys, argv, err_contains):

@@ -8,6 +8,7 @@ test that needs it — so the suite owns its precondition instead of relying on 
 manual `ctr import` that may have been GC'd. The runner image is also (re)built
 from the current source, so the e2e always exercises HEAD, never a stale image.
 """
+
 from __future__ import annotations
 
 import os
@@ -79,5 +80,7 @@ def runner_image(_runner_built) -> str:
 def dind_image() -> str:
     """Ensure docker:27-dind is pulled and present in k3s containerd at test time."""
     if not _docker_has(DIND_DOCKER):
-        assert _run(["docker", "pull", DIND_DOCKER]).returncode == 0, "docker pull docker:27-dind failed"
+        assert _run(["docker", "pull", DIND_DOCKER]).returncode == 0, (
+            "docker pull docker:27-dind failed"
+        )
     return _ensure_in_k3s(DIND_DOCKER, DIND_CTR)

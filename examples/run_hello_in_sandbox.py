@@ -12,6 +12,7 @@ Run from resoluto-sandbox/ (local Kata backend provisioned via scripts/local-bac
     set -a; source local.env; set +a          # exports RESOLUTO_SANDBOX_IMAGE
     uv run python examples/run_hello_in_sandbox.py
 """
+
 import io
 import os
 import sys
@@ -31,9 +32,9 @@ if not image:
     )
 
 result = Sandbox(backend="local", image=image).run(
-    ["python", "hello.py", "sandbox"],   # guest python; path relative to the staged workspace
+    ["python", "hello.py", "sandbox"],  # guest python; path relative to the staged workspace
     workspace=str(payloads),
-    stream=io.StringIO(),                # capture only; we print result.output ourselves
+    stream=io.StringIO(),  # capture only; we print result.output ourselves
 )
 print(result.output, end="")
 sys.exit(result.exit_code)

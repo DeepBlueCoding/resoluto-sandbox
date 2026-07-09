@@ -2,6 +2,7 @@
 (must match at runtime, see version_guard.py); each provider overlay is tagged by its pinned SDK
 package + version instead, so the tag itself says what's actually installed. The wheel version
 still travels with the overlay as an OCI label + the existing RESOLUTO_IMAGE_VERSION env guard."""
+
 from __future__ import annotations
 
 import os
@@ -64,6 +65,7 @@ def push(tag: str, *, runner=subprocess.run) -> str:
         )
     return _tag_and_push(tag, runner)
 
+
 # The pip package that anchors each overlay's tag, and the version pinned into its Dockerfile.
 # Bump SDK_VERSION (and rebuild) to move to a newer SDK release — never a floating install.
 SDK_PACKAGE = {"claude": "claude-agent-sdk", "langchain": "langchain", "openai": "openai-agents"}
@@ -73,8 +75,8 @@ SDK_VERSION = {"claude": "0.2.110", "langchain": "1.3.11", "openai": "0.17.7"}
 # (the anchor alone identifies the image), but pinned all the same: an unpinned companion next to
 # a pinned anchor is the same reproducibility break, just one line over. Empty dict = no companion.
 COMPANION_VERSIONS: dict[str, dict[str, str]] = {
-    "claude": {"CLAUDE_CLI_VERSION": "2.1.201"},   # @anthropic-ai/claude-code (npm)
-    "langchain": {"LANGGRAPH_VERSION": "1.2.7"},   # langgraph (pip)
+    "claude": {"CLAUDE_CLI_VERSION": "2.1.201"},  # @anthropic-ai/claude-code (npm)
+    "langchain": {"LANGGRAPH_VERSION": "1.2.7"},  # langgraph (pip)
     "openai": {},
 }
 
@@ -87,12 +89,15 @@ def wheel_version() -> str:
 def image_tags(ver: str) -> dict[str, str]:
     """Map of artifact -> tag. Inputs: wheel version (used for the base tag only). Output: tag map;
     each provider tag is its pinned SDK package + version, independent of the wheel version."""
-    return {"base": f"resoluto-sandbox-base:{ver}",
-            **{p: f"resoluto-sandbox:{SDK_PACKAGE[p]}-{SDK_VERSION[p]}" for p in PROVIDERS}}
+    return {
+        "base": f"resoluto-sandbox-base:{ver}",
+        **{p: f"resoluto-sandbox:{SDK_PACKAGE[p]}-{SDK_VERSION[p]}" for p in PROVIDERS},
+    }
 
 
-def build_base(*, ver: str | None = None, context: str = ".", push: bool = True,
-               runner=subprocess.run) -> str:
+def build_base(
+    *, ver: str | None = None, context: str = ".", push: bool = True, runner=subprocess.run
+) -> str:
     """Build the base image and (by default) push it to the registry. Inputs: optional version,
     build context, whether to push, injectable runner. Output: the base image (bare) tag built."""
     ver = ver or wheel_version()
@@ -103,8 +108,15 @@ def build_base(*, ver: str | None = None, context: str = ".", push: bool = True,
     return tag
 
 
-def build(provider: str, *, ver: str | None = None, context: str = ".", base_tag: str | None = None,
-          push: bool = True, runner=subprocess.run) -> str:
+def build(
+    provider: str,
+    *,
+    ver: str | None = None,
+    context: str = ".",
+    base_tag: str | None = None,
+    push: bool = True,
+    runner=subprocess.run,
+) -> str:
     """Build one provider overlay (building base first if needed) and, by default, push it to the
     registry so the local backend can pull it. Output: the overlay's (bare) tag built."""
     if provider not in PROVIDERS:
@@ -115,9 +127,12 @@ def build(provider: str, *, ver: str | None = None, context: str = ".", base_tag
         base_tag = build_base(ver=ver, context=context, push=push, runner=runner)
     tag = tags[provider]
     build_args = [
-        "--build-arg", f"BASE_IMAGE={base_tag}",
-        "--build-arg", f"IMAGE_VERSION={ver}",
-        "--build-arg", f"SDK_VERSION={SDK_VERSION[provider]}",
+        "--build-arg",
+        f"BASE_IMAGE={base_tag}",
+        "--build-arg",
+        f"IMAGE_VERSION={ver}",
+        "--build-arg",
+        f"SDK_VERSION={SDK_VERSION[provider]}",
     ]
     for name, val in COMPANION_VERSIONS[provider].items():
         build_args += ["--build-arg", f"{name}={val}"]

@@ -3,11 +3,11 @@
 The egress policy is the fixed 3-rule model: (1) the object store on store_port,
 (2) public HTTPS TCP/443 to 0.0.0.0/0 (LLM + git), (3) DNS UDP+TCP/53 to 0.0.0.0/0.
 IMDS (169.254.169.254/32) is excepted on every ipBlock."""
+
 import pytest
 
 from resoluto.sandbox.contracts import SandboxLaunchSpec
 from resoluto.sandbox.runtime.k8s import EgressConfig, K8sSandboxRuntime
-
 
 _STORE_CIDR = "10.0.0.1/32"
 _STORE_PORT = 9100
@@ -21,7 +21,9 @@ def _runtime(egress: EgressConfig) -> K8sSandboxRuntime:
     )
 
 
-def _spec(labels: dict, *, egress_allow: tuple = (), egress_public_https: bool = False) -> SandboxLaunchSpec:
+def _spec(
+    labels: dict, *, egress_allow: tuple = (), egress_public_https: bool = False
+) -> SandboxLaunchSpec:
     # egress_allow/egress_public_https are graph-declared and travel on the SPEC — _network_policy
     # applies them from here, not from the runtime's EgressConfig (see k8s.py:_network_policy).
     return SandboxLaunchSpec(
@@ -78,7 +80,7 @@ def test_broad_rules_except_imds_store_rule_has_none():
     # CIDR, so it carries NO except (k8s requires except ⊂ cidr — IMDS isn't a subset of a /32).
     rules = _policy()["spec"]["egress"]
     assert "except" not in rules[0]["to"][0]["ipBlock"]  # store rule
-    for rule in rules[1:]:                                # public-443 + DNS
+    for rule in rules[1:]:  # public-443 + DNS
         assert rule["to"][0]["ipBlock"]["except"] == [_IMDS]
 
 
@@ -111,7 +113,9 @@ def test_network_policy_namespace_matches_runtime():
 def _rules(egress: EgressConfig) -> list[dict]:
     # Mirror the EgressConfig's allow/public_https onto the spec — that's what _network_policy
     # actually reads (the runtime's own EgressConfig only supplies the store base).
-    spec = _spec({"app": "pool_a"}, egress_allow=tuple(egress.allow), egress_public_https=egress.public_https)
+    spec = _spec(
+        {"app": "pool_a"}, egress_allow=tuple(egress.allow), egress_public_https=egress.public_https
+    )
     return _runtime(egress)._network_policy(spec, "pod-x", "uid-x")["spec"]["egress"]
 
 
@@ -125,9 +129,12 @@ def test_allow_cidr_adds_rule_on_allow_port():
 def test_public_https_false_drops_the_blanket_443_rule():
     rules = _rules(EgressConfig(store_cidr=_STORE_CIDR, public_https=False))
     # no 0.0.0.0/0:443 rule remains...
-    assert not [r for r in rules
-                if {"port": 443, "protocol": "TCP"} in r["ports"]
-                and r["to"][0]["ipBlock"]["cidr"] == "0.0.0.0/0"]
+    assert not [
+        r
+        for r in rules
+        if {"port": 443, "protocol": "TCP"} in r["ports"]
+        and r["to"][0]["ipBlock"]["cidr"] == "0.0.0.0/0"
+    ]
     # ...but the store rule and DNS still do
     assert any(r["to"][0]["ipBlock"]["cidr"] == _STORE_CIDR for r in rules)
     assert any({"port": 53, "protocol": "UDP"} in r["ports"] for r in rules)
@@ -136,28 +143,52 @@ def test_public_https_false_drops_the_blanket_443_rule():
 def test_allow_hostnames_resolve_to_cidrs(monkeypatch):
     # a hostname in `allow` is resolved to one /32 per A record (deduped)
     import socket
-    monkeypatch.setattr(socket, "getaddrinfo", lambda host, *a, **k: [
-        (2, 1, 6, "", ("93.184.216.34", 0)),
-        (2, 1, 6, "", ("93.184.216.35", 0)),
-    ])
-    rules = _rules(EgressConfig(store_cidr=_STORE_CIDR, store_port=9100,
-                                allow=["example.com"], public_https=False))
-    allow_rule = next(r for r in rules if r["ports"] == [{"port": 443, "protocol": "TCP"}]
-                      and r["to"][0]["ipBlock"]["cidr"] != "0.0.0.0/0")
-    assert [t["ipBlock"]["cidr"] for t in allow_rule["to"]] == ["93.184.216.34/32", "93.184.216.35/32"]
+
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda host, *a, **k: [
+            (2, 1, 6, "", ("93.184.216.34", 0)),
+            (2, 1, 6, "", ("93.184.216.35", 0)),
+        ],
+    )
+    rules = _rules(
+        EgressConfig(
+            store_cidr=_STORE_CIDR, store_port=9100, allow=["example.com"], public_https=False
+        )
+    )
+    allow_rule = next(
+        r
+        for r in rules
+        if r["ports"] == [{"port": 443, "protocol": "TCP"}]
+        and r["to"][0]["ipBlock"]["cidr"] != "0.0.0.0/0"
+    )
+    assert [t["ipBlock"]["cidr"] for t in allow_rule["to"]] == [
+        "93.184.216.34/32",
+        "93.184.216.35/32",
+    ]
 
 
 def test_resolve_cidrs_passes_cidrs_through_and_dedupes(monkeypatch):
     import socket
+
     from resoluto.sandbox.egress import resolve_cidrs
-    monkeypatch.setattr(socket, "getaddrinfo", lambda host, *a, **k: [
-        (2, 1, 6, "", ("1.2.3.4", 0)), (2, 1, 6, "", ("1.2.3.4", 0)),  # dup A records
-    ])
+
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda host, *a, **k: [
+            (2, 1, 6, "", ("1.2.3.4", 0)),
+            (2, 1, 6, "", ("1.2.3.4", 0)),  # dup A records
+        ],
+    )
     assert resolve_cidrs(["10.0.0.0/8", "host", "10.0.0.0/8"]) == ["10.0.0.0/8", "1.2.3.4/32"]
 
 
 def test_allow_unresolvable_host_raises():
     import pytest
+
     from resoluto.sandbox.egress import resolve_cidrs
+
     with pytest.raises(ValueError, match="cannot resolve host"):
         resolve_cidrs(["definitely-not-a-real-host.invalid"])

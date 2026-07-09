@@ -1,4 +1,5 @@
 """Egress canary that verifies egress isolation before an untrusted workload runs."""
+
 from __future__ import annotations
 
 import asyncio

@@ -1,0 +1,74 @@
+name: Bug report
+description: Report a defect in resoluto-sandbox
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Please **do not** report security issues here —
+        a sandbox-escape or egress-bypass is top-severity: see our
+        [Security Policy](../blob/master/SECURITY.md).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and the actual behavior you observed.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps or a code/CLI snippet that triggers the bug.
+      placeholder: |
+        1. Provision the local backend with `scripts/local-backend-up.sh`
+        2. Run `resoluto-sandbox run -- ...`
+        3. See error
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What you expected to happen instead.
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: "e.g. Ubuntu 24.04 (amd64)"
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: "e.g. 3.12.4"
+    validations:
+      required: true
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Backend
+      options:
+        - local (nerdctl + dedicated containerd)
+        - k8s (Kata microVM pods)
+        - not backend-specific
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: resoluto-sandbox version
+      placeholder: "e.g. 0.1.0rc2"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / output
+      description: Relevant logs, tracebacks, or CLI output. Automatically formatted as code.
+      render: shell
+    validations:
+      required: false

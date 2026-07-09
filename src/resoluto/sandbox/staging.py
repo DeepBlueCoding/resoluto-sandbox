@@ -1,4 +1,5 @@
 """Workspace staging over the object store: inputs under `inbox/`, outputs under `outbox/`."""
+
 from __future__ import annotations
 
 import io
@@ -11,11 +12,28 @@ INBOX = "inbox"
 OUTBOX = "outbox"
 _ARCHIVE_SUFFIXES = (".tar.gz", ".tgz")
 
-_DEFAULT_EXCLUDES = frozenset({
-    ".venv", "venv", "node_modules", "__pycache__", ".mypy_cache", ".pytest_cache",
-    ".ruff_cache", ".tox", ".hypothesis", "dist", "build", "htmlcov", ".coverage",
-    ".next", ".turbo", ".cache", "resoluto.old", ".claude",
-})
+_DEFAULT_EXCLUDES = frozenset(
+    {
+        ".venv",
+        "venv",
+        "node_modules",
+        "__pycache__",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".tox",
+        ".hypothesis",
+        "dist",
+        "build",
+        "htmlcov",
+        ".coverage",
+        ".next",
+        ".turbo",
+        ".cache",
+        "resoluto.old",
+        ".claude",
+    }
+)
 
 
 def _archive(
@@ -25,11 +43,12 @@ def _archive(
     protect: frozenset[str] = frozenset(),
 ) -> bytes:
     """Tar `root` (or `paths`) to gzip bytes, applying `exclude`/`protect` filters."""
+
     def _norm(name: str) -> str:
         return name[2:] if name.startswith("./") else name
 
     def _filter(ti: tarfile.TarInfo) -> tarfile.TarInfo | None:
-        if not (_norm(ti.name) in protect) and exclude and exclude.intersection(Path(ti.name).parts):
+        if _norm(ti.name) not in protect and exclude and exclude.intersection(Path(ti.name).parts):
             return None
         if (ti.issym() or ti.islnk()) and ti.linkname.startswith("/"):
             return None
@@ -52,9 +71,14 @@ def _extract(data: bytes, dest: Path) -> None:
 
 
 async def put_dir(
-    store: Conduit, prefix: str, local_dir: str, *,
-    name: str = "workspace", exclude: frozenset[str] = _DEFAULT_EXCLUDES,
-    protect: frozenset[str] = frozenset(), paths: list[str] | None = None,
+    store: Conduit,
+    prefix: str,
+    local_dir: str,
+    *,
+    name: str = "workspace",
+    exclude: frozenset[str] = _DEFAULT_EXCLUDES,
+    protect: frozenset[str] = frozenset(),
+    paths: list[str] | None = None,
 ) -> str:
     """Tar `local_dir` and put it under `inbox/`; returns the object key.
 

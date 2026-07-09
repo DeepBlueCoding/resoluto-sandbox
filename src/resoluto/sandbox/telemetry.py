@@ -1,4 +1,5 @@
 """Store-mediated telemetry: the sandbox ships immutable JSONL chunks, the host tails them in index order."""
+
 from __future__ import annotations
 
 import asyncio
@@ -25,7 +26,9 @@ def result_key(prefix: str) -> str:
 
 
 def _default_heartbeat(ts: float) -> str:
-    return SpanEvent(run_id="", span_id="hb", kind="heartbeat", event="log", ts=ts).model_dump_json()
+    return SpanEvent(
+        run_id="", span_id="hb", kind="heartbeat", event="log", ts=ts
+    ).model_dump_json()
 
 
 class ChunkShipper:

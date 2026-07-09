@@ -10,6 +10,7 @@ Run directly:
 Run via Sandbox (from resoluto-sandbox/):
     uv run python examples/run_hello_in_sandbox.py
 """
+
 import sys
 
 name = sys.argv[1] if len(sys.argv) > 1 else "world"

@@ -1,11 +1,14 @@
 """copy_prefix — carries a run's sandbox state forward on resume (one host-owned
 resume covering the stepped sandboxes). Verified on LocalConduit (the default + the dev backend)."""
+
 from resoluto.sandbox.conduit import LocalConduit
 
 
 async def _seed(store):
     # mimic a sandbox state tree under run/A/nodes/compete/sbx-0
-    await store.put("run/A/nodes/compete/sbx-0/checkpoint.json", b'{"next_step":"gate:project_gate"}')
+    await store.put(
+        "run/A/nodes/compete/sbx-0/checkpoint.json", b'{"next_step":"gate:project_gate"}'
+    )
     await store.put("run/A/nodes/compete/sbx-0/worktree/inbox/workspace.tar.gz", b"TARBYTES")
     await store.put("run/A/nodes/compete/sbx-0/steps/a0-agent/result.json", b'{"ok":true}')
     await store.put("run/A/nodes/compete/sbx-0/sandbox_job.json", b'{"run_id":"A"}')
@@ -18,12 +21,17 @@ async def test_copy_prefix_mirrors_suffixes_and_bytes(tmp_path):
     n = await store.copy_prefix("run/A/nodes", "run/B/nodes")
 
     assert n == 4
-    src = {o.key[len("run/A/nodes"):]: o.size for o in await store.list_prefix("run/A/nodes")}
-    dst = {o.key[len("run/B/nodes"):]: o.size for o in await store.list_prefix("run/B/nodes")}
+    src = {o.key[len("run/A/nodes") :]: o.size for o in await store.list_prefix("run/A/nodes")}
+    dst = {o.key[len("run/B/nodes") :]: o.size for o in await store.list_prefix("run/B/nodes")}
     assert src == dst  # suffix-for-suffix, same sizes
     # bytes are identical
-    assert await store.get("run/B/nodes/compete/sbx-0/worktree/inbox/workspace.tar.gz") == b"TARBYTES"
-    assert await store.get("run/B/nodes/compete/sbx-0/checkpoint.json") == b'{"next_step":"gate:project_gate"}'
+    assert (
+        await store.get("run/B/nodes/compete/sbx-0/worktree/inbox/workspace.tar.gz") == b"TARBYTES"
+    )
+    assert (
+        await store.get("run/B/nodes/compete/sbx-0/checkpoint.json")
+        == b'{"next_step":"gate:project_gate"}'
+    )
 
 
 async def test_copy_prefix_absent_source_is_noop(tmp_path):

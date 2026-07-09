@@ -1,7 +1,10 @@
 """A write-only Conduit that prints telemetry to a stream."""
+
 from __future__ import annotations
+
 import sys
 from typing import IO
+
 from resoluto.sandbox.contracts import Conduit, ObjectInfo
 
 

@@ -2,6 +2,7 @@
 values, NOT a security mechanism. Values still land as literal env entries in the pod spec / nerdctl
 -e args, exactly like env= does today. For values that must never appear in plaintext there, use
 SecretKeyRef or a SecretProvider ref instead (see secrets.py)."""
+
 from __future__ import annotations
 
 from pathlib import Path

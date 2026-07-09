@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & discussion
+    url: https://github.com/DeepBlueCoding/resoluto-sandbox/discussions
+    about: Ask questions, share ideas, and discuss usage here.
+  - name: Report a security vulnerability
+    url: https://github.com/DeepBlueCoding/resoluto-sandbox/security/advisories/new
+    about: Sandbox-escape / egress-bypass and other security issues — report privately, never as a public issue.

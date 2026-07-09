@@ -1,4 +1,5 @@
 """Unit tests for egress_canary.evaluate_verdict — pure function, no network."""
+
 import pytest
 
 from resoluto.sandbox.egress_canary import CanaryVerdict, ProbeResult, evaluate_verdict
@@ -15,9 +16,9 @@ def _p(target: str, expected: bool, actual: bool) -> ProbeResult:
 
 def _passing_results() -> list[ProbeResult]:
     return [
-        _p("1.1.1.1:80", expected=False, actual=False),   # external blocked ✓
+        _p("1.1.1.1:80", expected=False, actual=False),  # external blocked ✓
         _p("169.254.169.254:80", expected=False, actual=False),  # IMDS blocked ✓
-        _p("store", expected=True, actual=True),           # store reachable ✓
+        _p("store", expected=True, actual=True),  # store reachable ✓
     ]
 
 
@@ -32,9 +33,13 @@ def test_all_probes_pass_returns_passed_verdict():
 @pytest.mark.parametrize(
     "idx, broken, named",
     [
-        (0, _p("1.1.1.1:80", expected=False, actual=True), "1.1.1.1:80"),          # external not blocked
-        (1, _p("169.254.169.254:80", expected=False, actual=True), "169.254.169.254:80"),  # IMDS not blocked
-        (2, _p("store", expected=True, actual=False), "store"),                    # store unreachable
+        (0, _p("1.1.1.1:80", expected=False, actual=True), "1.1.1.1:80"),  # external not blocked
+        (
+            1,
+            _p("169.254.169.254:80", expected=False, actual=True),
+            "169.254.169.254:80",
+        ),  # IMDS not blocked
+        (2, _p("store", expected=True, actual=False), "store"),  # store unreachable
     ],
 )
 def test_single_probe_failure_fails_verdict_and_names_target(idx, broken, named):
@@ -50,9 +55,9 @@ def test_single_probe_failure_fails_verdict_and_names_target(idx, broken, named)
 
 def test_multiple_failures_names_all_failed_probes():
     results = [
-        _p("1.1.1.1:80", expected=False, actual=True),    # external NOT blocked
+        _p("1.1.1.1:80", expected=False, actual=True),  # external NOT blocked
         _p("169.254.169.254:80", expected=False, actual=True),  # IMDS NOT blocked
-        _p("store", expected=True, actual=True),           # store ok
+        _p("store", expected=True, actual=True),  # store ok
     ]
 
     verdict = evaluate_verdict(results)

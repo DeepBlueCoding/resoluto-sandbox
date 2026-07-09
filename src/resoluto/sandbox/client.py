@@ -1,4 +1,5 @@
 """The single public entrypoint ``Sandbox(...).run(argv, ...)``, selecting a ``local`` (Kata microVM via nerdctl) or ``k8s`` (Kata pod) backend, or an injected ``Backend``."""
+
 from __future__ import annotations
 
 import os
@@ -7,7 +8,11 @@ from importlib.metadata import version as _pkg_version
 from typing import IO, Sequence
 
 from resoluto.sandbox.backends.base import Backend, RunResult
-from resoluto.sandbox.backends.substrate import SubstrateBackend, secrets_env_for_pod, store_env_for_pod
+from resoluto.sandbox.backends.substrate import (
+    SubstrateBackend,
+    secrets_env_for_pod,
+    store_env_for_pod,
+)
 from resoluto.sandbox.secrets import SecretKeyRef
 
 
@@ -44,7 +49,9 @@ def _build_local_backend(image: str | None) -> SubstrateBackend:
 
     conduit_dir = tempfile.mkdtemp(prefix="sbx-", dir=_local_conduit_base())
     conduit = LocalConduit(conduit_dir, world_writable=True)
-    runtime = KataNerdctlSandboxRuntime.from_env(conduit_host_dir=conduit_dir, conduit_mount="/conduit")
+    runtime = KataNerdctlSandboxRuntime.from_env(
+        conduit_host_dir=conduit_dir, conduit_mount="/conduit"
+    )
     store_env = {
         "RESOLUTO_STORE_KIND": "localfs",
         "RESOLUTO_STORE_ROOT": "/conduit",
@@ -116,5 +123,14 @@ class Sandbox:
         networking set up on the fly and torn down after, with no re-provisioning. ``None``/``[]`` =
         deny all outbound (secure default). Currently applied by the ``local`` backend's SNI proxy.
         """
-        return self._backend.run(argv, workspace=workspace, stdin=stdin, env=env, env_file=env_file,
-                                 secrets=secrets, output_paths=output_paths, stream=stream, egress=egress)
+        return self._backend.run(
+            argv,
+            workspace=workspace,
+            stdin=stdin,
+            env=env,
+            env_file=env_file,
+            secrets=secrets,
+            output_paths=output_paths,
+            stream=stream,
+            egress=egress,
+        )

@@ -13,6 +13,7 @@ is dropped. DNS (:53) is allowed to go direct by the base firewall; everything e
 
 The parsing + matching are pure functions (unit-tested); the server is stdlib asyncio only.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -35,23 +36,27 @@ def parse_sni(data: bytes) -> str | None:
             return None
         pos += 4
         pos += 2 + 32  # client_version(2) + random(32)
-        sid_len = data[pos]; pos += 1 + sid_len          # session_id
-        cs_len = struct.unpack(">H", data[pos:pos + 2])[0]; pos += 2 + cs_len   # cipher_suites
-        comp_len = data[pos]; pos += 1 + comp_len          # compression_methods
+        sid_len = data[pos]
+        pos += 1 + sid_len  # session_id
+        cs_len = struct.unpack(">H", data[pos : pos + 2])[0]
+        pos += 2 + cs_len  # cipher_suites
+        comp_len = data[pos]
+        pos += 1 + comp_len  # compression_methods
         if pos + 2 > len(data):
             return None
-        ext_total = struct.unpack(">H", data[pos:pos + 2])[0]; pos += 2
+        ext_total = struct.unpack(">H", data[pos : pos + 2])[0]
+        pos += 2
         end = pos + ext_total
         while pos + 4 <= end and pos + 4 <= len(data):
-            etype = struct.unpack(">H", data[pos:pos + 2])[0]
-            elen = struct.unpack(">H", data[pos + 2:pos + 4])[0]
+            etype = struct.unpack(">H", data[pos : pos + 2])[0]
+            elen = struct.unpack(">H", data[pos + 2 : pos + 4])[0]
             pos += 4
             if etype == 0x0000:  # server_name
                 # server_name_list(2) + entry: type(1)=host_name + name_len(2) + name
                 p = pos + 2 + 1
-                nlen = struct.unpack(">H", data[p:p + 2])[0]
+                nlen = struct.unpack(">H", data[p : p + 2])[0]
                 p += 2
-                return data[p:p + nlen].decode("utf-8", "ignore") or None
+                return data[p : p + nlen].decode("utf-8", "ignore") or None
             pos += elen
         return None
     except (IndexError, struct.error, UnicodeError):
@@ -85,8 +90,14 @@ def is_public_ip(ip: str) -> bool:
         a = ipaddress.ip_address(ip)
     except ValueError:
         return False
-    return not (a.is_private or a.is_loopback or a.is_link_local or a.is_multicast or a.is_reserved
-                or a.is_unspecified)
+    return not (
+        a.is_private
+        or a.is_loopback
+        or a.is_link_local
+        or a.is_multicast
+        or a.is_reserved
+        or a.is_unspecified
+    )
 
 
 def _original_dst(sock: socket.socket) -> tuple[str, int]:
@@ -128,7 +139,9 @@ class SniProxy:
     so a caller can change it per run (write the file) without restarting the proxy.
     """
 
-    def __init__(self, patterns: Sequence[str] | None = None, *, domains_file: str | None = None) -> None:
+    def __init__(
+        self, patterns: Sequence[str] | None = None, *, domains_file: str | None = None
+    ) -> None:
         self._patterns = list(patterns or ())
         self._domains_file = domains_file
 
@@ -139,7 +152,7 @@ class SniProxy:
         peer = writer.get_extra_info("socket")
         try:
             dst_ip, dst_port = _original_dst(peer)
-            if not is_public_ip(dst_ip):        # never proxy to internal/IMDS even if SNI matches
+            if not is_public_ip(dst_ip):  # never proxy to internal/IMDS even if SNI matches
                 writer.close()
                 return
             hello = await asyncio.wait_for(reader.read(4096), timeout=10)
@@ -148,7 +161,7 @@ class SniProxy:
                 writer.close()
                 return
             up_r, up_w = await asyncio.open_connection(dst_ip, dst_port)
-            up_w.write(hello)          # replay the ClientHello we already consumed
+            up_w.write(hello)  # replay the ClientHello we already consumed
             await up_w.drain()
             await asyncio.gather(_splice(reader, up_w), _splice(up_r, writer))
         except (OSError, asyncio.TimeoutError, ConnectionError):
@@ -171,14 +184,22 @@ def _main(argv: "list[str] | None" = None) -> int:
     p = argparse.ArgumentParser(prog="resoluto.sandbox.egress_proxy")
     p.add_argument("--host", default="0.0.0.0")
     p.add_argument("--port", type=int, default=3129)
-    p.add_argument("--domains-file", default=os.environ.get("RESOLUTO_EGRESS_DOMAINS_FILE"),
-                   help="read the SNI allowlist LIVE from this file (per-run without restart)")
+    p.add_argument(
+        "--domains-file",
+        default=os.environ.get("RESOLUTO_EGRESS_DOMAINS_FILE"),
+        help="read the SNI allowlist LIVE from this file (per-run without restart)",
+    )
     args = p.parse_args(argv)
     if args.domains_file:
-        print(f"[egress-proxy] SNI allowlist from {args.domains_file} (live) on {args.host}:{args.port}", flush=True)
+        print(
+            f"[egress-proxy] SNI allowlist from {args.domains_file} (live) on {args.host}:{args.port}",
+            flush=True,
+        )
         proxy = SniProxy(domains_file=args.domains_file)
     else:
-        patterns = [d for d in (os.environ.get("RESOLUTO_EGRESS_DOMAINS") or "").split(",") if d.strip()]
+        patterns = [
+            d for d in (os.environ.get("RESOLUTO_EGRESS_DOMAINS") or "").split(",") if d.strip()
+        ]
         print(f"[egress-proxy] SNI allowlist {patterns} on {args.host}:{args.port}", flush=True)
         proxy = SniProxy(patterns)
     asyncio.run(proxy.serve(args.host, args.port))

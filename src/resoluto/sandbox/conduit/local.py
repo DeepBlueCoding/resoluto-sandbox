@@ -1,4 +1,5 @@
 """Filesystem-backed Conduit with atomic writes (tmp + rename + fsync)."""
+
 from __future__ import annotations
 
 import os
@@ -34,7 +35,9 @@ class LocalConduit(Conduit):
 
     @staticmethod
     def _wrap_os_error(exc: OSError) -> ConduitError:
-        return ConduitError(f"local object store I/O failed (root={Path(exc.filename).parent if exc.filename else '?'}): {exc}")
+        return ConduitError(
+            f"local object store I/O failed (root={Path(exc.filename).parent if exc.filename else '?'}): {exc}"
+        )
 
     def _path(self, key: str) -> Path:
         root = self._root.resolve()
@@ -73,7 +76,9 @@ class LocalConduit(Conduit):
         root = self._root.resolve()
         for p in sorted(base.rglob("*")):
             if p.is_file() and not p.name.endswith(_TMP_SUFFIX):
-                out.append(ObjectInfo(key=str(p.resolve().relative_to(root)), size=p.stat().st_size))
+                out.append(
+                    ObjectInfo(key=str(p.resolve().relative_to(root)), size=p.stat().st_size)
+                )
         return out
 
     async def copy_prefix(self, src_prefix: str, dst_prefix: str) -> int:
@@ -85,7 +90,7 @@ class LocalConduit(Conduit):
         n = 0
         try:
             for o in await self.list_prefix(src):
-                rel = o.key[len(src):].lstrip("/")
+                rel = o.key[len(src) :].lstrip("/")
                 dst = self._path(f"{dst_prefix.rstrip('/')}/{rel}")
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(self._path(o.key), dst)

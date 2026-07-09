@@ -2,6 +2,7 @@
 that otherwise has no coverage. The gcloud Storage client is stubbed at the _client() seam, so no
 gcloud dep and no network. Pins list_prefix pagination (nextPageToken) and copy_prefix's
 suffix-relativization — the off-by-one logic that breaks silently."""
+
 import asyncio
 
 import pytest
@@ -67,8 +68,8 @@ async def test_aclose_is_a_noop_when_never_used():
 
 def _conduit(storage) -> GcsConduit:
     c = GcsConduit("my-bucket")
-    c._storage = storage              # bypass lazy gcloud import
-    c._client = lambda: storage       # _client() returns the fake
+    c._storage = storage  # bypass lazy gcloud import
+    c._client = lambda: storage  # _client() returns the fake
     return c
 
 
@@ -84,7 +85,7 @@ async def test_list_prefix_paginates_and_returns_sorted_objectinfo():
 
     objs = await conduit.list_prefix("p")
 
-    assert [o.key for o in objs] == ["p/a", "p/b", "p/c"]   # sorted across both pages
+    assert [o.key for o in objs] == ["p/a", "p/b", "p/c"]  # sorted across both pages
     assert {o.key: o.size for o in objs} == {"p/a": 5, "p/b": 2, "p/c": 3}  # sizes coerced to int
 
 

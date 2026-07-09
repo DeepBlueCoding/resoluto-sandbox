@@ -1,4 +1,5 @@
 """Pydantic + ABC contracts for the store-mediated sandbox."""
+
 from __future__ import annotations
 
 import re
@@ -9,8 +10,16 @@ from typing import Literal, Protocol, runtime_checkable
 from pydantic import BaseModel, Field
 
 _QUANTITY_FACTORS: dict[str, int] = {
-    "Ki": 1024, "Mi": 1024**2, "Gi": 1024**3, "Ti": 1024**4, "Pi": 1024**5,
-    "K": 1000, "M": 1000**2, "G": 1000**3, "T": 1000**4, "P": 1000**5,
+    "Ki": 1024,
+    "Mi": 1024**2,
+    "Gi": 1024**3,
+    "Ti": 1024**4,
+    "Pi": 1024**5,
+    "K": 1000,
+    "M": 1000**2,
+    "G": 1000**3,
+    "T": 1000**4,
+    "P": 1000**5,
 }
 _QUANTITY_RE = re.compile(r"^(\d+)(Ki|Mi|Gi|Ti|Pi|K|M|G|T|P)?$")
 
@@ -38,7 +47,12 @@ class Resources(BaseModel):
 
     @classmethod
     def from_quantities(
-        cls, *, memory: str, cpu: str = "2", disk: str | None = None, dind_graph: str | None = None,
+        cls,
+        *,
+        memory: str,
+        cpu: str = "2",
+        disk: str | None = None,
+        dind_graph: str | None = None,
         graph_backend: str = "tmpfs",
     ) -> "Resources":
         """Build a Resources from human quantity strings (e.g. '4Gi', '2')."""
@@ -69,7 +83,9 @@ class SandboxLaunchSpec(BaseModel):
     env: dict[str, str] = Field(default_factory=dict)
     command: list[str] | None = None
     args: list[str] | None = None
-    resources: Resources = Field(default_factory=lambda: Resources(memory_bytes=4 * 1024**3, cpu_cores=2.0))
+    resources: Resources = Field(
+        default_factory=lambda: Resources(memory_bytes=4 * 1024**3, cpu_cores=2.0)
+    )
     privileged: bool = False
     labels: dict[str, str] = Field(default_factory=dict)
     annotations: dict[str, str] = Field(default_factory=dict)
@@ -140,7 +156,7 @@ class Conduit(ABC):
         src, dst = src_prefix.rstrip("/"), dst_prefix.rstrip("/")
         objs = await self.list_prefix(src)
         for o in objs:
-            rel = o.key[len(src):].lstrip("/")
+            rel = o.key[len(src) :].lstrip("/")
             await self.put(f"{dst}/{rel}", await self.get(o.key))
         return len(objs)
 

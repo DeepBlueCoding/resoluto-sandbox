@@ -16,6 +16,7 @@ Auth is handled entirely by the `claude` CLI the SDK forks — see docs/auth.md.
 With a Claude Max/Pro subscription, log in once (`claude` / `claude setup-token`)
 and do NOT set ANTHROPIC_API_KEY, so usage bills your subscription, not the API.
 """
+
 import asyncio
 import sys
 

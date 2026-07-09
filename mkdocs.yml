@@ -72,10 +72,13 @@ plugins:
         Usage:
           - getting-started.md
           - concepts.md
+          - protocol.md
+          - examples.md
           - backends.md
           - networking.md
           - concurrency.md
           - auth.md
+          - versioning.md
         API:
           - api/*.md
 
@@ -92,7 +95,9 @@ markdown_extensions:
       line_spans: __span
       pygments_lang_class: true
   - pymdownx.inlinehilite
-  - pymdownx.snippets
+  - pymdownx.snippets:
+      base_path: ["."]
+      check_paths: true
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.emoji:
@@ -118,6 +123,8 @@ nav:
   - Home: index.md
   - Getting Started: getting-started.md
   - Concepts: concepts.md
+  - Protocol: protocol.md
+  - Examples: examples.md
   - Backends: backends.md
   - Networking: networking.md
   - Concurrency: concurrency.md
@@ -127,4 +134,9 @@ nav:
       - Conduit: api/conduit.md
       - Runtime & Contracts: api/runtime.md
       - Pool: api/pool.md
+      - Driver: api/driver.md
+      - Staging: api/staging.md
+      - Telemetry: api/telemetry.md
+      - Security: api/security.md
   - Changelog: changelog.md
+  - Versioning: versioning.md

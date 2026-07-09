@@ -20,6 +20,7 @@ Run from resoluto-sandbox/ with the backends provisioned:
     uv run python tests/smoke/smoke_both_backends.py --local-only
     uv run python tests/smoke/smoke_both_backends.py --k8s-only
 """
+
 import asyncio
 import json
 import os
@@ -50,7 +51,8 @@ def _verify(label: str, res) -> bool:
         "stdout answer in RunResult.output": EXPECTED_ANSWER in res.output,
         "env reached the guest (SMOKE_TAG)": f"TAG: {TAG}" in res.output,
         "result.json in RunResult.artifacts": any(p.endswith("result.json") for p in res.artifacts),
-        "result.json parsed -> RunResult.result": bool(res.result) and res.result.get("status") == "success",
+        "result.json parsed -> RunResult.result": bool(res.result)
+        and res.result.get("status") == "success",
     }
     ok = all(checks.values())
     print(f"\n[{'PASS' if ok else 'FAIL'}] {label}")
@@ -101,31 +103,36 @@ def run_k8s() -> str:
     from resoluto.sandbox.conduit.s3 import mint_scoped_credential
     from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
 
-    token = asyncio.run(mint_scoped_credential(
-        bucket=os.environ["RESOLUTO_STORE_BUCKET"],
-        prefix="run",
-        endpoint_url=os.environ["RESOLUTO_STORE_ENDPOINT"],
-        region=os.environ.get("RESOLUTO_STORE_REGION", "us-east-1"),
-        access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-        secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
-        sts_role_arn=os.environ["RESOLUTO_STORE_STS_ROLE_ARN"],
-    ))
+    token = asyncio.run(
+        mint_scoped_credential(
+            bucket=os.environ["RESOLUTO_STORE_BUCKET"],
+            prefix="run",
+            endpoint_url=os.environ["RESOLUTO_STORE_ENDPOINT"],
+            region=os.environ.get("RESOLUTO_STORE_REGION", "us-east-1"),
+            access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+            secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+            sts_role_arn=os.environ["RESOLUTO_STORE_STS_ROLE_ARN"],
+        )
+    )
     # host conduit keeps the full creds (staging); the POD gets only the scoped token.
     store_env = {k: v for k, v in os.environ.items() if k.startswith("RESOLUTO_STORE_")}
     store_env["RESOLUTO_STORE_WRITE_TOKEN"] = json.dumps(token)
 
     from resoluto.sandbox.runtime.k8s import EgressConfig
+
     runtime = K8sSandboxRuntime(
         namespace=os.environ.get("RESOLUTO_SANDBOX_NAMESPACE", "resoluto-sandboxes"),
         context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
-        egress=EgressConfig.from_store_env(),   # default-deny egress; enforced only by a netpol CNI
+        egress=EgressConfig.from_store_env(),  # default-deny egress; enforced only by a netpol CNI
     )
-    sb = Sandbox(backend=SubstrateBackend(
-        runtime=runtime,
-        conduit=store_from_env(),
-        image=os.environ["RESOLUTO_SANDBOX_IMAGE"],
-        store_env=store_env,
-    ))
+    sb = Sandbox(
+        backend=SubstrateBackend(
+            runtime=runtime,
+            conduit=store_from_env(),
+            image=os.environ["RESOLUTO_SANDBOX_IMAGE"],
+            store_env=store_env,
+        )
+    )
     res = sb.run(
         ["python", "echo_agent.py", PROMPT],
         workspace=_staged_workspace(),
@@ -135,9 +142,11 @@ def run_k8s() -> str:
     if _verify("k8s — Kata microVM pod", res):
         return "GREEN"
     if _egress_unenforced(res):
-        print("    -> BLOCKED: this cluster does not enforce egress NetworkPolicy (Flannel). The "
-              "agent contract is proven by the local backend and would pass here on an enforcing "
-              "CNI (Cilium/Calico). Use the local backend on this box.")
+        print(
+            "    -> BLOCKED: this cluster does not enforce egress NetworkPolicy (Flannel). The "
+            "agent contract is proven by the local backend and would pass here on an enforcing "
+            "CNI (Cilium/Calico). Use the local backend on this box."
+        )
         return "BLOCKED"
     return "RED"
 

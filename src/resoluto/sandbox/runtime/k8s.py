@@ -1,10 +1,11 @@
 """Concrete `SandboxRuntime` backend that maps launch/status/destroy/sweep onto Kata Pods."""
+
 from __future__ import annotations
 
 import logging
 import os
 import uuid
-from dataclasses import dataclass, field, replace
+from dataclasses import replace
 
 from resoluto.sandbox.contracts import (
     SandboxHandle,
@@ -14,6 +15,7 @@ from resoluto.sandbox.contracts import (
     check_runtime_class_guard,
     parse_quantity,
 )
+
 # Egress allowlist + rendering live in the backend-neutral `egress` module so every provider shares
 # ONE config and renders it its own way. Re-exported here for back-compat (existing imports work).
 from resoluto.sandbox.egress import EgressConfig, k8s_egress_rules
@@ -30,6 +32,7 @@ _PHASE_MAP = {
     "Failed": "failed",
     "Unknown": "unknown",
 }
+
 
 def _no_local_kubeconfig_errors() -> tuple[type[BaseException], ...]:
     """Return exceptions that mean no usable local kube-config."""
@@ -76,9 +79,11 @@ class K8sSandboxRuntime(SandboxRuntime):
                 config.load_incluster_config()
                 in_cluster = True
 
-            if not in_cluster and self._context is None and os.environ.get(
-                "RESOLUTO_SANDBOX_ALLOW_AMBIENT_CONTEXT"
-            ) != "1":
+            if (
+                not in_cluster
+                and self._context is None
+                and os.environ.get("RESOLUTO_SANDBOX_ALLOW_AMBIENT_CONTEXT") != "1"
+            ):
                 raise RuntimeError(
                     "refusing to launch sandbox pods on the ambient kube-context — set "
                     "RESOLUTO_SANDBOX_KUBECONTEXT, or RESOLUTO_SANDBOX_ALLOW_AMBIENT_CONTEXT=1 "
@@ -90,12 +95,18 @@ class K8sSandboxRuntime(SandboxRuntime):
             if in_cluster:
                 logger.info("[k8s-runtime] targeting in-cluster API at %s (ns=%s)", host, self._ns)
             elif self._context:
-                logger.info("[k8s-runtime] PINNED to kube-context %r → %s (ns=%s)", self._context, host, self._ns)
+                logger.info(
+                    "[k8s-runtime] PINNED to kube-context %r → %s (ns=%s)",
+                    self._context,
+                    host,
+                    self._ns,
+                )
             else:
                 logger.warning(
                     "[k8s-runtime] no kube-context pinned — using the AMBIENT current-context → %s "
                     "(RESOLUTO_SANDBOX_ALLOW_AMBIENT_CONTEXT=1). An unpinned context can launch sandbox "
-                    "pods on the wrong (even production) cluster.", host,
+                    "pods on the wrong (even production) cluster.",
+                    host,
                 )
             await self._ensure_namespace()
         return self._api
@@ -183,7 +194,12 @@ class K8sSandboxRuntime(SandboxRuntime):
     ) -> dict:
         env = [{"name": k, "value": v} for k, v in spec.env.items()]
         for var_name, (secret_name, secret_key) in spec.k8s_secret_refs.items():
-            env.append({"name": var_name, "valueFrom": {"secretKeyRef": {"name": secret_name, "key": secret_key}}})
+            env.append(
+                {
+                    "name": var_name,
+                    "valueFrom": {"secretKeyRef": {"name": secret_name, "key": secret_key}},
+                }
+            )
         env.append({"name": "RESOLUTO_STORE_PREFIX", "value": spec.store_prefix})
         if spec.store_write_token:
             env.append({"name": "RESOLUTO_STORE_WRITE_TOKEN", "value": spec.store_write_token})
@@ -245,13 +261,15 @@ class K8sSandboxRuntime(SandboxRuntime):
         if spec.annotations:
             metadata["annotations"] = dict(spec.annotations)
         if owner_name and owner_uid:
-            metadata["ownerReferences"] = [{
-                "apiVersion": "v1",
-                "kind": "ConfigMap",
-                "name": owner_name,
-                "uid": owner_uid,
-                "blockOwnerDeletion": True,
-            }]
+            metadata["ownerReferences"] = [
+                {
+                    "apiVersion": "v1",
+                    "kind": "ConfigMap",
+                    "name": owner_name,
+                    "uid": owner_uid,
+                    "blockOwnerDeletion": True,
+                }
+            ]
 
         return {
             "apiVersion": "v1",
@@ -341,8 +359,10 @@ class K8sSandboxRuntime(SandboxRuntime):
             ready = any(c.type == "Ready" and c.status == "True" for c in conditions)
             if not ready:
                 continue
-            alloc = (node.status.allocatable or {})
-            mem_str = alloc.get("memory") if isinstance(alloc, dict) else getattr(alloc, "memory", None)
+            alloc = node.status.allocatable or {}
+            mem_str = (
+                alloc.get("memory") if isinstance(alloc, dict) else getattr(alloc, "memory", None)
+            )
             if mem_str:
                 ram_values.append(_parse_k8s_memory(str(mem_str)))
         return min(ram_values) if ram_values else 0
@@ -359,7 +379,7 @@ class K8sSandboxRuntime(SandboxRuntime):
         graph_mem = spec.resources.dind_graph_bytes or 0
 
         def _gib(b: int) -> str:
-            return f"{b / (1024 ** 3):.1f}Gi"
+            return f"{b / (1024**3):.1f}Gi"
 
         if graph_mem >= pod_mem:
             raise RuntimeError(
@@ -403,7 +423,9 @@ class K8sSandboxRuntime(SandboxRuntime):
             net_api = await self._networking_client()
             await net_api.create_namespaced_network_policy(
                 namespace=self._ns,
-                body=self._network_policy(spec, name, "", owner_name=owner_name, owner_uid=owner_uid),
+                body=self._network_policy(
+                    spec, name, "", owner_name=owner_name, owner_uid=owner_uid
+                ),
             )
 
         pod = await api.create_namespaced_pod(
@@ -538,9 +560,7 @@ class K8sSandboxRuntime(SandboxRuntime):
         label_selector = "resoluto_sandbox=true"
         if kind is not None:
             label_selector += f",resoluto.kind={kind}"
-        pods = await api.list_namespaced_pod(
-            namespace=self._ns, label_selector=label_selector
-        )
+        pods = await api.list_namespaced_pod(namespace=self._ns, label_selector=label_selector)
         terminal = {"Succeeded", "Failed"}
         return sum(1 for pod in pods.items if (pod.status.phase or "") not in terminal)
 

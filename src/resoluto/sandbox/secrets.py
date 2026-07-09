@@ -3,6 +3,7 @@
 for referencing an existing Kubernetes Secret object (rendered via valueFrom.secretKeyRef, zero
 guest-side code). No concrete SecretProvider ships yet — this defines the seam so one (Vault, AWS
 Secrets Manager, GCP Secret Manager, ...) can be added later without touching any other module."""
+
 from __future__ import annotations
 
 import os

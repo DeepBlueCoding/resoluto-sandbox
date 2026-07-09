@@ -1,4 +1,5 @@
 """Test stub for the in-sandbox egress canary: a passing verdict with no real network probes."""
+
 from resoluto.sandbox.contracts import Conduit
 from resoluto.sandbox.egress_canary import CanaryVerdict
 

@@ -1,4 +1,5 @@
 """Image entrypoint that runs the in-sandbox runner, configured entirely from env, exiting 0 on workload success else 1."""
+
 from __future__ import annotations
 
 import asyncio
@@ -25,7 +26,9 @@ async def _resolve_secrets() -> None:
         return
     provider = secrets_from_env()
     if provider is None:
-        raise RuntimeError("RESOLUTO_SECRET_REFS is set but RESOLUTO_SECRETS_KIND is not configured")
+        raise RuntimeError(
+            "RESOLUTO_SECRET_REFS is set but RESOLUTO_SECRETS_KIND is not configured"
+        )
     for var_name, ref in json.loads(refs_env).items():
         os.environ[var_name] = await provider.get(ref)
 
@@ -34,7 +37,9 @@ async def _main() -> int:
     image_ver = os.environ.get("RESOLUTO_IMAGE_VERSION")
     if image_ver:
         from importlib.metadata import version as _pkg_version
+
         from resoluto.sandbox.version_guard import assert_image_matches_wheel
+
         assert_image_matches_wheel(image_ver, _pkg_version("resoluto-sandbox"))
     await _resolve_secrets()
     store = store_from_env()

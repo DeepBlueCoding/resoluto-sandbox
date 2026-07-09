@@ -4,6 +4,7 @@ Run explicitly:  uv run pytest -m integration
 Excluded by default (addopts -m 'not integration'). Requires ~/.kube/config
 pointing at k3s and the `kata` RuntimeClass + the docker:27-dind image imported.
 """
+
 import asyncio
 import os
 import platform

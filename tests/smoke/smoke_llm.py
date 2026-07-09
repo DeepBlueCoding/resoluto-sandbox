@@ -25,6 +25,7 @@ Run from resoluto-sandbox/ (sandbox image present; backends provisioned):
     uv run python tests/smoke/smoke_llm.py --k8s-only            # k8s backend
     uv run python tests/smoke/smoke_llm.py "your own prompt"
 """
+
 import io
 import json
 import os
@@ -62,7 +63,9 @@ def _show(label: str, prompt: str, res) -> bool:
     if ok:
         print("  [PASS] a real Claude answer round-tripped through the sandbox")
     else:
-        print(f"  [FAIL] no answer — reason={res.reason!r}  (the agent's stderr is in RunResult.output)")
+        print(
+            f"  [FAIL] no answer — reason={res.reason!r}  (the agent's stderr is in RunResult.output)"
+        )
     return ok
 
 
@@ -79,7 +82,7 @@ def run_local(prompt: str, token: str) -> str:
         workspace=_staged_workspace(),
         env=_agent_env(token),
         output_paths=["result.json"],
-        stream=io.StringIO(),   # suppress live substrate telemetry; we print the clean answer
+        stream=io.StringIO(),  # suppress live substrate telemetry; we print the clean answer
     )
     return "GREEN" if _show("local — Claude via Kata microVM (nerdctl)", prompt, res) else "RED"
 
@@ -89,24 +92,29 @@ def run_k8s(prompt: str, token: str) -> str:
         print("[SKIP] k8s — set the s3 store config (export RESOLUTO_STORE_*)")
         return "BLOCKED"
     import asyncio
+
     from resoluto.sandbox.backends.substrate import SubstrateBackend
     from resoluto.sandbox.conduit.factory import store_from_env
     from resoluto.sandbox.conduit.s3 import mint_scoped_credential
     from resoluto.sandbox.runtime.k8s import EgressConfig, K8sSandboxRuntime
 
-    sts = asyncio.run(mint_scoped_credential(
-        bucket=os.environ["RESOLUTO_STORE_BUCKET"], prefix="run",
-        endpoint_url=os.environ["RESOLUTO_STORE_ENDPOINT"],
-        region=os.environ.get("RESOLUTO_STORE_REGION", "us-east-1"),
-        access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-        secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
-        sts_role_arn=os.environ["RESOLUTO_STORE_STS_ROLE_ARN"],
-    ))
+    sts = asyncio.run(
+        mint_scoped_credential(
+            bucket=os.environ["RESOLUTO_STORE_BUCKET"],
+            prefix="run",
+            endpoint_url=os.environ["RESOLUTO_STORE_ENDPOINT"],
+            region=os.environ.get("RESOLUTO_STORE_REGION", "us-east-1"),
+            access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+            secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+            sts_role_arn=os.environ["RESOLUTO_STORE_STS_ROLE_ARN"],
+        )
+    )
     store_env = {k: v for k, v in os.environ.items() if k.startswith("RESOLUTO_STORE_")}
     store_env["RESOLUTO_STORE_WRITE_TOKEN"] = json.dumps(sts)
     # Egress is DENY-by-default — the LLM sandbox can't phone home unless we open it. Open just the LLM
     # provider (least privilege). CDN IPs rotate, so if this flakes, use public_https=True instead.
     import dataclasses
+
     egress = EgressConfig.from_store_env() or EgressConfig()
     egress = dataclasses.replace(egress, allow=tuple(egress.allow) + ("anthropic",))
     runtime = K8sSandboxRuntime(
@@ -114,10 +122,14 @@ def run_k8s(prompt: str, token: str) -> str:
         context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
         egress=egress,
     )
-    sb = Sandbox(backend=SubstrateBackend(
-        runtime=runtime, conduit=store_from_env(),
-        image=os.environ["RESOLUTO_SANDBOX_IMAGE"], store_env=store_env,
-    ))
+    sb = Sandbox(
+        backend=SubstrateBackend(
+            runtime=runtime,
+            conduit=store_from_env(),
+            image=os.environ["RESOLUTO_SANDBOX_IMAGE"],
+            store_env=store_env,
+        )
+    )
     res = sb.run(
         ["python", "llm_agent.py", prompt],
         workspace=_staged_workspace(),
@@ -128,8 +140,10 @@ def run_k8s(prompt: str, token: str) -> str:
     if _show("k8s — Claude via Kata pod", prompt, res):
         return "GREEN"
     if _egress_unenforced(res):
-        print("    -> BLOCKED: the egress NetworkPolicy didn't program before the pod's canary "
-              "(kube-router race). The LLM round-trip is proven by the local backend.")
+        print(
+            "    -> BLOCKED: the egress NetworkPolicy didn't program before the pod's canary "
+            "(kube-router race). The LLM round-trip is proven by the local backend."
+        )
         return "BLOCKED"
     return "RED"
 
@@ -141,8 +155,10 @@ def main() -> int:
 
     token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
     if not token:
-        print("set CLAUDE_CODE_OAUTH_TOKEN (`claude setup-token`) to auth the agent. "
-              "ANTHROPIC_API_KEY is not used.")
+        print(
+            "set CLAUDE_CODE_OAUTH_TOKEN (`claude setup-token`) to auth the agent. "
+            "ANTHROPIC_API_KEY is not used."
+        )
         return 1
 
     results = {}

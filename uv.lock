@@ -1545,7 +1545,7 @@ wheels = [
 
 [[package]]
 name = "resoluto-sandbox"
-version = "0.1.0rc2"
+version = "0.1.0rc3"
 source = { editable = "." }
 dependencies = [
     { name = "pydantic" },
@@ -1577,7 +1577,7 @@ docs = [
     { name = "mkdocs-llmstxt" },
     { name = "mkdocs-material" },
     { name = "mkdocstrings", extra = ["python"] },
-    { name = "resoluto-sandbox" },
+    { name = "resoluto-sandbox", extra = ["gcs", "k8s", "s3"] },
     { name = "ruff" },
 ]
 
@@ -1605,7 +1605,7 @@ docs = [
     { name = "mkdocs-llmstxt", specifier = ">=0.1" },
     { name = "mkdocs-material", specifier = ">=9.5" },
     { name = "mkdocstrings", extras = ["python"], specifier = ">=0.26" },
-    { name = "resoluto-sandbox" },
+    { name = "resoluto-sandbox", extras = ["k8s", "s3", "gcs"] },
     { name = "ruff", specifier = ">=0.6" },
 ]
 

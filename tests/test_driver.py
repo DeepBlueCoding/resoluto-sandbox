@@ -3,19 +3,20 @@
 The FakeRuntime's "pod" actually executes the REAL runner against the SAME store,
 so the driver tails REAL telemetry. This exercises the whole rendezvous: acquire →
 self-report → tail → result → reap, with no connection ever held between the two."""
+
 import asyncio
 
 import pytest
+from canary_stub import pass_canary
 
+from resoluto.sandbox.conduit import LocalConduit
 from resoluto.sandbox.contracts import (
     SandboxHandle,
     SandboxLaunchSpec,
     SandboxRuntime,
     SandboxStatus,
 )
-from canary_stub import pass_canary
 from resoluto.sandbox.driver import drive_node
-from resoluto.sandbox.conduit import LocalConduit
 from resoluto.sandbox.pool import SandboxPool
 from resoluto.sandbox.runner import run_node_in_sandbox
 
@@ -33,12 +34,17 @@ class RunnerBackedRuntime(SandboxRuntime):
     async def launch(self, spec: SandboxLaunchSpec) -> SandboxHandle:
         self._n += 1
         hid = f"fake/{self._n}"
-        self._tasks[hid] = asyncio.ensure_future(run_node_in_sandbox(
-            store=self._store, prefix=spec.store_prefix, run_id=self._run_id,
-            node_id=spec.labels.get("node_id", "n"), workload_argv=spec.command,
-            heartbeat_interval_s=0.01,
-            run_canary=pass_canary,
-        ))
+        self._tasks[hid] = asyncio.ensure_future(
+            run_node_in_sandbox(
+                store=self._store,
+                prefix=spec.store_prefix,
+                run_id=self._run_id,
+                node_id=spec.labels.get("node_id", "n"),
+                workload_argv=spec.command,
+                heartbeat_interval_s=0.01,
+                run_canary=pass_canary,
+            )
+        )
         return SandboxHandle(id=hid, labels=spec.labels)
 
     async def status(self, handle: SandboxHandle) -> SandboxStatus:
@@ -88,7 +94,10 @@ class DeadRuntime(SandboxRuntime):
 
 def _spec(prefix, argv):
     return SandboxLaunchSpec(
-        image="busybox", command=argv, store_prefix=prefix, labels={"node_id": "compile"},
+        image="busybox",
+        command=argv,
+        store_prefix=prefix,
+        labels={"node_id": "compile"},
     )
 
 
@@ -99,8 +108,12 @@ async def test_drive_node_full_loop(tmp_path):
     seen = []
 
     result = await drive_node(
-        runtime, store, _spec("run/r1/nodes/compile", ["sh", "-c", "echo building; echo ok"]),
-        admit=pool, on_event=seen.append, poll_interval_s=0.01,
+        runtime,
+        store,
+        _spec("run/r1/nodes/compile", ["sh", "-c", "echo building; echo ok"]),
+        admit=pool,
+        on_event=seen.append,
+        poll_interval_s=0.01,
     )
 
     assert result.status == "success"
@@ -129,8 +142,13 @@ async def test_drive_node_detects_silent_substrate_death(tmp_path):
         return t["now"]
 
     result = await drive_node(
-        runtime, store, _spec("run/r1/nodes/hung", ["true"]),
-        admit=pool, poll_interval_s=0, dead_after_s=30.0, clock=clock,
+        runtime,
+        store,
+        _spec("run/r1/nodes/hung", ["true"]),
+        admit=pool,
+        poll_interval_s=0,
+        dead_after_s=30.0,
+        clock=clock,
     )
 
     assert result.status == "failure"
@@ -145,8 +163,10 @@ async def test_drive_node_runs_admission_free(tmp_path):
     store = LocalConduit(tmp_path)
     runtime = RunnerBackedRuntime(store)
     result = await drive_node(
-        runtime, store, _spec("run/r1/nodes/direct", ["sh", "-c", "echo ok"]),
-        poll_interval_s=0.01,   # admit omitted → direct launch, no SandboxPool involved
+        runtime,
+        store,
+        _spec("run/r1/nodes/direct", ["sh", "-c", "echo ok"]),
+        poll_interval_s=0.01,  # admit omitted → direct launch, no SandboxPool involved
     )
     assert result.status == "success"
     assert runtime.destroyed == ["fake/1"]  # reaped on the admission-free path too
@@ -192,8 +212,12 @@ async def test_drive_node_not_reaped_while_pending(tmp_path):
         return t["now"]
 
     result = await drive_node(
-        runtime, store, _spec("run/r1/nodes/pend", ["true"]),
-        poll_interval_s=0, dead_after_s=30.0, clock=clock,
+        runtime,
+        store,
+        _spec("run/r1/nodes/pend", ["true"]),
+        poll_interval_s=0,
+        dead_after_s=30.0,
+        clock=clock,
     )
     # It reaches running, arms, THEN (still shipping nothing) is correctly reaped as dead —
     # but only AFTER running, never during the 5 Pending polls.
@@ -228,11 +252,15 @@ async def test_drive_node_raw_unstartable_fast_fail(tmp_path):
     # drive_node_raw fails fast (debounced) on a fatal waiting reason and reaps the pod,
     # instead of waiting out the death window — the silence watchdog only arms at RUNNING.
     from resoluto.sandbox.driver import drive_node_raw
+
     store = LocalConduit(tmp_path)
     rt = _UnstartableRuntime()
     outcome = await drive_node_raw(
-        rt, store, _spec("run/r1/nodes/bad", ["true"]),
-        poll_interval_s=0, unstartable_polls=3,
+        rt,
+        store,
+        _spec("run/r1/nodes/bad", ["true"]),
+        poll_interval_s=0,
+        unstartable_polls=3,
     )
     assert outcome.disposition == "unstartable"
     assert "ImagePullBackOff" in outcome.reason
@@ -243,19 +271,25 @@ async def test_drive_node_raw_completes_on_result_ready_before_terminal(tmp_path
     # A caller whose work product lands BEFORE the pod reports terminal (the caller's
     # result.json) finishes as soon as result_ready() is true — the pod may still be running.
     from resoluto.sandbox.driver import drive_node_raw
+
     store = LocalConduit(tmp_path)
 
     class _NeverTerminalRuntime(SandboxRuntime):
         def __init__(self):
             self.destroyed: list[str] = []
+
         async def launch(self, spec):
             return SandboxHandle(id="run/1", labels=spec.labels)
+
         async def status(self, handle):
             return SandboxStatus(phase="running")  # never terminal
+
         async def destroy(self, handle):
             self.destroyed.append(handle.id)
+
         async def sweep(self, labels):
             return 0
+
         async def logs(self, handle, *, tail=200):
             return ""
 
@@ -267,8 +301,11 @@ async def test_drive_node_raw_completes_on_result_ready_before_terminal(tmp_path
         return polls["n"] >= 2  # work product appears on the 2nd loop pass
 
     outcome = await drive_node_raw(
-        rt, store, _spec("run/r1/nodes/wp", ["true"]),
-        result_ready=ready, poll_interval_s=0,
+        rt,
+        store,
+        _spec("run/r1/nodes/wp", ["true"]),
+        result_ready=ready,
+        poll_interval_s=0,
     )
     assert outcome.disposition == "completed"
     assert rt.destroyed == ["run/1"]  # reaped on completion
@@ -277,6 +314,7 @@ async def test_drive_node_raw_completes_on_result_ready_before_terminal(tmp_path
 def test_sandbox_pool_satisfies_admission_protocol():
     from resoluto.sandbox.contracts import Admission
     from resoluto.sandbox.runtime import k8s  # noqa: F401 — ensure import path is clean
+
     pool = SandboxPool(DeadRuntime(), max_concurrent=1)
     assert isinstance(pool, Admission)  # structural: pool is a valid admitter, no inheritance
 
@@ -308,12 +346,16 @@ async def test_drive_node_corrupt_result_json_is_attributed_distinctly(tmp_path)
     # A present-but-corrupt result.json must NOT be masked as "no result.json" — the driver
     # distinguishes a parse failure (real serialization bug) from a missing work product.
     from resoluto.sandbox.telemetry import result_key
+
     store = LocalConduit(tmp_path)
     prefix = "run/r1/nodes/corrupt"
     await store.put(result_key(prefix), b'{"status": 12345}')  # status must be a literal string
 
     result = await drive_node(
-        _CompletedRuntime(), store, _spec(prefix, ["true"]), poll_interval_s=0,
+        _CompletedRuntime(),
+        store,
+        _spec(prefix, ["true"]),
+        poll_interval_s=0,
     )
 
     assert result.status == "failure"
@@ -325,7 +367,10 @@ async def test_drive_node_missing_result_json_is_attributed_as_missing(tmp_path)
     # The complementary branch: completed pod but nothing at result_key → "no result.json".
     store = LocalConduit(tmp_path)
     result = await drive_node(
-        _CompletedRuntime(), store, _spec("run/r1/nodes/empty", ["true"]), poll_interval_s=0,
+        _CompletedRuntime(),
+        store,
+        _spec("run/r1/nodes/empty", ["true"]),
+        poll_interval_s=0,
     )
     assert result.status == "failure"
     assert result.reason == "no result.json in store"
@@ -361,8 +406,10 @@ async def test_drive_node_raw_external_disposition_on_vanished_pod(tmp_path):
     # Sustained 'unknown' phase + telemetry silence (after the watchdog armed at running) ==
     # the pod was terminated externally. The host keys on this disposition.
     from resoluto.sandbox.driver import drive_node_raw
+
     store = LocalConduit(tmp_path)
     state = {"polls": 0}
+
     # Time stays 0 (so arm stamps at 0 and the running poll is never "dead") until the pod has
     # been polled as 'unknown', at which point the death window is crossed.
     def clock():
@@ -370,8 +417,13 @@ async def test_drive_node_raw_external_disposition_on_vanished_pod(tmp_path):
 
     rt = _VanishingRuntime(state)
     outcome = await drive_node_raw(
-        rt, store, _spec("run/r1/nodes/vanish", ["true"]),
-        poll_interval_s=0, external_gone_polls=1, dead_after_s=30.0, clock=clock,
+        rt,
+        store,
+        _spec("run/r1/nodes/vanish", ["true"]),
+        poll_interval_s=0,
+        external_gone_polls=1,
+        dead_after_s=30.0,
+        clock=clock,
     )
 
     assert outcome.disposition == "external"

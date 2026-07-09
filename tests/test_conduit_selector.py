@@ -1,8 +1,8 @@
 import pytest
 
-from resoluto.sandbox.runner_main import store_from_env
-from resoluto.sandbox.conduit.stdout import StdoutConduit
 from resoluto.sandbox.conduit.local import LocalConduit
+from resoluto.sandbox.conduit.stdout import StdoutConduit
+from resoluto.sandbox.runner_main import store_from_env
 
 
 def test_factory_dispatches_kind_to_conduit_type(tmp_path):

@@ -1,4 +1,5 @@
 """DI smoke test: a custom Backend subclass is accepted by Sandbox."""
+
 from typing import IO, Sequence
 
 import pytest
@@ -43,6 +44,7 @@ class _CapturingBackend(Backend):
 
 def test_di_backend_is_accepted_and_delegated_to():
     import sys
+
     fixed = RunResult(exit_code=0, output="injected", errors="")
     capturing = _CapturingBackend(fixed)
     sb = Sandbox(backend=capturing)

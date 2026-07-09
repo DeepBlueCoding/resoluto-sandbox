@@ -11,6 +11,7 @@ Run:  uv run pytest -m integration tests/test_e2e.py
 Needs: live k3s+Kata, the resoluto-sandbox-runner:0.1.0 image imported into k3s
 containerd, and spike-minio on the host (0.0.0.0:9100, minioadmin/minioadmin).
 """
+
 import os
 import platform
 import subprocess
@@ -34,14 +35,18 @@ from resoluto.sandbox.runtime.k8s import EgressConfig, K8sSandboxRuntime
 # NOT, so the fail-closed canary correctly refuses — external egress is genuinely open here. The
 # store-mediated host→pod→minio→reap loop itself is proven GREEN by scripts/store-backend-canary.py.
 # Run these on an egress-enforcing cluster (Calico/Cilium).
-pytestmark = pytest.mark.skip(reason="needs a CNI that enforces egress NetworkPolicy (this k3s+Flannel box does not)")
+pytestmark = pytest.mark.skip(
+    reason="needs a CNI that enforces egress NetworkPolicy (this k3s+Flannel box does not)"
+)
 
 RUNNER_IMAGE = "docker.io/library/resoluto-sandbox-runner:0.1.0"
 NS = "resoluto-e2e"
-HOST_ENDPOINT = "http://localhost:9100"       # host-side reader → minio
-POD_ENDPOINT = "http://192.168.1.197:9100"    # in-pod runner → minio (k3s node IP)
+HOST_ENDPOINT = "http://localhost:9100"  # host-side reader → minio
+POD_ENDPOINT = "http://192.168.1.197:9100"  # in-pod runner → minio (k3s node IP)
 MINIO_KEY = "minioadmin"
-KUBECONTEXT = os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT", "default")  # pin local k3s, not ambient AKS
+KUBECONTEXT = os.environ.get(
+    "RESOLUTO_SANDBOX_KUBECONTEXT", "default"
+)  # pin local k3s, not ambient AKS
 
 
 @pytest.mark.integration
@@ -53,15 +58,18 @@ async def test_real_kata_sandbox_store_mediated_loop(runner_image):
     prefix = f"run/{run_id}/nodes/{node_id}"
 
     store = S3Conduit(
-        bucket, endpoint_url=HOST_ENDPOINT, region_name="us-east-1",
-        aws_access_key_id=MINIO_KEY, aws_secret_access_key=MINIO_KEY,
+        bucket,
+        endpoint_url=HOST_ENDPOINT,
+        region_name="us-east-1",
+        aws_access_key_id=MINIO_KEY,
+        aws_secret_access_key=MINIO_KEY,
     )
     await store.ensure_bucket()
 
     spec = SandboxLaunchSpec(
         image=RUNNER_IMAGE,
-        flavor="plain",            # restricted: nonroot (image runs as 65532), drop ALL caps
-        runtime_class="kata",      # still a real microVM
+        flavor="plain",  # restricted: nonroot (image runs as 65532), drop ALL caps
+        runtime_class="kata",  # still a real microVM
         labels={"resoluto.run_id": run_id, "resoluto.node_id": node_id},
         store_prefix=prefix,
         deadline_seconds=300,
@@ -78,13 +86,23 @@ async def test_real_kata_sandbox_store_mediated_loop(runner_image):
         },
     )
 
-    runtime = K8sSandboxRuntime(namespace=NS, image_pull_policy="Never", context=KUBECONTEXT, egress=EgressConfig.from_store_env())
+    runtime = K8sSandboxRuntime(
+        namespace=NS,
+        image_pull_policy="Never",
+        context=KUBECONTEXT,
+        egress=EgressConfig.from_store_env(),
+    )
     pool = SandboxPool(runtime, max_concurrent=1)
     seen = []
     try:
         result = await drive_node(
-            runtime, store, spec, admit=pool, on_event=seen.append,
-            poll_interval_s=3.0, dead_after_s=240.0,
+            runtime,
+            store,
+            spec,
+            admit=pool,
+            on_event=seen.append,
+            poll_interval_s=3.0,
+            dead_after_s=240.0,
         )
     finally:
         await runtime.close()
@@ -119,14 +137,24 @@ async def test_real_repo_stages_in_and_diff_comes_back_out(tmp_path, runner_imag
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "README.md").write_text("ORIGINAL\n")
-    env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+    env = {
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@t",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@t",
+    }
     subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
     subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
-    subprocess.run(["git", "commit", "-qm", "init"], cwd=repo, check=True, env={**env, "PATH": "/usr/bin:/bin"})
+    subprocess.run(
+        ["git", "commit", "-qm", "init"], cwd=repo, check=True, env={**env, "PATH": "/usr/bin:/bin"}
+    )
 
     store = S3Conduit(
-        bucket, endpoint_url=HOST_ENDPOINT, region_name="us-east-1",
-        aws_access_key_id=MINIO_KEY, aws_secret_access_key=MINIO_KEY,
+        bucket,
+        endpoint_url=HOST_ENDPOINT,
+        region_name="us-east-1",
+        aws_access_key_id=MINIO_KEY,
+        aws_secret_access_key=MINIO_KEY,
     )
     await store.ensure_bucket()
     # HOST pushes the worktree as the sandbox's single input object
@@ -151,18 +179,29 @@ async def test_real_repo_stages_in_and_diff_comes_back_out(tmp_path, runner_imag
             "RESOLUTO_WORKSPACE_DIR": "/tmp/ws",  # writable by nonroot 65532
             "RESOLUTO_OUTPUT_PATHS": '["patched.md"]',
             # proves the repo (incl .git) was staged, then produces an artifact
-            "RESOLUTO_WORKLOAD_ARGV":
-                '["sh", "-c", "cat .git/HEAD; cat README.md; '
-                'sed s/ORIGINAL/PATCHED/ README.md > patched.md"]',
+            "RESOLUTO_WORKLOAD_ARGV": '["sh", "-c", "cat .git/HEAD; cat README.md; '
+            'sed s/ORIGINAL/PATCHED/ README.md > patched.md"]',
         },
     )
 
-    runtime = K8sSandboxRuntime(namespace=NS, image_pull_policy="Never", context=KUBECONTEXT, egress=EgressConfig.from_store_env())
+    runtime = K8sSandboxRuntime(
+        namespace=NS,
+        image_pull_policy="Never",
+        context=KUBECONTEXT,
+        egress=EgressConfig.from_store_env(),
+    )
     pool = SandboxPool(runtime, max_concurrent=1)
     seen = []
     try:
         result = await drive_node(
-            runtime, store, spec, admit=pool, on_event=seen.append, poll_interval_s=3.0, dead_after_s=240.0)
+            runtime,
+            store,
+            spec,
+            admit=pool,
+            on_event=seen.append,
+            poll_interval_s=3.0,
+            dead_after_s=240.0,
+        )
     finally:
         await runtime.close()
 

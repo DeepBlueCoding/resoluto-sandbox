@@ -1,4 +1,5 @@
 """FIFO-ordered, byte-budgeted admission over a SandboxRuntime."""
+
 from __future__ import annotations
 
 import asyncio

@@ -17,6 +17,7 @@ Any OpenAI-COMPATIBLE endpoint works by setting OPENAI_BASE_URL (e.g. OpenRouter
 https://openrouter.ai/api/v1) — the SDK is pointed at that host via the Chat Completions
 API (what compatible providers implement), and OPENAI_API_KEY carries that host's key.
 """
+
 import os
 import sys
 

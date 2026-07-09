@@ -69,10 +69,10 @@ if $FULL; then
   rm -rf dist
   uv build >/dev/null 2>&1 && ok "uv build" || fail "uv build failed (run 'uv build' to see why)"
   uvx twine check dist/* >/dev/null 2>&1 && ok "twine check" || fail "twine check failed"
-  if ( set -o pipefail; TESTING=True uv run pytest -q -m "not integration" >/dev/null 2>&1 ); then
-    ok "unit tests (-m 'not integration')"
+  if ( set -o pipefail; TESTING=True uv run pytest -q >/dev/null 2>&1 ); then
+    ok "unit tests (repo default markers)"
   else
-    fail "unit tests failed (run: TESTING=True uv run pytest -q -m 'not integration')"
+    fail "unit tests failed (run: TESTING=True uv run pytest -q)"
   fi
 fi
 

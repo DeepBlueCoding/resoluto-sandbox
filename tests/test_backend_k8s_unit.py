@@ -5,11 +5,16 @@ the runner emits (`data["line"]`), the pod_env the spec carries, the store-env
 selection (`store_env_for_pod`), and the fail-fast/NotImplemented contract. They
 MUST NOT touch a cluster.
 """
+
 import json
 
 import pytest
 
-from resoluto.sandbox.backends.substrate import SubstrateBackend, secrets_env_for_pod, store_env_for_pod
+from resoluto.sandbox.backends.substrate import (
+    SubstrateBackend,
+    secrets_env_for_pod,
+    store_env_for_pod,
+)
 from resoluto.sandbox.contracts import (
     Conduit,
     NodeResult,
@@ -29,16 +34,26 @@ class _FakeConduit(Conduit):
         self.aclose_calls = 0
 
     async def put(self, key, data): ...
-    async def get(self, key): return b""
-    async def list_prefix(self, prefix): return []
-    async def aclose(self): self.aclose_calls += 1
+    async def get(self, key):
+        return b""
+
+    async def list_prefix(self, prefix):
+        return []
+
+    async def aclose(self):
+        self.aclose_calls += 1
 
 
 class _FakeRuntime(SandboxRuntime):
-    async def launch(self, spec): return SandboxHandle(id="x")
-    async def status(self, handle): return SandboxStatus(phase="succeeded", exit_code=0)
+    async def launch(self, spec):
+        return SandboxHandle(id="x")
+
+    async def status(self, handle):
+        return SandboxStatus(phase="succeeded", exit_code=0)
+
     async def destroy(self, handle): ...
-    async def sweep(self, labels): return 0
+    async def sweep(self, labels):
+        return 0
 
 
 def _patch_drive(monkeypatch, *, on_event_payload=None, captured=None, node_result=None):
@@ -54,8 +69,11 @@ def _patch_drive(monkeypatch, *, on_event_payload=None, captured=None, node_resu
             on_event(on_event_payload)
         return node_result or NodeResult(status="success", exit_code=0)
 
-    async def fake_put_dir(store, prefix, src): return []
-    async def fake_fetch_outputs(store, prefix, dest): return []
+    async def fake_put_dir(store, prefix, src):
+        return []
+
+    async def fake_fetch_outputs(store, prefix, dest):
+        return []
 
     monkeypatch.setattr(driver, "drive_node", fake_drive_node)
     monkeypatch.setattr(staging, "put_dir", fake_put_dir)
@@ -104,7 +122,9 @@ def test_stdin_raises_not_implemented():
 
 
 def test_run_result_reason_populated_from_node_result(monkeypatch):
-    _patch_drive(monkeypatch, node_result=NodeResult(status="failure", exit_code=1, reason="OOMKilled"))
+    _patch_drive(
+        monkeypatch, node_result=NodeResult(status="failure", exit_code=1, reason="OOMKilled")
+    )
     result = _backend().run(["true"])
     assert result.reason == "OOMKilled"
     assert result.exit_code == 1
@@ -181,7 +201,9 @@ def test_secrets_str_ref_becomes_resoluto_secret_refs_json(monkeypatch):
 def test_secrets_key_ref_routes_to_k8s_secret_refs(monkeypatch):
     captured: dict = {}
     _patch_drive(monkeypatch, captured=captured)
-    _backend().run(["true"], secrets={"ANTHROPIC_API_KEY": SecretKeyRef("anthropic-key", "api_key")})
+    _backend().run(
+        ["true"], secrets={"ANTHROPIC_API_KEY": SecretKeyRef("anthropic-key", "api_key")}
+    )
     spec: SandboxLaunchSpec = captured["spec"]
     assert spec.k8s_secret_refs == {"ANTHROPIC_API_KEY": ("anthropic-key", "api_key")}
     assert "RESOLUTO_SECRET_REFS" not in spec.env
@@ -194,7 +216,9 @@ def test_conduit_aclose_called_when_run_finishes(monkeypatch):
     _patch_drive(monkeypatch)
     conduit = _FakeConduit()
     backend = SubstrateBackend(
-        runtime=_FakeRuntime(), conduit=conduit, image="img:0.1.0",
+        runtime=_FakeRuntime(),
+        conduit=conduit,
+        image="img:0.1.0",
         store_env={"RESOLUTO_STORE_KIND": "s3", "RESOLUTO_STORE_BUCKET": "b"},
     )
     backend.run(["true"])
@@ -208,9 +232,12 @@ def test_conduit_aclose_called_even_on_failure(monkeypatch):
         raise RuntimeError("boom")
 
     import resoluto.sandbox.driver as driver
+
     monkeypatch.setattr(driver, "drive_node", failing_drive_node)
     backend = SubstrateBackend(
-        runtime=_FakeRuntime(), conduit=conduit, image="img:0.1.0",
+        runtime=_FakeRuntime(),
+        conduit=conduit,
+        image="img:0.1.0",
         store_env={"RESOLUTO_STORE_KIND": "s3", "RESOLUTO_STORE_BUCKET": "b"},
     )
     with pytest.raises(RuntimeError, match="boom"):
@@ -260,4 +287,6 @@ def test_secrets_mixed_ref_types_split_correctly(monkeypatch):
     )
     spec: SandboxLaunchSpec = captured["spec"]
     assert spec.k8s_secret_refs == {"K8S_VAR": ("some-secret", "some-key")}
-    assert json.loads(spec.env["RESOLUTO_SECRET_REFS"]) == {"PROVIDER_VAR": "vault:secret/data/x#key"}
+    assert json.loads(spec.env["RESOLUTO_SECRET_REFS"]) == {
+        "PROVIDER_VAR": "vault:secret/data/x#key"
+    }

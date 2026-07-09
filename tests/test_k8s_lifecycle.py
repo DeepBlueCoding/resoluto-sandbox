@@ -2,6 +2,7 @@
 behind @integration. They NEVER reach a real cluster or launch a real pod: the `_client`
 seam is stubbed with `monkeypatch.setattr(rt, "_client", ...)` so no kubernetes API is
 touched. They run in the default `uv run pytest` path (NOT marked @integration)."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -16,8 +17,10 @@ from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime, _dns_safe
 
 def _stub_client(rt: K8sSandboxRuntime, api, monkeypatch) -> None:
     """Replace the awaited `_client()` seam so no real kubernetes API is reached."""
+
     async def _client():
         return api
+
     monkeypatch.setattr(rt, "_client", _client)
 
 
@@ -43,7 +46,7 @@ async def test_node_allocatable_ram_is_min_across_ready_nodes(monkeypatch):
             return nodes
 
     _stub_client(rt, _Api(), monkeypatch)
-    assert await rt._get_node_allocatable_ram() == 16 * 1024 ** 3
+    assert await rt._get_node_allocatable_ram() == 16 * 1024**3
 
 
 @pytest.mark.asyncio
@@ -53,16 +56,14 @@ async def test_node_allocatable_ram_excludes_non_ready_node(monkeypatch):
 
     # The non-Ready node carries the smallest RAM (8Gi) — it must be excluded, so the
     # min over the two Ready nodes is 16Gi, not 8Gi.
-    nodes = SimpleNamespace(
-        items=[_node("8Gi", ready=False), _node("32Gi"), _node("16Gi")]
-    )
+    nodes = SimpleNamespace(items=[_node("8Gi", ready=False), _node("32Gi"), _node("16Gi")])
 
     class _Api:
         async def list_node(self):
             return nodes
 
     _stub_client(rt, _Api(), monkeypatch)
-    assert await rt._get_node_allocatable_ram() == 16 * 1024 ** 3
+    assert await rt._get_node_allocatable_ram() == 16 * 1024**3
 
 
 @pytest.mark.asyncio
@@ -98,9 +99,7 @@ async def test_node_allocatable_ram_zero_when_none_ready(monkeypatch):
 
 def _pod_status(*, phase, reason=None, container_statuses=None) -> SimpleNamespace:
     return SimpleNamespace(
-        status=SimpleNamespace(
-            phase=phase, reason=reason, container_statuses=container_statuses
-        )
+        status=SimpleNamespace(phase=phase, reason=reason, container_statuses=container_statuses)
     )
 
 
@@ -253,9 +252,7 @@ async def test_ensure_run_owner_409_reads_existing_uid(monkeypatch):
 
 def _cm(run_id: str, created: datetime | None) -> SimpleNamespace:
     return SimpleNamespace(
-        metadata=SimpleNamespace(
-            labels={"resoluto.run_id": run_id}, creation_timestamp=created
-        )
+        metadata=SimpleNamespace(labels={"resoluto.run_id": run_id}, creation_timestamp=created)
     )
 
 
@@ -266,11 +263,13 @@ async def test_reap_deletes_only_old_non_kept(monkeypatch):
     young = datetime.now(UTC)
     deleted: list[str] = []
 
-    cms = SimpleNamespace(items=[
-        _cm("keep-me", old),      # kept → skipped despite being old
-        _cm("young-one", young),  # too young → skipped
-        _cm("old-stale", old),    # old + not kept → deleted
-    ])
+    cms = SimpleNamespace(
+        items=[
+            _cm("keep-me", old),  # kept → skipped despite being old
+            _cm("young-one", young),  # too young → skipped
+            _cm("old-stale", old),  # old + not kept → deleted
+        ]
+    )
 
     class _Api:
         async def list_namespaced_config_map(self, namespace, label_selector):
@@ -296,13 +295,15 @@ def _pod(phase: str) -> SimpleNamespace:
 @pytest.mark.asyncio
 async def test_count_active_pods_excludes_terminal(monkeypatch):
     rt = K8sSandboxRuntime()
-    pods = SimpleNamespace(items=[
-        _pod("Running"),
-        _pod("Pending"),
-        _pod("Succeeded"),  # terminal → excluded
-        _pod("Failed"),     # terminal → excluded
-        _pod("Unknown"),
-    ])
+    pods = SimpleNamespace(
+        items=[
+            _pod("Running"),
+            _pod("Pending"),
+            _pod("Succeeded"),  # terminal → excluded
+            _pod("Failed"),  # terminal → excluded
+            _pod("Unknown"),
+        ]
+    )
 
     class _Api:
         async def list_namespaced_pod(self, namespace, label_selector):

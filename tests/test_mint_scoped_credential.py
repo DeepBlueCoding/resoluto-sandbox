@@ -5,6 +5,7 @@ The STS call itself is integration-only; here we test the pure policy builder
 all statements: the builder emits a second statement (prefix-scoped ListBucket),
 so inspecting Statement[0] alone would silently miss a granted privilege.
 """
+
 import json
 
 from resoluto.sandbox.conduit.s3 import _build_scoped_policy
@@ -21,7 +22,9 @@ def _actions(policy: dict) -> set[str]:
 def _statement_with(policy: dict, action: str) -> dict:
     """The single statement granting `action` (fails if absent or ambiguous)."""
     matches = [s for s in policy["Statement"] if action in s["Action"]]
-    assert len(matches) == 1, f"expected exactly one statement granting {action}, got {len(matches)}"
+    assert len(matches) == 1, (
+        f"expected exactly one statement granting {action}, got {len(matches)}"
+    )
     return matches[0]
 
 
@@ -59,7 +62,10 @@ def test_list_bucket_is_constrained_to_the_prefix():
 def test_different_prefixes_scope_both_object_and_list_statements():
     p1 = json.loads(_build_scoped_policy("bkt", "run/aaa/nodes/n1"))
     p2 = json.loads(_build_scoped_policy("bkt", "run/bbb/nodes/n1"))
-    assert _statement_with(p1, "s3:PutObject")["Resource"] != _statement_with(p2, "s3:PutObject")["Resource"]
+    assert (
+        _statement_with(p1, "s3:PutObject")["Resource"]
+        != _statement_with(p2, "s3:PutObject")["Resource"]
+    )
     assert (
         _statement_with(p1, "s3:ListBucket")["Condition"]["StringLike"]["s3:prefix"]
         != _statement_with(p2, "s3:ListBucket")["Condition"]["StringLike"]["s3:prefix"]

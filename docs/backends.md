@@ -16,8 +16,8 @@ exchange). The backends differ only in which runtime and conduit are wired in.
 
 > For the components glossary, the layered local-vs-k8s architecture diagram, the Conduit
 > data-flow table, and the security-layers table, see the [README's "How it works"
-> section](../README.md#how-it-works) — this page picks up from there with per-backend
-> setup detail.
+> section](https://github.com/DeepBlueCoding/resoluto-sandbox#how-it-works) — this page
+> picks up from there with per-backend setup detail.
 
 ## Run lifecycle
 
@@ -85,7 +85,7 @@ trusted-local bypass.
 ### What you need
 
 - KVM + Kata + a `nerdctl-full` bundle + Docker + a `localhost:5000` registry on this Linux host —
-  see the README's [Requirements](../README.md#requirements-host) for how to install each. Provision
+  see the README's [Requirements](https://github.com/DeepBlueCoding/resoluto-sandbox#requirements-host) for how to install each. Provision
   the rest with `scripts/local-backend-up.sh` (ends with a green Kata-microVM canary).
 - An image with python + the resoluto-sandbox wheel + your program's deps. Default:
   `default_local_image()` = the base image, registry-qualified (`localhost:5000/resoluto-sandbox-base:<installed
@@ -97,7 +97,7 @@ trusted-local bypass.
   **pushes** there, and the backend **pulls on demand** (`localhost` is insecure/HTTP by default). For
   your own image, `docker build … && resoluto-sandbox image push <tag>`, then reference
   `localhost:5000/<tag>`. Opt out with `RESOLUTO_SANDBOX_REGISTRY=""` (bare tags + `docker save |
-  nerdctl load`). See the README's [Prebuilt provider images](../README.md#prebuilt-provider-images).
+  nerdctl load`). See the README's [Prebuilt provider images](https://github.com/DeepBlueCoding/resoluto-sandbox#prebuilt-provider-images).
 
 ## k8s
 
@@ -359,6 +359,7 @@ class MyBackend(Backend):
 Sandbox(backend=MyBackend(...)).run(argv, ...)
 ```
 
-No facade changes are needed — `Sandbox` holds any `Backend` instance. For a full guide
-including `Conduit` and `SandboxRuntime` extension points, see
-[`../.claude/skills/resoluto-sandbox-dev/references/extending.md`](../.claude/skills/resoluto-sandbox-dev/references/extending.md).
+No facade changes are needed — `Sandbox` holds any `Backend` instance. `Conduit` and
+`SandboxRuntime` are the other two extension points: implement the ABC, pass your instance
+to `Sandbox`, and the facade drives it unchanged. See the [Runtime & Contracts](api/runtime.md)
+reference for the full protocol each one must satisfy.

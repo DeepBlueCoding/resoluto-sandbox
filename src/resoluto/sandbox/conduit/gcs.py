@@ -6,6 +6,7 @@ the WHOLE service account, so it must NOT back a multi-tenant lane store where e
 prefix isolation. Transport/throttling failures are retried and surfaced as ConduitError, mirroring
 S3Conduit's botocore standard-mode retries; permanent auth denials (401/403) propagate raw.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -56,7 +57,7 @@ class GcsConduit(Conduit):
             except Exception as exc:
                 if _is_transient(exc) and attempt < _MAX_ATTEMPTS - 1:
                     attempt += 1
-                    await asyncio.sleep(min(0.1 * 2 ** attempt, 5.0))
+                    await asyncio.sleep(min(0.1 * 2**attempt, 5.0))
                     continue
                 if _is_auth_error(exc):
                     raise
@@ -75,7 +76,9 @@ class GcsConduit(Conduit):
         out: list[ObjectInfo] = []
         params = {"prefix": prefix}
         while True:
-            resp = await self._io("list", lambda p=params: client.list_objects(self._bucket, params=p))
+            resp = await self._io(
+                "list", lambda p=params: client.list_objects(self._bucket, params=p)
+            )
             for item in resp.get("items", []):
                 out.append(ObjectInfo(key=item["name"], size=int(item.get("size", 0))))
             token = resp.get("nextPageToken")
@@ -90,10 +93,12 @@ class GcsConduit(Conduit):
         client = self._client()
         objs = await self.list_prefix(src)
         for o in objs:
-            rel = o.key[len(src):].lstrip("/")
+            rel = o.key[len(src) :].lstrip("/")
             await self._io(
                 "copy",
-                lambda o=o, rel=rel: client.copy(self._bucket, o.key, self._bucket, new_name=f"{dst}/{rel}"),
+                lambda o=o, rel=rel: client.copy(
+                    self._bucket, o.key, self._bucket, new_name=f"{dst}/{rel}"
+                ),
             )
         return len(objs)
 

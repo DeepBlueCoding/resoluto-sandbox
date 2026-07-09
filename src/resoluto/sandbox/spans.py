@@ -1,4 +1,5 @@
 """Emit redacted open/close span events and log events over a ChunkShipper."""
+
 from __future__ import annotations
 
 import time
@@ -16,7 +17,9 @@ def new_span_id() -> str:
 
 
 class SpanEmitter:
-    def __init__(self, shipper: ChunkShipper, run_id: str, *, clock: Callable[[], float] = time.time) -> None:
+    def __init__(
+        self, shipper: ChunkShipper, run_id: str, *, clock: Callable[[], float] = time.time
+    ) -> None:
         self._ship = shipper
         self._run_id = run_id
         self._clock = clock
@@ -26,16 +29,23 @@ class SpanEmitter:
 
     async def log(self, parent_span_id: str, text: str, *, kind: str = "log") -> None:
         await self._emit(
-            span_id=new_span_id(), parent_span_id=parent_span_id, kind=kind,
-            event="log", data={"line": redact_text(text)},
+            span_id=new_span_id(),
+            parent_span_id=parent_span_id,
+            kind=kind,
+            event="log",
+            data={"line": redact_text(text)},
         )
 
     @asynccontextmanager
     async def span(self, parent_span_id: str, kind: str, name: str, *, inputs: dict | None = None):
         sid = new_span_id()
         await self._emit(
-            span_id=sid, parent_span_id=parent_span_id, kind=kind, name=name,
-            event="open", data=redact_data(inputs or {}),
+            span_id=sid,
+            parent_span_id=parent_span_id,
+            kind=kind,
+            name=name,
+            event="open",
+            data=redact_data(inputs or {}),
         )
         status = "success"
         try:
@@ -45,6 +55,10 @@ class SpanEmitter:
             raise
         finally:
             await self._emit(
-                span_id=sid, parent_span_id=parent_span_id, kind=kind, name=name,
-                event="close", status=status,
+                span_id=sid,
+                parent_span_id=parent_span_id,
+                kind=kind,
+                name=name,
+                event="close",
+                status=status,
             )

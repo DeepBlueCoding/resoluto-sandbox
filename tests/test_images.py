@@ -1,6 +1,12 @@
 import pytest
+
 from resoluto.sandbox.images import (
-    build, image_tags, pullable, PROVIDERS, SDK_PACKAGE, SDK_VERSION,
+    PROVIDERS,
+    SDK_PACKAGE,
+    SDK_VERSION,
+    build,
+    image_tags,
+    pullable,
 )
 
 
@@ -76,6 +82,7 @@ def test_build_unknown_provider_raises():
 
 def test_push_bare_tag_tags_then_pushes_to_registry():
     from resoluto.sandbox.images import push
+
     fake = FakeRunner()
     ref = push("my-agent:1.0", runner=fake)
     assert ref == pullable("my-agent:1.0")
@@ -85,6 +92,7 @@ def test_push_bare_tag_tags_then_pushes_to_registry():
 
 def test_push_registry_qualified_tag_pushes_as_is():
     from resoluto.sandbox.images import push
+
     fake = FakeRunner()
     ref = push("localhost:5000/my-agent:1.0", runner=fake)
     assert ref == "localhost:5000/my-agent:1.0"
@@ -96,6 +104,7 @@ def test_cli_image_push(monkeypatch, capsys):
     calls = []
     monkeypatch.setattr(__import__("subprocess"), "run", lambda cmd, **k: calls.append(cmd))
     from resoluto.sandbox.cli import main
+
     rc = main(["image", "push", "my-agent:1.0"])
     assert rc == 0
     assert ["docker", "push", pullable("my-agent:1.0")] in calls
@@ -124,9 +133,11 @@ def test_cli_image_build_langchain(monkeypatch, capsys):
         calls.append(cmd)
 
     import subprocess
+
     monkeypatch.setattr(subprocess, "run", fake_run)
 
     from resoluto.sandbox.cli import main
+
     rc = main(["image", "build", "--provider", "langchain", "--version", "9.9.9"])
     assert rc == 0
     out = capsys.readouterr().out
@@ -144,9 +155,11 @@ def test_cli_image_build_all_builds_base_once(monkeypatch, capsys):
         calls.append(cmd)
 
     import subprocess
+
     monkeypatch.setattr(subprocess, "run", fake_run)
 
     from resoluto.sandbox.cli import main
+
     rc = main(["image", "build", "--provider", "all", "--version", "1.0.0"])
     assert rc == 0
     base_calls = [c for c in calls if "Dockerfile.base" in c]
@@ -162,11 +175,13 @@ def test_cli_image_build_context_flag_passed_through(monkeypatch, capsys):
         calls.append(cmd)
 
     import subprocess
+
     monkeypatch.setattr(subprocess, "run", fake_run)
 
     from resoluto.sandbox.cli import main
+
     rc = main(["image", "build", "--provider", "claude", "--version", "1.0.0", "--context", ".."])
     assert rc == 0
     builds = [c for c in calls if c[:2] == ["docker", "build"]]
-    assert len(builds) == 2                    # base + overlay
+    assert len(builds) == 2  # base + overlay
     assert all(c[-1] == ".." for c in builds)  # context flag threaded to both

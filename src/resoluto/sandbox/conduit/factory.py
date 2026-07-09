@@ -1,4 +1,5 @@
 """Factory for building a Conduit from environment variables."""
+
 from __future__ import annotations
 
 import json

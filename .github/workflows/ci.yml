@@ -1,0 +1,50 @@
+name: CI
+
+# Runs on every push to main and every PR. Publishing is never the first time
+# tests run. Self-contained package — a bare checkout builds and tests fully.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: uv sync --all-extras --dev
+      - name: Test (integration tests need live k3s+Kata — excluded on CI)
+        run: uv run pytest -q -m "not integration"
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Ruff lint
+        run: uvx ruff check .
+      - name: Ruff format check
+        run: uvx ruff format --check .
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Install docs deps
+        run: uv sync --group docs
+      - name: Build docs (strict — broken links / nav gaps fail the build)
+        run: uv run mkdocs build --strict

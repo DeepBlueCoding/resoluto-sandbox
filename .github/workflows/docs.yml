@@ -8,7 +8,7 @@ name: Deploy Documentation
 
 on:
   push:
-    branches: [main]
+    branches: [master]
     tags: ["v*"]
     paths:
       - "docs/**"
@@ -36,6 +36,8 @@ jobs:
           python-version: "3.12"
       - name: Install docs deps
         run: uv sync --group docs
+      - name: Verify docs build (strict — fail before deploying broken links)
+        run: uv run mkdocs build --strict
       - name: Configure git
         run: |
           git config user.name "github-actions[bot]"
@@ -60,5 +62,5 @@ jobs:
           uv run mike deploy --push "$VERSION"
 
       - name: Deploy (main → dev docs)
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/master'
         run: uv run mike deploy --push main

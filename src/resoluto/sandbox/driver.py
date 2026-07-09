@@ -1,4 +1,5 @@
 """Launch a sandbox, tail its store-mediated telemetry, and return the node result."""
+
 from __future__ import annotations
 
 import asyncio
@@ -51,10 +52,18 @@ async def _direct_lease(runtime: SandboxRuntime, spec: SandboxLaunchSpec):
         await runtime.destroy(handle)
 
 
-_FATAL_WAITING = frozenset({
-    "ImagePullBackOff", "ErrImagePull", "ErrImageNeverPull", "InvalidImageName",
-    "CreateContainerConfigError", "CreateContainerError", "RunContainerError", "CrashLoopBackOff",
-})
+_FATAL_WAITING = frozenset(
+    {
+        "ImagePullBackOff",
+        "ErrImagePull",
+        "ErrImageNeverPull",
+        "InvalidImageName",
+        "CreateContainerConfigError",
+        "CreateContainerError",
+        "RunContainerError",
+        "CrashLoopBackOff",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -102,16 +111,22 @@ async def drive_node_raw(
                 for ev in await reader.poll():
                     await _fire(on_event, ev)
                 return NodeOutcome(disposition="completed", observed_phase=phase)
-            unstartable_streak = unstartable_streak + 1 if (phase != "running" and st.reason in _FATAL_WAITING) else 0
+            unstartable_streak = (
+                unstartable_streak + 1
+                if (phase != "running" and st.reason in _FATAL_WAITING)
+                else 0
+            )
             if unstartable_streak >= unstartable_polls:
                 return NodeOutcome(
-                    disposition="unstartable", observed_phase=phase,
+                    disposition="unstartable",
+                    observed_phase=phase,
                     reason=f"{st.reason} (sustained {unstartable_streak} polls)",
                 )
             unknown_streak = unknown_streak + 1 if phase == "unknown" else 0
             if unknown_streak >= external_gone_polls and reader.is_dead():
                 return NodeOutcome(
-                    disposition="external", observed_phase=phase,
+                    disposition="external",
+                    observed_phase=phase,
                     reason="pod terminated externally (sustained 'unknown' + telemetry silence)",
                 )
             if reader.is_dead():
@@ -120,7 +135,8 @@ async def drive_node_raw(
                 except Exception:  # noqa: BLE001
                     logs = "(unavailable)"
                 return NodeOutcome(
-                    disposition="silent", observed_phase=phase,
+                    disposition="silent",
+                    observed_phase=phase,
                     reason="substrate dead — no telemetry within death window",
                     substrate_logs=logs[-4000:],
                 )
@@ -141,26 +157,39 @@ async def drive_node(
     """Drive one node and read its work product from result.json as a `NodeResult`."""
     node_id = spec.labels.get("resoluto.node_id", "")
     outcome = await drive_node_raw(
-        runtime, store, spec, admit=admit, on_event=on_event,
-        poll_interval_s=poll_interval_s, dead_after_s=dead_after_s, clock=clock,
+        runtime,
+        store,
+        spec,
+        admit=admit,
+        on_event=on_event,
+        poll_interval_s=poll_interval_s,
+        dead_after_s=dead_after_s,
+        clock=clock,
     )
     if outcome.disposition != "completed":
         return NodeResult(
-            node_id=node_id, status="failure", observed_phase=outcome.observed_phase,
-            reason=outcome.reason, substrate_logs=outcome.substrate_logs,
+            node_id=node_id,
+            status="failure",
+            observed_phase=outcome.observed_phase,
+            reason=outcome.reason,
+            substrate_logs=outcome.substrate_logs,
         )
     try:
         raw = await store.get(result_key(spec.store_prefix))
     except (ConduitError, OSError):
         return NodeResult(
-            node_id=node_id, status="failure", observed_phase=outcome.observed_phase,
+            node_id=node_id,
+            status="failure",
+            observed_phase=outcome.observed_phase,
             reason="no result.json in store",
         )
     try:
         result = NodeResult.model_validate_json(raw)
     except ValidationError as e:
         return NodeResult(
-            node_id=node_id, status="failure", observed_phase=outcome.observed_phase,
+            node_id=node_id,
+            status="failure",
+            observed_phase=outcome.observed_phase,
             reason=f"result.json failed to parse: {e.error_count()} validation error(s)",
         )
     result.observed_phase = outcome.observed_phase

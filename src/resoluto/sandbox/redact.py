@@ -1,4 +1,5 @@
 """Secret redaction for telemetry and logs."""
+
 from __future__ import annotations
 
 import re
@@ -32,7 +33,4 @@ def _redact_value(v):
 
 
 def redact_data(data: dict) -> dict:
-    return {
-        k: _REDACTED if _SECRET_KEY.search(k) else _redact_value(v)
-        for k, v in data.items()
-    }
+    return {k: _REDACTED if _SECRET_KEY.search(k) else _redact_value(v) for k, v in data.items()}

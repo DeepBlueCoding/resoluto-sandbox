@@ -27,6 +27,7 @@ Unlike the `claude` provider (examples/claude_agent.py), langchain-anthropic cal
 Anthropic API directly — there is no Max/Pro subscription path here. It needs
 ANTHROPIC_API_KEY. Model defaults to claude-sonnet-4-5; override with ANTHROPIC_MODEL.
 """
+
 import os
 import sys
 

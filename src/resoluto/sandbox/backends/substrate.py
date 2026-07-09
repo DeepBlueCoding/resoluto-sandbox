@@ -1,12 +1,16 @@
 """Runtime-agnostic substrate backend that runs a program in an injected sandbox."""
+
 from __future__ import annotations
 
 import asyncio
 import json
 import sys
 from pathlib import Path
-from typing import IO, Sequence
+from typing import IO, TYPE_CHECKING, Sequence
 from uuid import uuid4
+
+if TYPE_CHECKING:
+    import os
 
 from resoluto.sandbox.backends.artifacts import _collect, read_result_json
 from resoluto.sandbox.backends.base import Backend, RunResult
@@ -63,9 +67,18 @@ class SubstrateBackend(Backend):
     ) -> RunResult:
         if stdin is not None:
             raise NotImplementedError("stdin is not supported on the substrate backend")
-        return asyncio.run(self._run_async(argv, workspace=workspace, env=env, env_file=env_file,
-                                           secrets=secrets, output_paths=output_paths, stream=stream,
-                                           egress=egress))
+        return asyncio.run(
+            self._run_async(
+                argv,
+                workspace=workspace,
+                env=env,
+                env_file=env_file,
+                secrets=secrets,
+                output_paths=output_paths,
+                stream=stream,
+                egress=egress,
+            )
+        )
 
     async def _run_async(
         self,
@@ -89,8 +102,15 @@ class SubstrateBackend(Backend):
         if apply_egress is not None:
             await apply_egress(list(egress) if egress is not None else [])
         try:
-            return await self._launch_and_collect(argv, workspace=workspace, env=env, env_file=env_file,
-                                                   secrets=secrets, output_paths=output_paths, stream=stream)
+            return await self._launch_and_collect(
+                argv,
+                workspace=workspace,
+                env=env,
+                env_file=env_file,
+                secrets=secrets,
+                output_paths=output_paths,
+                stream=stream,
+            )
         finally:
             if clear_egress is not None:
                 await clear_egress()
@@ -122,7 +142,9 @@ class SubstrateBackend(Backend):
         # literal env entries exactly like env= does. Explicit env= wins on key conflict.
         file_env = parse_env_file(env_file) if env_file else {}
         provider_refs = {k: v for k, v in (secrets or {}).items() if isinstance(v, str)}
-        k8s_refs = {k: (v.name, v.key) for k, v in (secrets or {}).items() if isinstance(v, SecretKeyRef)}
+        k8s_refs = {
+            k: (v.name, v.key) for k, v in (secrets or {}).items() if isinstance(v, SecretKeyRef)
+        }
 
         pod_env: dict[str, str] = {
             **self._store_env,
@@ -152,7 +174,9 @@ class SubstrateBackend(Backend):
         sink = stream if stream is not None else sys.stdout
 
         result = await drive_node(
-            self._runtime, self._conduit, spec,
+            self._runtime,
+            self._conduit,
+            spec,
             on_event=lambda ev: _append_log_event(ev, out_lines, sink),
             dead_after_s=self._dead_after_s,
         )
@@ -164,7 +188,11 @@ class SubstrateBackend(Backend):
             artifacts = _collect(Path(workspace), output_paths)
             node_result = read_result_json(Path(workspace))
 
-        exit_code = result.exit_code if result.exit_code is not None else (0 if result.status == "success" else 1)
+        exit_code = (
+            result.exit_code
+            if result.exit_code is not None
+            else (0 if result.status == "success" else 1)
+        )
         return RunResult(
             exit_code=exit_code,
             output="".join(out_lines),

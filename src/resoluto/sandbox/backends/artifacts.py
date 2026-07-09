@@ -1,4 +1,5 @@
 """Shared artifact helpers for backends: glob-collect outputs and read result.json."""
+
 from __future__ import annotations
 
 import glob

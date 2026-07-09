@@ -1,8 +1,8 @@
 """A SandboxRuntime that launches each sandbox as a Kata microVM via nerdctl against a dedicated containerd."""
+
 from __future__ import annotations
 
 import asyncio
-
 import os
 
 from resoluto.sandbox.contracts import (
@@ -22,6 +22,7 @@ _PHASE_MAP = {
     "exited": "exited",
     "dead": "failed",
 }
+
 
 def _resolve_sudo() -> bool:
     """Returns whether nerdctl must run via sudo -n."""
@@ -83,23 +84,32 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
         await self.apply_egress([])
 
     @classmethod
-    def from_env(cls, *, conduit_host_dir: str, conduit_mount: str = "/conduit") -> "KataNerdctlSandboxRuntime":
+    def from_env(
+        cls, *, conduit_host_dir: str, conduit_mount: str = "/conduit"
+    ) -> "KataNerdctlSandboxRuntime":
         """Builds an instance from the RESOLUTO_LOCAL_* environment knobs."""
         return cls(
-            address=os.environ.get("RESOLUTO_LOCAL_CONTAINERD_ADDRESS",
-                                   "/run/resoluto-local/containerd/containerd.sock"),
+            address=os.environ.get(
+                "RESOLUTO_LOCAL_CONTAINERD_ADDRESS",
+                "/run/resoluto-local/containerd/containerd.sock",
+            ),
             namespace=os.environ.get("RESOLUTO_LOCAL_CONTAINERD_NAMESPACE", "resoluto-local"),
-            conduit_host_dir=conduit_host_dir, conduit_mount=conduit_mount,
+            conduit_host_dir=conduit_host_dir,
+            conduit_mount=conduit_mount,
             runtime=os.environ.get("RESOLUTO_LOCAL_KATA_RUNTIME", "io.containerd.kata.v2"),
             cni_path=os.environ.get("RESOLUTO_LOCAL_CNI_PATH", "/opt/resoluto-local/libexec/cni"),
-            cni_netconfpath=os.environ.get("RESOLUTO_LOCAL_CNI_NETCONFPATH", "/etc/resoluto-local/cni/net.d"),
+            cni_netconfpath=os.environ.get(
+                "RESOLUTO_LOCAL_CNI_NETCONFPATH", "/etc/resoluto-local/cni/net.d"
+            ),
             network=os.environ.get("RESOLUTO_LOCAL_NETWORK", "resoluto-local"),
             nerdctl=os.environ.get("RESOLUTO_LOCAL_NERDCTL", "/opt/resoluto-local/bin/nerdctl"),
             sudo=_resolve_sudo(),
-            egress_domains_file=os.environ.get("RESOLUTO_LOCAL_EGRESS_DOMAINS_FILE",
-                                               "/run/resoluto-local/egress-domains"),
-            dind_graph_dir=os.environ.get("RESOLUTO_LOCAL_DIND_GRAPH_DIR",
-                                          "/var/lib/resoluto-local/dind-graph"),
+            egress_domains_file=os.environ.get(
+                "RESOLUTO_LOCAL_EGRESS_DOMAINS_FILE", "/run/resoluto-local/egress-domains"
+            ),
+            dind_graph_dir=os.environ.get(
+                "RESOLUTO_LOCAL_DIND_GRAPH_DIR", "/var/lib/resoluto-local/dind-graph"
+            ),
         )
 
     def _base(self) -> list[str]:
@@ -114,7 +124,8 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
     async def _run(self, *args: str) -> tuple[int, str, str]:
         """Runs `nerdctl <args>` and returns (rc, stdout, stderr)."""
         proc = await asyncio.create_subprocess_exec(
-            *self._base(), *args,
+            *self._base(),
+            *args,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -138,7 +149,13 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
             # (/dev/full etc.); nerdctl's plain --privileged re-creates them in the guest and the
             # shim fails with `Creating container device /dev/full — EEXIST`. This is the nerdctl
             # equivalent of the k8s runtime's privileged_without_host_devices.
-            argv += ["--privileged", "--security-opt", "privileged-without-host-devices=true", "--user", "0"]
+            argv += [
+                "--privileged",
+                "--security-opt",
+                "privileged-without-host-devices=true",
+                "--user",
+                "0",
+            ]
             graph_dir = self._graph_dir_for(spec) if res.graph_backend == "block" else None
             if graph_dir is not None:
                 # Disk-backed graph: bind a per-step host dir (real disk) at /var/lib/docker so
@@ -170,7 +187,9 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
         if rc != 0:
             # The real stderr distinguishes "container genuinely gone" from an infra failure
             # (containerd unreachable, permission denied) — don't collapse both into one fixed string.
-            return SandboxStatus(phase="unknown", reason=f"inspect failed (rc={rc}): {err.strip() or out.strip()}")
+            return SandboxStatus(
+                phase="unknown", reason=f"inspect failed (rc={rc}): {err.strip() or out.strip()}"
+            )
         raw_status, _, raw_code = out.strip().partition("|")
         mapped = _PHASE_MAP.get(raw_status, "unknown")
         if mapped == "exited":

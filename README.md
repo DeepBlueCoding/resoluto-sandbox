@@ -1,8 +1,12 @@
 # resoluto-sandbox
 
+[![PyPI](https://img.shields.io/pypi/v/resoluto-sandbox)](https://pypi.org/project/resoluto-sandbox/) [![Python](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/) [![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE) [![CI](https://github.com/DeepBlueCoding/resoluto-sandbox/actions/workflows/ci.yml/badge.svg)](https://github.com/DeepBlueCoding/resoluto-sandbox/actions/workflows/ci.yml) [![Docs](https://img.shields.io/badge/docs-latest-blue)](https://deepbluecoding.github.io/resoluto-sandbox/)
+
 Run a program in isolation and exchange data through a durable store. Your program stays plain — it
 reads `argv`, writes `stdout`/files, exits, and never imports `resoluto.sandbox`. A script that runs
 with `uv run agent.py` on your machine runs unchanged inside the sandbox.
+
+📖 [Documentation](https://deepbluecoding.github.io/resoluto-sandbox/) · 🤖 [llms.txt](https://deepbluecoding.github.io/resoluto-sandbox/llms.txt) for AI agents
 
 <p align="left">
   <img alt="python" src="https://img.shields.io/badge/python-3.12%2B-blue">
@@ -469,6 +473,20 @@ On `k8s`, retag + push to your registry (`docs/backends.md`), then inject the sa
 | `GcsConduit` | **provided, unverified** — experimental |
 | Language-neutral wire spec | **published** — see `spec/PROTOCOL.md` |
 | Prebuilt image matrix + `image build` CLI | **works today** — `resoluto-sandbox image build --provider claude\|langchain\|openai\|all` |
+
+---
+
+## The Resoluto ecosystem
+
+Three independent, plug-and-play packages under one `resoluto.*` namespace and one design language. Each stands alone — use any without the others.
+
+| Package | Role |
+|---------|------|
+| [resoluto-sandbox](https://deepbluecoding.github.io/resoluto-sandbox/) | Store-mediated, Kata-isolated execution substrate |
+| [resoluto-agent](https://deepbluecoding.github.io/resoluto-agent/) | Pluggable LLM agent-provider plugins |
+| [resoluto-engine](https://deepbluecoding.github.io/resoluto-engine/) | Durable orchestrator of sandboxed, gate-verified agentic work |
+
+`resoluto-engine` builds on `resoluto-agent` (the provider contract) and optionally `resoluto-sandbox` (isolation); `resoluto-sandbox` and `resoluto-agent` depend on nothing else in the ecosystem.
 
 ---
 

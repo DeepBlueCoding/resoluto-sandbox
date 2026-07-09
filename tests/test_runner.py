@@ -1,11 +1,12 @@
 """Runner self-report proof — real subprocess → real localfs store → readable telemetry."""
+
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from canary_stub import pass_canary
-from resoluto.sandbox.contracts import NodeResult
+
 from resoluto.sandbox.conduit import LocalConduit
+from resoluto.sandbox.contracts import NodeResult
 from resoluto.sandbox.runner import run_node_in_sandbox
 from resoluto.sandbox.telemetry import ChunkReader, result_key
 
@@ -47,7 +48,10 @@ async def test_cleanup_hook_always_runs_even_on_workload_failure(store, tmp_path
     prefix = "run/r1/nodes/gate"
     marker = tmp_path / "cleaned"
     result = await run_node_in_sandbox(
-        store=store, prefix=prefix, run_id="r1", node_id="gate",
+        store=store,
+        prefix=prefix,
+        run_id="r1",
+        node_id="gate",
         workload_argv=["sh", "-c", "echo working; exit 3"],
         cleanup_argv=["sh", "-c", f"echo pruning; touch {marker}"],
         run_canary=pass_canary,
@@ -67,7 +71,10 @@ async def test_setup_hook_failure_aborts_node_before_workload(store, tmp_path):
     prefix = "run/r1/nodes/staged"
     ran = tmp_path / "workload_ran"
     result = await run_node_in_sandbox(
-        store=store, prefix=prefix, run_id="r1", node_id="staged",
+        store=store,
+        prefix=prefix,
+        run_id="r1",
+        node_id="staged",
         setup_argv=["sh", "-c", "echo bad-setup; exit 2"],
         workload_argv=["sh", "-c", f"touch {ran}"],
         run_canary=pass_canary,
@@ -80,7 +87,10 @@ async def test_setup_hook_failure_aborts_node_before_workload(store, tmp_path):
 async def test_runner_nonzero_exit_marks_failure_but_still_reports(store):
     prefix = "run/r1/nodes/boom"
     result = await run_node_in_sandbox(
-        store=store, prefix=prefix, run_id="r1", node_id="boom",
+        store=store,
+        prefix=prefix,
+        run_id="r1",
+        node_id="boom",
         workload_argv=["sh", "-c", "echo dying; exit 7"],
         run_canary=pass_canary,
     )
@@ -102,7 +112,10 @@ async def test_canary_pass_proceeds_to_workload_and_emits_canary_span(store):
         patch("resoluto.sandbox.egress_canary.probe_store", new=AsyncMock(return_value=True)),
     ):
         result = await run_node_in_sandbox(
-            store=store, prefix=prefix, run_id="r2", node_id="canary-pass",
+            store=store,
+            prefix=prefix,
+            run_id="r2",
+            node_id="canary-pass",
             workload_argv=["sh", "-c", "echo workload-ran"],
         )
 
@@ -124,7 +137,10 @@ async def test_canary_fail_aborts_workload_and_sets_reason(store, tmp_path):
         patch("resoluto.sandbox.egress_canary.probe_store", new=AsyncMock(return_value=True)),
     ):
         result = await run_node_in_sandbox(
-            store=store, prefix=prefix, run_id="r2", node_id="canary-fail",
+            store=store,
+            prefix=prefix,
+            run_id="r2",
+            node_id="canary-fail",
             workload_argv=["sh", "-c", f"touch {ran}"],
         )
 
@@ -136,7 +152,10 @@ async def test_canary_fail_aborts_workload_and_sets_reason(store, tmp_path):
 async def test_injected_canary_runs_and_emits_its_span(store):
     prefix = "run/r2/nodes/canary-inject"
     result = await run_node_in_sandbox(
-        store=store, prefix=prefix, run_id="r2", node_id="canary-inject",
+        store=store,
+        prefix=prefix,
+        run_id="r2",
+        node_id="canary-inject",
         workload_argv=["sh", "-c", "echo ok"],
         run_canary=pass_canary,
     )
