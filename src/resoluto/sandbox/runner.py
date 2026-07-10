@@ -19,12 +19,20 @@ CanaryRunner = Callable[[Conduit, str], Awaitable["CanaryVerdict"]]
 
 
 def _default_canary(probe_host: str, probe_port: int) -> CanaryRunner:
-    """Bind the real egress canary to its probe target as a (store, prefix) -> CanaryVerdict callable."""
+    """Bind the egress READINESS gate as the default (store, prefix) -> CanaryVerdict callable.
+
+    The gate WAITS (attempt-bounded, never wall-clock) while the only failure is the
+    NetworkPolicy still landing — kube-router programs iptables a beat after the pod's
+    veth appears, so a single-shot probe races enforcement and fails closed on a healthy
+    sandbox. Same fail-closed guarantees: a store failure or external still reachable
+    after max_attempts is a genuine egress error."""
 
     async def _run(store: Conduit, prefix: str) -> "CanaryVerdict":
-        from resoluto.sandbox.egress_canary import run_egress_canary
+        from resoluto.sandbox.egress_canary import wait_for_egress_enforced
 
-        return await run_egress_canary(store, prefix, probe_host=probe_host, probe_port=probe_port)
+        return await wait_for_egress_enforced(
+            store, prefix, probe_host=probe_host, probe_port=probe_port
+        )
 
     return _run
 

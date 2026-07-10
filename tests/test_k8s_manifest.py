@@ -537,3 +537,21 @@ def test_manifest_omits_secret_refs_when_none_declared():
     spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n")
     env = rt._manifest(spec, "sbx-test")["spec"]["containers"][0]["env"]
     assert all("valueFrom" not in e for e in env)
+
+
+def test_priority_class_relayed_when_set():
+    rt = K8sSandboxRuntime()
+    spec = SandboxLaunchSpec(
+        image="img:0.1.0",
+        store_prefix="run/r/nodes/n",
+        priority_class="resoluto-sandbox-low",
+    )
+    manifest = rt._manifest(spec, "sbx-test")
+    assert manifest["spec"]["priorityClassName"] == "resoluto-sandbox-low"
+
+
+def test_no_priority_class_field_when_unset():
+    rt = K8sSandboxRuntime()
+    spec = SandboxLaunchSpec(image="img:0.1.0", store_prefix="run/r/nodes/n")
+    manifest = rt._manifest(spec, "sbx-test")
+    assert "priorityClassName" not in manifest["spec"]

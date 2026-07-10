@@ -255,6 +255,8 @@ class K8sSandboxRuntime(SandboxRuntime):
             pod_spec["activeDeadlineSeconds"] = spec.deadline_seconds
         if spec.scheduling_gates:
             pod_spec["schedulingGates"] = [{"name": g} for g in spec.scheduling_gates]
+        if spec.priority_class:
+            pod_spec["priorityClassName"] = spec.priority_class
 
         pod_labels = {"resoluto_sandbox": "true", **dict(spec.labels)}
         metadata: dict = {"name": name, "namespace": self._ns, "labels": pod_labels}

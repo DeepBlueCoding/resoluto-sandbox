@@ -90,6 +90,9 @@ class SandboxLaunchSpec(BaseModel):
     labels: dict[str, str] = Field(default_factory=dict)
     annotations: dict[str, str] = Field(default_factory=dict)
     scheduling_gates: list[str] = Field(default_factory=list)
+    # k8s PriorityClass name for this pod ('' = unset). Callers on shared machines set a
+    # negative-priority class so node-pressure eviction removes sandbox pods first.
+    priority_class: str = ""
     store_prefix: str
     store_write_token: str = ""
     # k8s-only: var name -> (Secret name, Secret key), rendered as valueFrom.secretKeyRef by
