@@ -65,8 +65,24 @@ def _archive(
 
 
 def _extract(data: bytes, dest: Path) -> None:
+    """Extract an archive into `dest`, overwriting collisions. Re-staging into a
+    persistent workspace must behave like a fresh overwrite: existing read-only
+    files (git objects are 0444) would otherwise fail tarfile's open('wb') with
+    EACCES, so colliding file members are unlinked first (contained paths only)."""
     dest.mkdir(parents=True, exist_ok=True)
+    dest_resolved = dest.resolve()
     with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
+        for member in tar.getmembers():
+            if not (member.isreg() or member.issym() or member.islnk()):
+                continue
+            target = dest / member.name
+            try:
+                if not target.resolve().is_relative_to(dest_resolved):
+                    continue
+            except OSError:
+                continue
+            if target.is_symlink() or target.is_file():
+                target.unlink(missing_ok=True)
         tar.extractall(dest, filter="data")
 
 

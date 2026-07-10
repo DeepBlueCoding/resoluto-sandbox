@@ -128,3 +128,26 @@ async def test_fetch_outputs_neutralizes_path_traversal(store, tmp_path):
     with pytest.raises(tarfile.TarError):  # data filter rejects the traversal entry
         await fetch_outputs(store, "run/r1/nodes/n", str(dest))
     assert not (tmp_path / "escape.txt").exists()  # nothing escaped dest
+
+
+async def test_restage_overwrites_readonly_files(store, tmp_path):
+    """Re-staging into a persistent workspace must overwrite read-only collisions —
+    git object files are 0444, and a second stage_inputs into the same dir used to
+    die with PermissionError at tarfile makefile('wb')."""
+    src = tmp_path / "src"
+    objects = src / ".git" / "objects" / "e6"
+    objects.mkdir(parents=True)
+    blob = objects / "9de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+    blob.write_bytes(b"blob-v1")
+    blob.chmod(0o444)
+
+    await put_dir(store, "run/r1/nodes/n", str(src))
+    ws = tmp_path / "ws"
+    await stage_inputs(store, "run/r1/nodes/n", str(ws))
+    staged_blob = ws / ".git" / "objects" / "e6" / "9de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+    assert staged_blob.read_bytes() == b"blob-v1"
+
+    staged = await stage_inputs(store, "run/r1/nodes/n", str(ws))
+
+    assert staged  # second pass extracted cleanly over the read-only tree
+    assert staged_blob.read_bytes() == b"blob-v1"
