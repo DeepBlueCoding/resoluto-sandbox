@@ -293,48 +293,10 @@ def test_network_policy_with_configmap_owner():
     assert refs[0]["blockOwnerDeletion"] is True
 
 
-# ── ResourceQuota and LimitRange manifests ───────────────────────────────────
-
-
-def test_quota_manifest_defaults():
-    rt = K8sSandboxRuntime()
-    quota = rt._quota_manifest()
-    assert quota["apiVersion"] == "v1"
-    assert quota["kind"] == "ResourceQuota"
-    assert quota["metadata"]["name"] == "resoluto-sandbox-quota"
-    assert quota["spec"]["hard"]["pods"] == "20"
-    assert quota["spec"]["hard"]["limits.memory"] == "96Gi"
-
-
-def test_quota_manifest_env_override(monkeypatch):
-    monkeypatch.setenv("RESOLUTO_SANDBOX_MAX_PODS", "50")
-    monkeypatch.setenv("RESOLUTO_SANDBOX_MAX_MEMORY", "200Gi")
-    rt = K8sSandboxRuntime()
-    quota = rt._quota_manifest()
-    assert quota["spec"]["hard"]["pods"] == "50"
-    assert quota["spec"]["hard"]["limits.memory"] == "200Gi"
-
-
-def test_limit_range_manifest_defaults():
-    rt = K8sSandboxRuntime()
-    lr = rt._limit_range_manifest()
-    assert lr["apiVersion"] == "v1"
-    assert lr["kind"] == "LimitRange"
-    assert lr["metadata"]["name"] == "resoluto-sandbox-limits"
-    limits = lr["spec"]["limits"]
-    assert len(limits) == 1
-    assert limits[0]["type"] == "Pod"
-    assert limits[0]["max"]["memory"] == "24Gi"
-    assert limits[0]["max"]["cpu"] == "4"
-
-
-def test_limit_range_manifest_env_override(monkeypatch):
-    monkeypatch.setenv("RESOLUTO_SANDBOX_POD_MAX_MEMORY", "48Gi")
-    monkeypatch.setenv("RESOLUTO_SANDBOX_POD_MAX_CPU", "8")
-    rt = K8sSandboxRuntime()
-    lr = rt._limit_range_manifest()
-    assert lr["spec"]["limits"][0]["max"]["memory"] == "48Gi"
-    assert lr["spec"]["limits"][0]["max"]["cpu"] == "8"
+# The sandbox no longer declares cluster resource policy (ResourceQuota / LimitRange). The
+# whole-cluster budget + per-pod caps are the ENGINE's concern (its admission pool + the
+# operator-provisioned Kueue ClusterQueue); the sandbox only applies the per-launch limits it's
+# handed via SandboxLaunchSpec.resources (proven by test_pod_manifest_* above).
 
 
 # ── Runtime class admission guard (direct launch bypass protection) ───────────

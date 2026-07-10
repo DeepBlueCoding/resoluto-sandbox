@@ -17,8 +17,35 @@ from resoluto.sandbox.contracts import (
     SandboxStatus,
 )
 from resoluto.sandbox.driver import drive_node
-from resoluto.sandbox.pool import SandboxPool
 from resoluto.sandbox.runner import run_node_in_sandbox
+
+
+class _ImmediateAdmission:
+    """Minimal Admission double exercising the driver's admit-path: launch now, reap on exit, no
+    budget. The sandbox ships NO pool — admission/allocation is the engine's concern — so its own
+    tests bring a trivial admitter to cover the `admit is not None` branch."""
+
+    def __init__(self, runtime: SandboxRuntime) -> None:
+        self._runtime = runtime
+        self.live_count = 0
+
+    async def acquire(self, spec: SandboxLaunchSpec) -> "_ImmediateLease":
+        handle = await self._runtime.launch(spec)
+        self.live_count += 1
+        return _ImmediateLease(self, handle)
+
+
+class _ImmediateLease:
+    def __init__(self, adm: _ImmediateAdmission, handle: SandboxHandle) -> None:
+        self._adm = adm
+        self.handle = handle
+
+    async def __aenter__(self) -> "_ImmediateLease":
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        self._adm.live_count -= 1
+        await self._adm._runtime.destroy(self.handle)
 
 
 class RunnerBackedRuntime(SandboxRuntime):
@@ -104,7 +131,7 @@ def _spec(prefix, argv):
 async def test_drive_node_full_loop(tmp_path):
     store = LocalConduit(tmp_path)
     runtime = RunnerBackedRuntime(store)
-    pool = SandboxPool(runtime, max_concurrent=2)
+    pool = _ImmediateAdmission(runtime)
     seen = []
 
     result = await drive_node(
@@ -132,7 +159,7 @@ async def test_drive_node_full_loop(tmp_path):
 async def test_drive_node_detects_silent_substrate_death(tmp_path):
     store = LocalConduit(tmp_path)
     runtime = DeadRuntime()
-    pool = SandboxPool(runtime, max_concurrent=1)
+    pool = _ImmediateAdmission(runtime)
     t = {"now": 1000.0}
 
     # First poll sees nothing and stamps last_progress; advancing the clock past
@@ -309,14 +336,6 @@ async def test_drive_node_raw_completes_on_result_ready_before_terminal(tmp_path
     )
     assert outcome.disposition == "completed"
     assert rt.destroyed == ["run/1"]  # reaped on completion
-
-
-def test_sandbox_pool_satisfies_admission_protocol():
-    from resoluto.sandbox.contracts import Admission
-    from resoluto.sandbox.runtime import k8s  # noqa: F401 — ensure import path is clean
-
-    pool = SandboxPool(DeadRuntime(), max_concurrent=1)
-    assert isinstance(pool, Admission)  # structural: pool is a valid admitter, no inheritance
 
 
 class _CompletedRuntime(SandboxRuntime):

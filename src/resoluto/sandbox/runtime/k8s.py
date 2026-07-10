@@ -119,6 +119,10 @@ class K8sSandboxRuntime(SandboxRuntime):
         return self._net_api
 
     async def _ensure_namespace(self) -> None:
+        # The sandbox creates ONLY its namespace. It never declares cluster resource policy
+        # (ResourceQuota / LimitRange): the whole-cluster budget and per-pod caps are the ENGINE's
+        # concern (its admission pool + operator-provisioned Kueue ClusterQueue). A generic executor
+        # applies the per-launch limits it's handed via SandboxLaunchSpec.resources — nothing more.
         from kubernetes_asyncio.client.exceptions import ApiException
 
         try:
@@ -128,50 +132,6 @@ class K8sSandboxRuntime(SandboxRuntime):
         except ApiException as exc:
             if exc.status != 409:
                 raise
-
-        quota = self._quota_manifest()
-        try:
-            await self._api.create_namespaced_resource_quota(namespace=self._ns, body=quota)
-        except ApiException as exc:
-            if exc.status == 409:
-                await self._api.patch_namespaced_resource_quota(
-                    name="resoluto-sandbox-quota", namespace=self._ns, body=quota
-                )
-            else:
-                raise
-
-        lr = self._limit_range_manifest()
-        try:
-            await self._api.create_namespaced_limit_range(namespace=self._ns, body=lr)
-        except ApiException as exc:
-            if exc.status == 409:
-                await self._api.patch_namespaced_limit_range(
-                    name="resoluto-sandbox-limits", namespace=self._ns, body=lr
-                )
-            else:
-                raise
-
-    def _quota_manifest(self) -> dict:
-        max_pods = os.environ.get("RESOLUTO_SANDBOX_MAX_PODS", "20")
-        max_memory = os.environ.get("RESOLUTO_SANDBOX_MAX_MEMORY", "96Gi")
-        return {
-            "apiVersion": "v1",
-            "kind": "ResourceQuota",
-            "metadata": {"name": "resoluto-sandbox-quota", "namespace": self._ns},
-            "spec": {"hard": {"pods": max_pods, "limits.memory": max_memory}},
-        }
-
-    def _limit_range_manifest(self) -> dict:
-        pod_max_memory = os.environ.get("RESOLUTO_SANDBOX_POD_MAX_MEMORY", "24Gi")
-        pod_max_cpu = os.environ.get("RESOLUTO_SANDBOX_POD_MAX_CPU", "4")
-        return {
-            "apiVersion": "v1",
-            "kind": "LimitRange",
-            "metadata": {"name": "resoluto-sandbox-limits", "namespace": self._ns},
-            "spec": {
-                "limits": [{"type": "Pod", "max": {"memory": pod_max_memory, "cpu": pod_max_cpu}}]
-            },
-        }
 
     def _security_context(self, spec: SandboxLaunchSpec) -> dict:
         if spec.flavor == "dind":

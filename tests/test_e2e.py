@@ -2,7 +2,7 @@
 
 A real Kata pod (runtimeClass=kata) runs the BAKED runner image as its ENTRYPOINT.
 The runner — holding no host connection — self-reports redacted span/log
-chunks + result.json to LIVE minio. Host-side `drive_node` (SandboxPool +
+chunks + result.json to LIVE minio. Host-side `drive_node` (admission-free —
 K8sSandboxRuntime + S3Conduit) tails that store, reconstructs the telemetry,
 collects the result, and reaps the pod. This is the store-mediated loop that the
 RES-236 wedge made impossible — proven against the substrate, not a fake.
@@ -21,7 +21,6 @@ import pytest
 
 from resoluto.sandbox import (
     SandboxLaunchSpec,
-    SandboxPool,
     drive_node,
     fetch_outputs,
     put_dir,
@@ -92,14 +91,12 @@ async def test_real_kata_sandbox_store_mediated_loop(runner_image):
         context=KUBECONTEXT,
         egress=EgressConfig.from_store_env(),
     )
-    pool = SandboxPool(runtime, max_concurrent=1)
     seen = []
     try:
         result = await drive_node(
             runtime,
             store,
             spec,
-            admit=pool,
             on_event=seen.append,
             poll_interval_s=3.0,
             dead_after_s=240.0,
@@ -111,7 +108,6 @@ async def test_real_kata_sandbox_store_mediated_loop(runner_image):
     assert result.status == "success", result
     assert result.exit_code == 0
     assert result.observed_phase == "succeeded"
-    assert pool.live_count == 0
 
     # the host reconstructed the in-pod telemetry tree from the store alone
     logs = [e.data["line"] for e in seen if e.event == "log" and e.kind == "log"]
@@ -190,14 +186,12 @@ async def test_real_repo_stages_in_and_diff_comes_back_out(tmp_path, runner_imag
         context=KUBECONTEXT,
         egress=EgressConfig.from_store_env(),
     )
-    pool = SandboxPool(runtime, max_concurrent=1)
     seen = []
     try:
         result = await drive_node(
             runtime,
             store,
             spec,
-            admit=pool,
             on_event=seen.append,
             poll_interval_s=3.0,
             dead_after_s=240.0,

@@ -320,11 +320,14 @@ Runtime/placement:
 | `RESOLUTO_SANDBOX_NAMESPACE` | `resoluto-sandboxes` | pod namespace |
 | `RESOLUTO_SANDBOX_IMAGE_PULL_POLICY` | `IfNotPresent` | pod imagePullPolicy |
 | `RESOLUTO_SANDBOX_ALLOW_AMBIENT_CONTEXT` | unset | `1` to allow unpinned context (unsafe) |
-| `RESOLUTO_SANDBOX_MAX_PODS` | `20` | namespace ResourceQuota pods |
-| `RESOLUTO_SANDBOX_MAX_MEMORY` | `96Gi` | namespace ResourceQuota limits.memory |
-| `RESOLUTO_SANDBOX_POD_MAX_MEMORY` | `24Gi` | per-pod LimitRange max memory |
-| `RESOLUTO_SANDBOX_POD_MAX_CPU` | `4` | per-pod LimitRange max cpu |
 | `RESOLUTO_NODE_ALLOCATABLE_MEMORY` | k8s API | dind tmpfs preflight node-RAM override |
+
+> The sandbox does NOT declare cluster resource policy. It creates only its namespace and applies
+> the per-launch limits it's handed in `SandboxLaunchSpec.resources`. The whole-cluster budget and
+> per-pod caps are the CALLER's concern (in resoluto: the engine's admission pool, sized from
+> `RESOLUTO_GOVERNOR_MEMORY_QUOTA`, plus the operator-provisioned Kueue ClusterQueue). The former
+> `RESOLUTO_SANDBOX_MAX_MEMORY` / `_POD_MAX_MEMORY` / `_POD_MAX_CPU` / `_MAX_PODS` ResourceQuota +
+> LimitRange knobs are REMOVED.
 
 > FOOTGUN: the k8s backend does NOT forward host `AWS_*` creds to the (untrusted) pod — it
 > raises and demands a scoped `RESOLUTO_STORE_WRITE_TOKEN`. The pod authenticates to the store
