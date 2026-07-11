@@ -9,6 +9,7 @@ from dataclasses import replace
 
 from resoluto.sandbox.contracts import (
     SandboxHandle,
+    SandboxLaunchError,
     SandboxLaunchSpec,
     SandboxRuntime,
     SandboxStatus,
@@ -390,10 +391,23 @@ class K8sSandboxRuntime(SandboxRuntime):
                 ),
             )
 
-        pod = await api.create_namespaced_pod(
-            namespace=self._ns,
-            body=self._manifest(spec, name, owner_name=owner_name, owner_uid=owner_uid),
-        )
+        from kubernetes_asyncio.client.exceptions import ApiException
+
+        try:
+            pod = await api.create_namespaced_pod(
+                namespace=self._ns,
+                body=self._manifest(spec, name, owner_name=owner_name, owner_uid=owner_uid),
+            )
+        except ApiException as exc:
+            # 5xx/429 = the CLUSTER hiccupped (API server, admission webhook — e.g. a
+            # crashlooping Kueue webhook 502s pod creation). Transient → typed, so the
+            # caller retries by its own policy instead of crashing the whole pipeline.
+            # 4xx config errors stay raw and loud.
+            if exc.status and (exc.status >= 500 or exc.status == 429):
+                raise SandboxLaunchError(
+                    f"pod create failed transiently ({exc.status}): {exc.reason}"
+                ) from exc
+            raise
 
         if self._egress is not None and not pre_pod_netpol:
             net_api = await self._networking_client()

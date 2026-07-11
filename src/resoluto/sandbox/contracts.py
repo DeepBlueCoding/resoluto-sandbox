@@ -142,6 +142,12 @@ class ConduitError(Exception):
     """A transport/I/O failure talking to the conduit."""
 
 
+class SandboxLaunchError(Exception):
+    """The substrate TRANSIENTLY failed to launch a sandbox (API-server 5xx, webhook
+    blip) — environmental, retryable by the caller's own policy. Configuration errors
+    (4xx: missing RuntimeClass, RBAC) are NOT this: they raise raw and fail loud."""
+
+
 class ConduitKeyMissing(ConduitError):
     """The requested key does not exist — a STATE signal, not an outage. Callers probing
     for optional objects catch THIS; a bare ConduitError stays an environmental failure."""
