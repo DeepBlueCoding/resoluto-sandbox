@@ -966,22 +966,30 @@ Durable key/value rendezvous (localfs, S3, GCS).
 ### copy_prefix
 
 ```python
-copy_prefix(src_prefix, dst_prefix)
+copy_prefix(src_prefix, dst_prefix, *, exclude_segments=())
 ```
 
-Copy every object under src_prefix to dst_prefix, returning the count copied.
+Copy every object under src_prefix to dst_prefix, returning the count copied. `exclude_segments`: relative-path SEGMENTS to skip (e.g. ("steps",) drops every `.../steps/...` subtree — a resumed run must not inherit the prior run's step chunk indexes, or the telemetry reader mistakes the re-run pod for silent).
 
 Source code in `src/resoluto/sandbox/contracts.py`
 
 ```python
-async def copy_prefix(self, src_prefix: str, dst_prefix: str) -> int:
-    """Copy every object under src_prefix to dst_prefix, returning the count copied."""
+async def copy_prefix(
+    self, src_prefix: str, dst_prefix: str, *, exclude_segments: tuple[str, ...] = ()
+) -> int:
+    """Copy every object under src_prefix to dst_prefix, returning the count copied.
+    `exclude_segments`: relative-path SEGMENTS to skip (e.g. ("steps",) drops every
+    `.../steps/...` subtree — a resumed run must not inherit the prior run's step
+    chunk indexes, or the telemetry reader mistakes the re-run pod for silent)."""
     src, dst = src_prefix.rstrip("/"), dst_prefix.rstrip("/")
-    objs = await self.list_prefix(src)
-    for o in objs:
+    n = 0
+    for o in await self.list_prefix(src):
         rel = o.key[len(src) :].lstrip("/")
+        if exclude_segments and set(rel.split("/")) & set(exclude_segments):
+            continue
         await self.put(f"{dst}/{rel}", await self.get(o.key))
-    return len(objs)
+        n += 1
+    return n
 ```
 
 ### aclose
