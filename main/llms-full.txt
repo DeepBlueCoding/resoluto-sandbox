@@ -1000,6 +1000,23 @@ async def aclose(self) -> None:
     release (a cached HTTP session, connection pool, etc). One name across every Conduit."""
 ```
 
+### delete_prefix
+
+```python
+delete_prefix(prefix)
+```
+
+Delete every object under `prefix`, returning the count deleted. Retention/GC is the CALLER's policy; the conduit supplies only the mechanism.
+
+Source code in `src/resoluto/sandbox/contracts.py`
+
+```python
+async def delete_prefix(self, prefix: str) -> int:
+    """Delete every object under `prefix`, returning the count deleted. Retention/GC is
+    the CALLER's policy; the conduit supplies only the mechanism."""
+    raise NotImplementedError(f"{type(self).__name__} does not implement delete_prefix")
+```
+
 ## resoluto.sandbox.ObjectInfo
 
 Bases: `BaseModel`
