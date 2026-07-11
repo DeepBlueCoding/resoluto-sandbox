@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from contextlib import asynccontextmanager
 
-from resoluto.sandbox.contracts import Conduit, ConduitError, ObjectInfo
+from resoluto.sandbox.contracts import Conduit, ConduitError, ConduitKeyMissing, ObjectInfo
 
 # Permanent authorization/authentication denials — NOT transient transport failures. These must
 # propagate as the raw ClientError (e.g. a scoped-credential cross-prefix write being denied), not
@@ -162,10 +162,17 @@ class S3Conduit(Conduit):
             await c.put_object(Bucket=self._bucket, Key=key, Body=data)
 
     async def get(self, key: str) -> bytes:
-        async with self._io() as c:
-            resp = await c.get_object(Bucket=self._bucket, Key=key)
-            async with resp["Body"] as body:
-                return await body.read()
+        try:
+            async with self._io() as c:
+                resp = await c.get_object(Bucket=self._bucket, Key=key)
+                async with resp["Body"] as body:
+                    return await body.read()
+        except ConduitError as exc:
+            cause = exc.__cause__
+            code = getattr(cause, "response", {}).get("Error", {}).get("Code", "")
+            if code in ("NoSuchKey", "404"):
+                raise ConduitKeyMissing(f"no such key: {key}") from cause
+            raise
 
     async def list_prefix(self, prefix: str) -> list[ObjectInfo]:
         out: list[ObjectInfo] = []

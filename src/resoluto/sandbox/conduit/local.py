@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from resoluto.sandbox.contracts import Conduit, ConduitError, ObjectInfo
+from resoluto.sandbox.contracts import Conduit, ConduitError, ConduitKeyMissing, ObjectInfo
 
 _TMP_SUFFIX = ".tmp-partial"
 
@@ -65,6 +65,8 @@ class LocalConduit(Conduit):
         try:
             with open(self._path(key), "rb") as f:
                 return f.read()
+        except FileNotFoundError as exc:
+            raise ConduitKeyMissing(f"no such key: {key}") from exc
         except OSError as exc:
             raise self._wrap_os_error(exc) from exc
 

@@ -142,6 +142,11 @@ class ConduitError(Exception):
     """A transport/I/O failure talking to the conduit."""
 
 
+class ConduitKeyMissing(ConduitError):
+    """The requested key does not exist — a STATE signal, not an outage. Callers probing
+    for optional objects catch THIS; a bare ConduitError stays an environmental failure."""
+
+
 class Conduit(ABC):
     """Durable key/value rendezvous (localfs, S3, GCS)."""
 

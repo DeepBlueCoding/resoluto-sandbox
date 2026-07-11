@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 
-from resoluto.sandbox.contracts import Conduit, ConduitError, ObjectInfo
+from resoluto.sandbox.contracts import Conduit, ConduitError, ConduitKeyMissing, ObjectInfo
 
 _MAX_ATTEMPTS = 10
 _AUTH_STATUSES = frozenset({401, 403})
@@ -69,7 +69,12 @@ class GcsConduit(Conduit):
         await self._io("put", lambda: self._client().upload(self._bucket, key, data))
 
     async def get(self, key: str) -> bytes:
-        return await self._io("get", lambda: self._client().download(self._bucket, key))
+        try:
+            return await self._io("get", lambda: self._client().download(self._bucket, key))
+        except ConduitError as exc:
+            if getattr(exc.__cause__, "status", None) == 404:
+                raise ConduitKeyMissing(f"no such key: {key}") from exc.__cause__
+            raise
 
     async def list_prefix(self, prefix: str) -> list[ObjectInfo]:
         client = self._client()
