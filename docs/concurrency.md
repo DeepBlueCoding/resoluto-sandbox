@@ -1,47 +1,27 @@
 # Concurrency & direct control
 
-The `Sandbox` facade runs ONE program per `run()`. To launch MANY sandboxes under a bounded RAM/slot
-budget, or to reach knobs the facade never exposes (docker-in-docker, a disk-backed image graph,
-per-launch egress on the spec), drop to the building blocks the facade is built on — `SandboxPool`,
-`SandboxLaunchSpec`, and `drive_node`. All three are exported from `resoluto.sandbox`.
+The `Sandbox` facade runs ONE program per `run()`. To launch MANY sandboxes, or to reach knobs the
+facade never exposes (docker-in-docker, a disk-backed image graph, per-launch egress on the spec),
+drop to the building blocks the facade is built on — `SandboxLaunchSpec` and `drive_node`, plus the
+`Admission` seam for bounding how many run at once. All are exported from `resoluto.sandbox`.
 
-Both snippets assume a `runtime` (a `SandboxRuntime` — e.g. `KataNerdctlSandboxRuntime.from_env(...)`
-for local or `K8sSandboxRuntime(...)` for k8s) and, for `drive_node`, a `conduit` (a `Conduit` — e.g.
+The snippet assumes a `runtime` (a `SandboxRuntime` — e.g. `KataNerdctlSandboxRuntime.from_env(...)`
+for local or `K8sSandboxRuntime(...)` for k8s) and a `conduit` (a `Conduit` — e.g.
 `store_from_env()`), wired exactly as the [`local`](backends.md#local) / [`k8s`](backends.md#k8s)
 backends build them.
 
-## Bounded concurrency — `SandboxPool`
+## Bounded concurrency — the `Admission` seam
 
-`SandboxPool` admits launches FIFO under two independent limits: a slot count (`max_concurrent`) and
-an optional RAM budget (`mem_budget_bytes`, summed from each spec's `resources.memory_bytes`). A held
-lease occupies a slot plus its RAM until closed; closing the lease destroys the sandbox.
+The sandbox does not pool or schedule; it is a dumb executor. Concurrency limits belong to the
+CALLER, and the substrate defines exactly one seam for them: [`Admission`](api/pool.md) — a protocol
+whose `acquire(spec)` decides whether/when a launch is allowed and returns a [`Lease`](api/pool.md)
+(the granted slot; closing it destroys the sandbox). Hand any implementation to
+`drive_node(..., admit=...)` and the drive parks until admitted; `admit=None` launches immediately.
 
-```python
-import asyncio
-from resoluto.sandbox.contracts import Resources, SandboxLaunchSpec
-from resoluto.sandbox.pool import SandboxPool
+Orchestrators bring their own admitter (a FIFO slot/RAM-budget pool, a cluster quota, a queue) —
+resoluto-engine's `SandboxPool` is one such implementation, living where scheduling policy belongs.
 
-pool = SandboxPool(runtime, max_concurrent=4, mem_budget_bytes=16 * 1024**3)  # ≤4 at once, ≤16 GiB total
-
-async def one(prefix: str) -> None:
-    spec = SandboxLaunchSpec(
-        image="<registry>/resoluto-sandbox-base:0.1.0",
-        store_prefix=prefix,
-        resources=Resources.from_quantities(memory="4Gi", cpu="2"),
-    )
-    async with await pool.acquire(spec) as lease:   # parks here until a slot + budget free up
-        ...  # work against lease.handle (e.g. drive_node below); the sandbox is destroyed on exit
-
-await asyncio.gather(*(one(f"run/demo/nodes/n{i}/sandbox-0") for i in range(10)))  # 10 queued, 4 run at once
-```
-
-- `pool.available` / `pool.live_count` report free slots / live sandboxes.
-- `acquire(spec, *, on_wait=None)` — `on_wait(amount, available)` fires once if the caller parks on
-  the RAM budget.
-- `SandboxPool` also satisfies the `Admission` protocol, so you can hand it straight to
-  `drive_node(..., admit=pool)` to pool-admit a driven node (below).
-
-> The pool bounds SUBSTRATE admission (how many sandboxes exist at once), NOT workload liveness. A
+> An admitter bounds SUBSTRATE admission (how many sandboxes exist at once), NOT workload liveness. A
 > slow-but-alive sandbox holds its slot as long as it keeps emitting — there is no wall-clock cap.
 
 ## Advanced: the direct `drive_node` path
@@ -78,9 +58,9 @@ result = asyncio.run(drive_node(runtime, conduit, spec))  # NodeResult; tails ch
 ```
 
 `drive_node(runtime, store, spec, *, admit=None, on_event=None, dead_after_s=120.0)` launches, tails
-the Conduit chunks, and returns a `NodeResult`. Pass `admit=pool` to admit through a `SandboxPool`;
-pass `on_event=` to receive each `SpanEvent` live.
+the Conduit chunks, and returns a `NodeResult`. Pass `admit=` any `Admission` implementation to bound
+concurrency; pass `on_event=` to receive each `SpanEvent` live.
 
 > These are the substrate's own building blocks — a host that drives many sandboxes builds on exactly
-> this surface. Prefer the `Sandbox` facade for single-shot runs; reach here only when you need pooling,
-> dind, a disk-backed graph, or per-spec egress.
+> this surface. Prefer the `Sandbox` facade for single-shot runs; reach here only when you need many
+> sandboxes, dind, a disk-backed graph, or per-spec egress.

@@ -133,7 +133,7 @@ nav:
       - Sandbox: api/sandbox.md
       - Conduit: api/conduit.md
       - Runtime & Contracts: api/runtime.md
-      - Pool: api/pool.md
+      - Admission: api/pool.md
       - Driver: api/driver.md
       - Staging: api/staging.md
       - Telemetry: api/telemetry.md
