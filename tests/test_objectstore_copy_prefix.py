@@ -47,3 +47,22 @@ async def test_copy_prefix_is_idempotent(tmp_path):
     n2 = await store.copy_prefix("run/A/nodes", "run/B/nodes")  # second run overwrites
     assert n2 == 4
     assert len(await store.list_prefix("run/B/nodes")) == 4  # no duplication
+
+
+async def test_copy_prefix_exclude_segments_drops_the_subtree(tmp_path):
+    """A resumed run must not inherit the prior run's step chunk indexes — the telemetry
+    reader would mistake the re-run pod for substrate-silent (2026-07-11 resume incident)."""
+    from resoluto.sandbox.conduit import LocalConduit
+
+    store = LocalConduit(tmp_path)
+    await store.put("run/old/nodes/compete/lane-0/checkpoint.json", b"cp")
+    await store.put("run/old/nodes/compete/lane-0/worktree/f.txt", b"tree")
+    await store.put("run/old/nodes/compete/lane-0/steps/a1-gate-x/events-000001.jsonl", b"old")
+    await store.put("run/old/nodes/compete/lane-0/gate_artifacts/behavioral/plan.json", b"{}")
+
+    n = await store.copy_prefix("run/old/nodes", "run/new/nodes", exclude_segments=("steps",))
+    assert n == 3
+    keys = {o.key for o in await store.list_prefix("run/new")}
+    assert "run/new/nodes/compete/lane-0/checkpoint.json" in keys
+    assert "run/new/nodes/compete/lane-0/gate_artifacts/behavioral/plan.json" in keys
+    assert not any("/steps/" in k for k in keys)

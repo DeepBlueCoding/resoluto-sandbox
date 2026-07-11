@@ -96,7 +96,9 @@ class LocalConduit(Conduit):
             raise self._wrap_os_error(exc) from exc
         return n
 
-    async def copy_prefix(self, src_prefix: str, dst_prefix: str) -> int:
+    async def copy_prefix(
+        self, src_prefix: str, dst_prefix: str, *, exclude_segments: tuple[str, ...] = ()
+    ) -> int:
         import shutil
 
         src = src_prefix.rstrip("/")
@@ -106,6 +108,8 @@ class LocalConduit(Conduit):
         try:
             for o in await self.list_prefix(src):
                 rel = o.key[len(src) :].lstrip("/")
+                if exclude_segments and set(rel.split("/")) & set(exclude_segments):
+                    continue
                 dst = self._path(f"{dst_prefix.rstrip('/')}/{rel}")
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(self._path(o.key), dst)

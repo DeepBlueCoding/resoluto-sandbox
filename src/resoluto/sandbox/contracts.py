@@ -165,14 +165,22 @@ class Conduit(ABC):
     @abstractmethod
     async def list_prefix(self, prefix: str) -> list[ObjectInfo]: ...
 
-    async def copy_prefix(self, src_prefix: str, dst_prefix: str) -> int:
-        """Copy every object under src_prefix to dst_prefix, returning the count copied."""
+    async def copy_prefix(
+        self, src_prefix: str, dst_prefix: str, *, exclude_segments: tuple[str, ...] = ()
+    ) -> int:
+        """Copy every object under src_prefix to dst_prefix, returning the count copied.
+        `exclude_segments`: relative-path SEGMENTS to skip (e.g. ("steps",) drops every
+        `.../steps/...` subtree — a resumed run must not inherit the prior run's step
+        chunk indexes, or the telemetry reader mistakes the re-run pod for silent)."""
         src, dst = src_prefix.rstrip("/"), dst_prefix.rstrip("/")
-        objs = await self.list_prefix(src)
-        for o in objs:
+        n = 0
+        for o in await self.list_prefix(src):
             rel = o.key[len(src) :].lstrip("/")
+            if exclude_segments and set(rel.split("/")) & set(exclude_segments):
+                continue
             await self.put(f"{dst}/{rel}", await self.get(o.key))
-        return len(objs)
+            n += 1
+        return n
 
     async def aclose(self) -> None:
         """Release any cached client/session. Default no-op; override where there's something to

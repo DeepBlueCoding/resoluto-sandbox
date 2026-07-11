@@ -191,18 +191,24 @@ class S3Conduit(Conduit):
         out.sort(key=lambda i: i.key)
         return out
 
-    async def copy_prefix(self, src_prefix: str, dst_prefix: str) -> int:
+    async def copy_prefix(
+        self, src_prefix: str, dst_prefix: str, *, exclude_segments: tuple[str, ...] = ()
+    ) -> int:
         src, dst = src_prefix.rstrip("/"), dst_prefix.rstrip("/")
         objs = await self.list_prefix(src)
+        n = 0
         async with self._io() as c:
             for o in objs:
                 rel = o.key[len(src) :].lstrip("/")
+                if exclude_segments and set(rel.split("/")) & set(exclude_segments):
+                    continue
                 await c.copy_object(
                     Bucket=self._bucket,
                     Key=f"{dst}/{rel}",
                     CopySource={"Bucket": self._bucket, "Key": o.key},
                 )
-        return len(objs)
+                n += 1
+        return n
 
     async def delete_prefix(self, prefix: str) -> int:
         objs = await self.list_prefix(prefix.rstrip("/") + "/")
