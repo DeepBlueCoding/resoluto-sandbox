@@ -167,6 +167,11 @@ class Conduit(ABC):
         """Release any cached client/session. Default no-op; override where there's something to
         release (a cached HTTP session, connection pool, etc). One name across every Conduit."""
 
+    async def delete_prefix(self, prefix: str) -> int:
+        """Delete every object under `prefix`, returning the count deleted. Retention/GC is
+        the CALLER's policy; the conduit supplies only the mechanism."""
+        raise NotImplementedError(f"{type(self).__name__} does not implement delete_prefix")
+
 
 class SandboxRuntime(ABC):
     """The platform-specific surface that launches, polls, and destroys a sandbox."""

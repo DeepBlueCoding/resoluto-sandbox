@@ -102,6 +102,12 @@ class GcsConduit(Conduit):
             )
         return len(objs)
 
+    async def delete_prefix(self, prefix: str) -> int:
+        objs = await self.list_prefix(prefix.rstrip("/") + "/")
+        for o in objs:
+            await self._io("delete", lambda key=o.key: self._client().delete(self._bucket, key))
+        return len(objs)
+
     async def aclose(self) -> None:
         if self._storage is not None:
             await self._storage.close()

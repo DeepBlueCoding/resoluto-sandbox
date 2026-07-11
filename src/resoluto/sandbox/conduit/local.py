@@ -81,6 +81,19 @@ class LocalConduit(Conduit):
                 )
         return out
 
+    async def delete_prefix(self, prefix: str) -> int:
+        import shutil
+
+        base = self._path(prefix.rstrip("/"))
+        if not base.exists():
+            return 0
+        n = sum(1 for p in base.rglob("*") if p.is_file())
+        try:
+            shutil.rmtree(base)
+        except OSError as exc:
+            raise self._wrap_os_error(exc) from exc
+        return n
+
     async def copy_prefix(self, src_prefix: str, dst_prefix: str) -> int:
         import shutil
 

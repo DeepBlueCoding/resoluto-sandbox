@@ -197,6 +197,16 @@ class S3Conduit(Conduit):
                 )
         return len(objs)
 
+    async def delete_prefix(self, prefix: str) -> int:
+        objs = await self.list_prefix(prefix.rstrip("/") + "/")
+        n = 0
+        async with self._io() as c:
+            for i in range(0, len(objs), 1000):
+                batch = [{"Key": o.key} for o in objs[i : i + 1000]]
+                await c.delete_objects(Bucket=self._bucket, Delete={"Objects": batch})
+                n += len(batch)
+        return n
+
     async def ensure_bucket(self) -> None:
         """Create the bucket if absent."""
         from botocore.exceptions import ClientError
