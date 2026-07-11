@@ -822,38 +822,17 @@ There is no per-rule *blacklist* primitive (the model is default-deny; IMDS/RFC1
 
 # Concurrency & direct control
 
-The `Sandbox` facade runs ONE program per `run()`. To launch MANY sandboxes under a bounded RAM/slot budget, or to reach knobs the facade never exposes (docker-in-docker, a disk-backed image graph, per-launch egress on the spec), drop to the building blocks the facade is built on — `SandboxPool`, `SandboxLaunchSpec`, and `drive_node`. All three are exported from `resoluto.sandbox`.
+The `Sandbox` facade runs ONE program per `run()`. To launch MANY sandboxes, or to reach knobs the facade never exposes (docker-in-docker, a disk-backed image graph, per-launch egress on the spec), drop to the building blocks the facade is built on — `SandboxLaunchSpec` and `drive_node`, plus the `Admission` seam for bounding how many run at once. All are exported from `resoluto.sandbox`.
 
-Both snippets assume a `runtime` (a `SandboxRuntime` — e.g. `KataNerdctlSandboxRuntime.from_env(...)` for local or `K8sSandboxRuntime(...)` for k8s) and, for `drive_node`, a `conduit` (a `Conduit` — e.g. `store_from_env()`), wired exactly as the [`local`](https://deepbluecoding.github.io/resoluto-sandbox/main/backends/#local) / [`k8s`](https://deepbluecoding.github.io/resoluto-sandbox/main/backends/#k8s) backends build them.
+The snippet assumes a `runtime` (a `SandboxRuntime` — e.g. `KataNerdctlSandboxRuntime.from_env(...)` for local or `K8sSandboxRuntime(...)` for k8s) and a `conduit` (a `Conduit` — e.g. `store_from_env()`), wired exactly as the [`local`](https://deepbluecoding.github.io/resoluto-sandbox/main/backends/#local) / [`k8s`](https://deepbluecoding.github.io/resoluto-sandbox/main/backends/#k8s) backends build them.
 
-## Bounded concurrency — `SandboxPool`
+## Bounded concurrency — the `Admission` seam
 
-`SandboxPool` admits launches FIFO under two independent limits: a slot count (`max_concurrent`) and an optional RAM budget (`mem_budget_bytes`, summed from each spec's `resources.memory_bytes`). A held lease occupies a slot plus its RAM until closed; closing the lease destroys the sandbox.
+The sandbox does not pool or schedule; it is a dumb executor. Concurrency limits belong to the CALLER, and the substrate defines exactly one seam for them: [`Admission`](https://deepbluecoding.github.io/resoluto-sandbox/main/api/pool/index.md) — a protocol whose `acquire(spec)` decides whether/when a launch is allowed and returns a [`Lease`](https://deepbluecoding.github.io/resoluto-sandbox/main/api/pool/index.md) (the granted slot; closing it destroys the sandbox). Hand any implementation to `drive_node(..., admit=...)` and the drive parks until admitted; `admit=None` launches immediately.
 
-```python
-import asyncio
-from resoluto.sandbox.contracts import Resources, SandboxLaunchSpec
-from resoluto.sandbox.pool import SandboxPool
+Orchestrators bring their own admitter (a FIFO slot/RAM-budget pool, a cluster quota, a queue) — resoluto-engine's `SandboxPool` is one such implementation, living where scheduling policy belongs.
 
-pool = SandboxPool(runtime, max_concurrent=4, mem_budget_bytes=16 * 1024**3)  # ≤4 at once, ≤16 GiB total
-
-async def one(prefix: str) -> None:
-    spec = SandboxLaunchSpec(
-        image="<registry>/resoluto-sandbox-base:0.1.0",
-        store_prefix=prefix,
-        resources=Resources.from_quantities(memory="4Gi", cpu="2"),
-    )
-    async with await pool.acquire(spec) as lease:   # parks here until a slot + budget free up
-        ...  # work against lease.handle (e.g. drive_node below); the sandbox is destroyed on exit
-
-await asyncio.gather(*(one(f"run/demo/nodes/n{i}/sandbox-0") for i in range(10)))  # 10 queued, 4 run at once
-```
-
-- `pool.available` / `pool.live_count` report free slots / live sandboxes.
-- `acquire(spec, *, on_wait=None)` — `on_wait(amount, available)` fires once if the caller parks on the RAM budget.
-- `SandboxPool` also satisfies the `Admission` protocol, so you can hand it straight to `drive_node(..., admit=pool)` to pool-admit a driven node (below).
-
-> The pool bounds SUBSTRATE admission (how many sandboxes exist at once), NOT workload liveness. A slow-but-alive sandbox holds its slot as long as it keeps emitting — there is no wall-clock cap.
+> An admitter bounds SUBSTRATE admission (how many sandboxes exist at once), NOT workload liveness. A slow-but-alive sandbox holds its slot as long as it keeps emitting — there is no wall-clock cap.
 
 ## Advanced: the direct `drive_node` path
 
@@ -883,9 +862,9 @@ spec = SandboxLaunchSpec(
 result = asyncio.run(drive_node(runtime, conduit, spec))  # NodeResult; tails chunks, reaps the sandbox
 ```
 
-`drive_node(runtime, store, spec, *, admit=None, on_event=None, dead_after_s=120.0)` launches, tails the Conduit chunks, and returns a `NodeResult`. Pass `admit=pool` to admit through a `SandboxPool`; pass `on_event=` to receive each `SpanEvent` live.
+`drive_node(runtime, store, spec, *, admit=None, on_event=None, dead_after_s=120.0)` launches, tails the Conduit chunks, and returns a `NodeResult`. Pass `admit=` any `Admission` implementation to bound concurrency; pass `on_event=` to receive each `SpanEvent` live.
 
-> These are the substrate's own building blocks — a host that drives many sandboxes builds on exactly this surface. Prefer the `Sandbox` facade for single-shot runs; reach here only when you need pooling, dind, a disk-backed graph, or per-spec egress.
+> These are the substrate's own building blocks — a host that drives many sandboxes builds on exactly this surface. Prefer the `Sandbox` facade for single-shot runs; reach here only when you need many sandboxes, dind, a disk-backed graph, or per-spec egress.
 
 # Credentials: giving your program its secrets
 
@@ -1508,117 +1487,9 @@ async def run_node_in_sandbox(
     return result
 ```
 
-# Pool
+# Admission
 
-Bounded concurrency over sandbox slots: acquire a lease, run inside it, release it back. `Admission` is the concurrency-admission decision and `Lease` the granted slot the pool hands out.
-
-## resoluto.sandbox.SandboxPool
-
-```python
-SandboxPool(
-    runtime,
-    *,
-    max_concurrent,
-    acquire_timeout_s=600.0,
-    admission_gate=None,
-    mem_budget_bytes=None,
-    mem_budget_provider=None,
-)
-```
-
-Bounded, FIFO-ordered admission over a runtime with an optional cross-replica `admission_gate` and byte budget.
-
-Source code in `src/resoluto/sandbox/pool.py`
-
-```python
-def __init__(
-    self,
-    runtime: SandboxRuntime,
-    *,
-    max_concurrent: int,
-    acquire_timeout_s: float = 600.0,
-    admission_gate=None,
-    mem_budget_bytes: int | None = None,
-    mem_budget_provider=None,
-) -> None:
-    if max_concurrent < 1:
-        raise ValueError("max_concurrent must be >= 1")
-    self._runtime = runtime
-    self._sem = asyncio.Semaphore(max_concurrent)
-    self._admit = asyncio.Lock()
-    self._acquire_timeout_s = acquire_timeout_s
-    self._admission_gate = admission_gate
-    self._live: set[str] = set()
-    self._max = max_concurrent
-    self._mem_sem = ResourceSemaphore(mem_budget_bytes) if mem_budget_bytes else None
-    self._mem_budget_provider = mem_budget_provider
-    self._budget_resolved = mem_budget_bytes is not None or mem_budget_provider is None
-    self._budget_lock = asyncio.Lock()
-    self._handle_mem: dict[str, int] = {}
-```
-
-### acquire
-
-```python
-acquire(spec, *, on_wait=None)
-```
-
-Reserve RAM budget and a count slot, then launch; `on_wait(amount, available)` fires once if the caller parks on the budget.
-
-Source code in `src/resoluto/sandbox/pool.py`
-
-```python
-async def acquire(self, spec: SandboxLaunchSpec, *, on_wait=None) -> SandboxLease:
-    """Reserve RAM budget and a count slot, then launch; `on_wait(amount, available)` fires once if the caller parks on the budget."""
-    await self._resolve_budget()
-    spec_mem = spec.resources.memory_bytes if self._mem_sem is not None else 0
-    if self._mem_sem is not None:
-        await self._mem_sem.acquire(spec_mem, on_wait=on_wait)
-    try:
-        async with self._admit:
-            if self._admission_gate is not None:
-                loop = asyncio.get_event_loop()
-                deadline = loop.time() + self._acquire_timeout_s
-                while (await self._admission_gate()) >= self._max:
-                    if loop.time() >= deadline:
-                        raise self._starvation_error()
-                    await asyncio.sleep(_ADMISSION_POLL_INTERVAL)
-            else:
-                try:
-                    await asyncio.wait_for(self._sem.acquire(), timeout=self._acquire_timeout_s)
-                except asyncio.TimeoutError as exc:
-                    raise self._starvation_error() from exc
-        try:
-            handle = await self._runtime.launch(spec)
-        except BaseException:
-            if self._admission_gate is None:
-                self._sem.release()
-            raise
-    except BaseException:
-        if self._mem_sem is not None:
-            self._mem_sem.release(spec_mem)
-        raise
-    self._live.add(handle.id)
-    self._handle_mem[handle.id] = spec_mem
-    return SandboxLease(self, handle)
-```
-
-## resoluto.sandbox.SandboxLease
-
-```python
-SandboxLease(pool, handle)
-```
-
-Async-context handle to an acquired sandbox; closing destroys it.
-
-Source code in `src/resoluto/sandbox/pool.py`
-
-```python
-def __init__(self, pool: "SandboxPool", handle: SandboxHandle) -> None:
-    self._pool = pool
-    self.handle = handle
-    self._released = False
-```
+The sandbox does not pool or schedule — it is a dumb executor. What it defines is the **admission seam**: `Admission` is the protocol a caller implements to decide whether/when a launch is allowed (`drive_node(..., admit=...)` parks on it), and `Lease` is the granted slot it hands back. Bring your own admitter — a slot/RAM-budget pool, a queue, or nothing at all (admit `None` launches immediately).
 
 ## resoluto.sandbox.Admission
 
