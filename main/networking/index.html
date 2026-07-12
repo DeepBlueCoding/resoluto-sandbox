@@ -1447,14 +1447,18 @@
 <h1 id="networking">Networking<a class="headerlink" href="#networking" title="Permanent link">&para;</a></h1>
 <h2 id="local-backend-kata-isolation-host-side-egress-policy">Local backend — Kata isolation + host-side egress policy<a class="headerlink" href="#local-backend-kata-isolation-host-side-egress-policy" title="Permanent link">&para;</a></h2>
 <p>The local backend runs the program in a Kata microVM launched via <code>nerdctl</code> against a standalone
-containerd on this host — full Kata isolation, on a single host with no cluster. Egress is enforced
-host-side on its CNI bridge and is <strong>default-deny (secure by default)</strong>: a fresh sandbox reaches only
-DNS and its store. You opt in to what the workload needs at PROVISION time via the env knobs
-(<code>RESOLUTO_EGRESS_ALLOW</code> for specific destinations, <code>RESOLUTO_EGRESS_PUBLIC_HTTPS=1</code> for all
-outbound :443). IMDS <code>169.254.169.254</code> and RFC1918 private ranges are always rejected, so the
-policy is immune to in-guest root. The egress canary always runs fail-closed before any workload,
-the Kata runtime-class guard is unconditional, and host AWS creds are never forwarded (a scoped
-store token only).</p>
+containerd on this host — full Kata isolation, on a single host with no cluster. <strong>Egress is denied by
+default, and the default is absolute: a run with no allowlist gets no network interface at all.</strong> The
+store is a host bind mount rather than a network endpoint, so a run is fully functional with zero
+network — there is nothing for the workload to reach.</p>
+<p>Opening an allowlist attaches a NIC on an isolated CNI bridge, where egress is enforced <strong>host-side</strong>
+(immune to in-guest root): a built-in SNI proxy forwards only TLS connections whose SNI matches an
+allowed domain, and IMDS <code>169.254.169.254</code> + RFC1918 private ranges are always rejected. The per-run
+knob is <code>Sandbox.run(egress=["api.anthropic.com"])</code> (see below); the provision-time env knobs
+(<code>RESOLUTO_EGRESS_ALLOW</code>, <code>RESOLUTO_EGRESS_PUBLIC_HTTPS=1</code>) set the firewall/proxy defaults and drive
+the setup canary. The egress canary always runs fail-closed before any workload, the Kata
+runtime-class guard is unconditional, and host AWS creds are never forwarded (a scoped store token
+only).</p>
 <p>Provision the local backend with <code>scripts/local-backend-up.sh</code> (ends with a green Kata-microVM
 canary). To open egress, set the env before running it, e.g.:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nv">RESOLUTO_EGRESS_ALLOW</span><span class="o">=</span>api.anthropic.com,registry.npmjs.org<span class="w"> </span>scripts/local-backend-up.sh<span class="w">   </span><span class="c1"># least privilege</span>
@@ -1618,7 +1622,7 @@ destination IP:port and the <strong>SNI</strong> hostname. For a domain allowlis
 pass <code>egress=[domains]</code> to each <code>run()</code>:</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="s2">&quot;local&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">argv</span><span class="p">,</span> <span class="n">egress</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;api.anthropic.com&quot;</span><span class="p">])</span>    <span class="c1"># this step reaches ONLY Anthropic</span>
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="s2">&quot;local&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">argv</span><span class="p">,</span> <span class="n">egress</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;registry.npmjs.org&quot;</span><span class="p">])</span>   <span class="c1"># this step reaches ONLY the npm registry</span>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="s2">&quot;local&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">argv</span><span class="p">)</span>                                  <span class="c1"># egress=None → deny all (secure default)</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="s2">&quot;local&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">argv</span><span class="p">)</span>                                  <span class="c1"># egress=None → no network at all (secure default)</span>
 </span></code></pre></div>
 <p>Each <code>run()</code> sets that step's allowed domains on the fly and clears them after — <strong>no re-provision</strong>.
 Under the hood the built-in <strong>SNI proxy</strong> (<code>resoluto.sandbox.egress_proxy</code>) reads the step's allowlist
@@ -1671,7 +1675,7 @@ mechanism (see <code>src/resoluto/sandbox/egress.py</code>).</p>
 <tbody>
 <tr>
 <td>Egress allowlist</td>
-<td>host-side iptables on the CNI bridge (default-deny; DNS + store; opt-in <code>allow</code>/<code>public_https</code>; REJECT IMDS + RFC1918)</td>
+<td>no NIC by default; opening an allowlist attaches a CNI bridge with host-side iptables (DNS + store + opt-in <code>allow</code>/<code>public_https</code>; REJECT IMDS + RFC1918)</td>
 <td><code>EgressConfig.from_store_env()</code> → default-deny NetworkPolicy (store + DNS always; opt-in <code>allow</code>/public-443; IMDS denied), enforced by the cluster's NetworkPolicy controller (k3s kube-router)</td>
 </tr>
 <tr>

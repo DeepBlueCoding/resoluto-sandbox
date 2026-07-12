@@ -1,6 +1,6 @@
 # Resoluto Sandbox
 
-Run a program in isolation and exchange data through a durable store. Your program stays plain — it reads `argv`, writes `stdout`/files, exits, and never imports `resoluto.sandbox`. A script that runs with `uv run agent.py` on your machine runs unchanged inside a Kata microVM or a Kubernetes pod.
+Run untrusted code — AI-generated, third-party, or adversarial — with a dedicated Linux kernel per run. `resoluto-sandbox` executes any program inside a Kata microVM and exchanges data through a durable store; the workload is assumed hostile and granted nothing by default. Your program stays plain — it reads `argv`, writes `stdout`/files, exits, and never imports `resoluto.sandbox`, so a script that runs with `uv run agent.py` on your machine runs unchanged inside the microVM.
 
 [Get started](https://deepbluecoding.github.io/resoluto-sandbox/main/getting-started/index.md) [API reference](https://deepbluecoding.github.io/resoluto-sandbox/main/api/sandbox/index.md)
 
@@ -14,9 +14,9 @@ print(result.output)   # hello from the sandbox
 print(result.ok)       # True
 ```
 
-- **VM-grade isolation**
+- **Zero-trust, VM-grade isolation**
 
-  Every step runs in a Kata microVM — `local` via `nerdctl` on a dedicated containerd, `k8s` as a short-lived pod. Isolation never downgrades; there is no trusted-local bypass.
+  Every run is a Kata microVM with its own Linux kernel. The workload runs unprivileged with no capabilities, no host filesystem/devices/credentials, and no network by default. Isolation never downgrades; there is no trusted-local bypass.
 
 - **Store-mediated rendezvous**
 

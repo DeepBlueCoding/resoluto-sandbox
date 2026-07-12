@@ -1671,12 +1671,13 @@ no S3 — everything stays on your machine:</p>
 </span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>          writes result.json + outbox to /conduit
 </span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>   → RunResult(output, exit_code, artifacts)     # no k8s, no S3
 </span></code></pre></div>
-<p>Egress is enforced host-side on the CNI bridge and is default-deny (secure by default):
-a fresh sandbox reaches only DNS + its store, and you opt in to what the workload needs at
-provision time (<code>RESOLUTO_EGRESS_ALLOW</code> for specific destinations, <code>RESOLUTO_EGRESS_PUBLIC_HTTPS=1</code>
-for all outbound :443). IMDS <code>169.254.169.254</code> + RFC1918 private ranges are always rejected, so it
-is immune to in-guest root. The egress canary runs fail-closed before your workload; there is no
-trusted-local bypass.</p>
+<p>Egress is denied by default, and the default is absolute: a run with no allowlist gets <strong>no network
+interface</strong>. The store is a host bind mount, not a network endpoint, so a run works with zero network.
+Opening an allowlist attaches a NIC on the CNI bridge, enforced host-side (immune to in-guest root),
+with IMDS <code>169.254.169.254</code> + RFC1918 private ranges always rejected. Grant domains per run with
+<code>Sandbox.run(egress=[...])</code>, or set provision-time defaults (<code>RESOLUTO_EGRESS_ALLOW</code> for specific
+destinations, <code>RESOLUTO_EGRESS_PUBLIC_HTTPS=1</code> for all outbound :443). The egress canary runs
+fail-closed before your workload; there is no trusted-local bypass.</p>
 <h3 id="what-you-need">What you need<a class="headerlink" href="#what-you-need" title="Permanent link">&para;</a></h3>
 <ul>
 <li>KVM + Kata + a <code>nerdctl-full</code> bundle + Docker + a <code>localhost:5000</code> registry on this Linux host —

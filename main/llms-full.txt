@@ -6,7 +6,7 @@
 
 # Resoluto Sandbox
 
-Run a program in isolation and exchange data through a durable store. Your program stays plain — it reads `argv`, writes `stdout`/files, exits, and never imports `resoluto.sandbox`. A script that runs with `uv run agent.py` on your machine runs unchanged inside a Kata microVM or a Kubernetes pod.
+Run untrusted code — AI-generated, third-party, or adversarial — with a dedicated Linux kernel per run. `resoluto-sandbox` executes any program inside a Kata microVM and exchanges data through a durable store; the workload is assumed hostile and granted nothing by default. Your program stays plain — it reads `argv`, writes `stdout`/files, exits, and never imports `resoluto.sandbox`, so a script that runs with `uv run agent.py` on your machine runs unchanged inside the microVM.
 
 [Get started](https://deepbluecoding.github.io/resoluto-sandbox/main/getting-started/index.md) [API reference](https://deepbluecoding.github.io/resoluto-sandbox/main/api/sandbox/index.md)
 
@@ -20,9 +20,9 @@ print(result.output)   # hello from the sandbox
 print(result.ok)       # True
 ```
 
-- **VM-grade isolation**
+- **Zero-trust, VM-grade isolation**
 
-  Every step runs in a Kata microVM — `local` via `nerdctl` on a dedicated containerd, `k8s` as a short-lived pod. Isolation never downgrades; there is no trusted-local bypass.
+  Every run is a Kata microVM with its own Linux kernel. The workload runs unprivileged with no capabilities, no host filesystem/devices/credentials, and no network by default. Isolation never downgrades; there is no trusted-local bypass.
 
 - **Store-mediated rendezvous**
 
@@ -429,7 +429,7 @@ Sandbox(backend="local").run(argv, workspace, output_paths)
    → RunResult(output, exit_code, artifacts)     # no k8s, no S3
 ```
 
-Egress is enforced host-side on the CNI bridge and is default-deny (secure by default): a fresh sandbox reaches only DNS + its store, and you opt in to what the workload needs at provision time (`RESOLUTO_EGRESS_ALLOW` for specific destinations, `RESOLUTO_EGRESS_PUBLIC_HTTPS=1` for all outbound :443). IMDS `169.254.169.254` + RFC1918 private ranges are always rejected, so it is immune to in-guest root. The egress canary runs fail-closed before your workload; there is no trusted-local bypass.
+Egress is denied by default, and the default is absolute: a run with no allowlist gets **no network interface**. The store is a host bind mount, not a network endpoint, so a run works with zero network. Opening an allowlist attaches a NIC on the CNI bridge, enforced host-side (immune to in-guest root), with IMDS `169.254.169.254` + RFC1918 private ranges always rejected. Grant domains per run with `Sandbox.run(egress=[...])`, or set provision-time defaults (`RESOLUTO_EGRESS_ALLOW` for specific destinations, `RESOLUTO_EGRESS_PUBLIC_HTTPS=1` for all outbound :443). The egress canary runs fail-closed before your workload; there is no trusted-local bypass.
 
 ### What you need
 
@@ -672,7 +672,9 @@ No facade changes are needed — `Sandbox` holds any `Backend` instance. `Condui
 
 ## Local backend — Kata isolation + host-side egress policy
 
-The local backend runs the program in a Kata microVM launched via `nerdctl` against a standalone containerd on this host — full Kata isolation, on a single host with no cluster. Egress is enforced host-side on its CNI bridge and is **default-deny (secure by default)**: a fresh sandbox reaches only DNS and its store. You opt in to what the workload needs at PROVISION time via the env knobs (`RESOLUTO_EGRESS_ALLOW` for specific destinations, `RESOLUTO_EGRESS_PUBLIC_HTTPS=1` for all outbound :443). IMDS `169.254.169.254` and RFC1918 private ranges are always rejected, so the policy is immune to in-guest root. The egress canary always runs fail-closed before any workload, the Kata runtime-class guard is unconditional, and host AWS creds are never forwarded (a scoped store token only).
+The local backend runs the program in a Kata microVM launched via `nerdctl` against a standalone containerd on this host — full Kata isolation, on a single host with no cluster. **Egress is denied by default, and the default is absolute: a run with no allowlist gets no network interface at all.** The store is a host bind mount rather than a network endpoint, so a run is fully functional with zero network — there is nothing for the workload to reach.
+
+Opening an allowlist attaches a NIC on an isolated CNI bridge, where egress is enforced **host-side** (immune to in-guest root): a built-in SNI proxy forwards only TLS connections whose SNI matches an allowed domain, and IMDS `169.254.169.254` + RFC1918 private ranges are always rejected. The per-run knob is `Sandbox.run(egress=["api.anthropic.com"])` (see below); the provision-time env knobs (`RESOLUTO_EGRESS_ALLOW`, `RESOLUTO_EGRESS_PUBLIC_HTTPS=1`) set the firewall/proxy defaults and drive the setup canary. The egress canary always runs fail-closed before any workload, the Kata runtime-class guard is unconditional, and host AWS creds are never forwarded (a scoped store token only).
 
 Provision the local backend with `scripts/local-backend-up.sh` (ends with a green Kata-microVM canary). To open egress, set the env before running it, e.g.:
 
@@ -779,7 +781,7 @@ So a sandbox that needs the LLM + npm/pypi reads `EgressConfig(allow=["api.anthr
 ```python
 Sandbox(backend="local").run(argv, egress=["api.anthropic.com"])    # this step reaches ONLY Anthropic
 Sandbox(backend="local").run(argv, egress=["registry.npmjs.org"])   # this step reaches ONLY the npm registry
-Sandbox(backend="local").run(argv)                                  # egress=None → deny all (secure default)
+Sandbox(backend="local").run(argv)                                  # egress=None → no network at all (secure default)
 ```
 
 Each `run()` sets that step's allowed domains on the fly and clears them after — **no re-provision**. Under the hood the built-in **SNI proxy** (`resoluto.sandbox.egress_proxy`) reads the step's allowlist LIVE (from a file each run rewrites) and splices the (still-encrypted) stream to the original destination ONLY if the TLS SNI matches — exact (`api.anthropic.com`) or `*.wildcard` (`*.openai.com`). No IP pinning, no CA/MITM, works under any CNI; it refuses internal/IMDS destinations even on an SNI match (no SSRF). The mechanism is `KataNerdctlSandboxRuntime.apply_egress()` writing the proxy's live allowlist file; `SubstrateBackend.run` applies it before the sandbox and clears it after.
@@ -812,13 +814,13 @@ There is no per-rule *blacklist* primitive (the model is default-deny; IMDS/RFC1
 
 ## What you can manage
 
-| Knob             | Local backend                                                                                                          | k8s backend                                                                                                                                                                                     |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Egress allowlist | host-side iptables on the CNI bridge (default-deny; DNS + store; opt-in `allow`/`public_https`; REJECT IMDS + RFC1918) | `EgressConfig.from_store_env()` → default-deny NetworkPolicy (store + DNS always; opt-in `allow`/public-443; IMDS denied), enforced by the cluster's NetworkPolicy controller (k3s kube-router) |
-| IMDS block       | always on (host-side REJECT of `169.254.169.254`)                                                                      | always on when `EgressConfig` is passed                                                                                                                                                         |
-| Egress canary    | on by default, fail-closed                                                                                             | on by default, fail-closed                                                                                                                                                                      |
-| Runtime class    | Kata (pinned, unconditional)                                                                                           | Kata (pinned, unconditional)                                                                                                                                                                    |
-| Kubecontext      | not applicable                                                                                                         | `RESOLUTO_SANDBOX_KUBECONTEXT` (fails closed if unset)                                                                                                                                          |
+| Knob             | Local backend                                                                                                                                              | k8s backend                                                                                                                                                                                     |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Egress allowlist | no NIC by default; opening an allowlist attaches a CNI bridge with host-side iptables (DNS + store + opt-in `allow`/`public_https`; REJECT IMDS + RFC1918) | `EgressConfig.from_store_env()` → default-deny NetworkPolicy (store + DNS always; opt-in `allow`/public-443; IMDS denied), enforced by the cluster's NetworkPolicy controller (k3s kube-router) |
+| IMDS block       | always on (host-side REJECT of `169.254.169.254`)                                                                                                          | always on when `EgressConfig` is passed                                                                                                                                                         |
+| Egress canary    | on by default, fail-closed                                                                                                                                 | on by default, fail-closed                                                                                                                                                                      |
+| Runtime class    | Kata (pinned, unconditional)                                                                                                                               | Kata (pinned, unconditional)                                                                                                                                                                    |
+| Kubecontext      | not applicable                                                                                                                                             | `RESOLUTO_SANDBOX_KUBECONTEXT` (fails closed if unset)                                                                                                                                          |
 
 # Concurrency & direct control
 

@@ -1228,7 +1228,7 @@
 
 <div class="hero">
 <h1 id="resoluto-sandbox">Resoluto Sandbox<a class="headerlink" href="#resoluto-sandbox" title="Permanent link">&para;</a></h1>
-<p class="tagline">Run a program in isolation and exchange data through a durable store. Your program stays plain — it reads <code>argv</code>, writes <code>stdout</code>/files, exits, and never imports <code>resoluto.sandbox</code>. A script that runs with <code>uv run agent.py</code> on your machine runs unchanged inside a Kata microVM or a Kubernetes pod.</p>
+<p class="tagline">Run untrusted code — AI-generated, third-party, or adversarial — with a dedicated Linux kernel per run. <code>resoluto-sandbox</code> executes any program inside a Kata microVM and exchanges data through a durable store; the workload is assumed hostile and granted nothing by default. Your program stays plain — it reads <code>argv</code>, writes <code>stdout</code>/files, exits, and never imports <code>resoluto.sandbox</code>, so a script that runs with <code>uv run agent.py</code> on your machine runs unchanged inside the microVM.</p>
 <p><a class="md-button md-button--primary" href="getting-started/">Get started</a>
 <a class="md-button" href="api/sandbox/">API reference</a></p>
 </div>
@@ -1243,8 +1243,8 @@
 <div class="grid cards">
 <ul>
 <li>
-<p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 11c0 5.55-3.84 10.74-9 12-5.16-1.26-9-6.45-9-12V5l9-4 9 4zm-9 10c3.75-1 7-5.46 7-9.78V6.3l-7-3.12L5 6.3v4.92C5 15.54 8.25 20 12 21m2.8-10V9.5C14.8 8.1 13.4 7 12 7S9.2 8.1 9.2 9.5V11c-.6 0-1.2.6-1.2 1.2v3.5c0 .7.6 1.3 1.2 1.3h5.5c.7 0 1.3-.6 1.3-1.2v-3.5c0-.7-.6-1.3-1.2-1.3m-1.3 0h-3V9.5c0-.8.7-1.3 1.5-1.3s1.5.5 1.5 1.3z"/></svg></span> <strong>VM-grade isolation</strong></p>
-<p>Every step runs in a Kata microVM — <code>local</code> via <code>nerdctl</code> on a dedicated containerd, <code>k8s</code> as a short-lived pod. Isolation never downgrades; there is no trusted-local bypass.</p>
+<p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 11c0 5.55-3.84 10.74-9 12-5.16-1.26-9-6.45-9-12V5l9-4 9 4zm-9 10c3.75-1 7-5.46 7-9.78V6.3l-7-3.12L5 6.3v4.92C5 15.54 8.25 20 12 21m2.8-10V9.5C14.8 8.1 13.4 7 12 7S9.2 8.1 9.2 9.5V11c-.6 0-1.2.6-1.2 1.2v3.5c0 .7.6 1.3 1.2 1.3h5.5c.7 0 1.3-.6 1.3-1.2v-3.5c0-.7-.6-1.3-1.2-1.3m-1.3 0h-3V9.5c0-.8.7-1.3 1.5-1.3s1.5.5 1.5 1.3z"/></svg></span> <strong>Zero-trust, VM-grade isolation</strong></p>
+<p>Every run is a Kata microVM with its own Linux kernel. The workload runs unprivileged with no capabilities, no host filesystem/devices/credentials, and no network by default. Isolation never downgrades; there is no trusted-local bypass.</p>
 </li>
 <li>
 <p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 11h-3.18C14.4 9.84 13.3 9 12 9s-2.4.84-2.82 2H6c-.33 0-2-.1-2-2V8c0-1.83 1.54-2 2-2h10.18C16.6 7.16 17.7 8 19 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3c-1.3 0-2.4.84-2.82 2H6C4.39 4 2 5.06 2 8v1c0 2.94 2.39 4 4 4h3.18c.42 1.16 1.52 2 2.82 2s2.4-.84 2.82-2H18c.33 0 2 .1 2 2v1c0 1.83-1.54 2-2 2H7.82C7.4 16.84 6.3 16 5 16a3 3 0 0 0-3 3 3 3 0 0 0 3 3c1.3 0 2.4-.84 2.82-2H18c1.61 0 4-1.07 4-4v-1c0-2.93-2.39-4-4-4m1-7a1 1 0 0 1 1 1 1 1 0 0 1-1 1 1 1 0 0 1-1-1 1 1 0 0 1 1-1M5 20a1 1 0 0 1-1-1 1 1 0 0 1 1-1 1 1 0 0 1 1 1 1 1 0 0 1-1 1"/></svg></span> <strong>Store-mediated rendezvous</strong></p>
