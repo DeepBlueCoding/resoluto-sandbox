@@ -91,21 +91,33 @@ async def collect_outputs(
 ## resoluto.sandbox.fetch_outputs
 
 ```python
-fetch_outputs(store, prefix, dest_dir)
+fetch_outputs(store, prefix, dest_dir, allowed_paths=None)
 ```
 
 Extract every output archive under `outbox/` into `dest_dir`; returns the keys fetched.
 
+`allowed_paths` (the caller's declared `output_paths`) scopes what is materialized: only members matching those globs land in `dest_dir`, so an untrusted guest cannot smuggle undeclared files into the caller's workspace. `None` extracts everything (low-level/legacy use).
+
 Source code in `src/resoluto/sandbox/staging.py`
 
 ```python
-async def fetch_outputs(store: Conduit, prefix: str, dest_dir: str) -> list[str]:
-    """Extract every output archive under `outbox/` into `dest_dir`; returns the keys fetched."""
+async def fetch_outputs(
+    store: Conduit, prefix: str, dest_dir: str, allowed_paths: list[str] | None = None
+) -> list[str]:
+    """Extract every output archive under `outbox/` into `dest_dir`; returns the keys fetched.
+
+    `allowed_paths` (the caller's declared `output_paths`) scopes what is materialized: only members
+    matching those globs land in `dest_dir`, so an untrusted guest cannot smuggle undeclared files
+    into the caller's workspace. `None` extracts everything (low-level/legacy use)."""
     dest = Path(dest_dir)
     fetched: list[str] = []
     for info in await store.list_prefix(f"{prefix.rstrip('/')}/{OUTBOX}"):
         if info.key.endswith(_ARCHIVE_SUFFIXES):
-            _extract(await store.get(info.key), dest)
+            data = await store.get(info.key)
+            if allowed_paths is None:
+                _extract(data, dest)
+            else:
+                _extract_declared(data, dest, allowed_paths)
             fetched.append(info.key)
     return fetched
 ```
