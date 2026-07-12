@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0rc7] - 2026-07-12
+
+### Security
+
+- **Prefix pre-create moved into the runtime** — the world-writable scoped-mount source is now created
+  in `KataNerdctlSandboxRuntime.launch` itself, so the contract travels with the runtime for EVERY
+  caller (the `SubstrateBackend` facade AND the engine's lane substrate). Previously only the facade
+  pre-created it, so a no-workspace engine step (a gate/resume step) would have hit a root-owned mount
+  the guest could not write. Removes the interim `.keep` sentinel (and its extra object on the S3 path).
+- **`GcsConduit.copy_prefix` subtree scoping** — same sibling-prefix bleed fix as `S3Conduit` (`run/A`
+  no longer matches `run/AB/…`).
+
 ## [0.1.0rc6] - 2026-07-12
 
 ### Security

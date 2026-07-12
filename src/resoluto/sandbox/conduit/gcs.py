@@ -96,7 +96,9 @@ class GcsConduit(Conduit):
     async def copy_prefix(self, src_prefix: str, dst_prefix: str) -> int:
         src, dst = src_prefix.rstrip("/"), dst_prefix.rstrip("/")
         client = self._client()
-        objs = await self.list_prefix(src)
+        # Trailing slash: list by raw string prefix matches a SIBLING (`run/A` also matches `run/AB/…`);
+        # scope to the real subtree so a resume never drags a sibling run's objects along.
+        objs = await self.list_prefix(src + "/")
         for o in objs:
             rel = o.key[len(src) :].lstrip("/")
             await self._io(

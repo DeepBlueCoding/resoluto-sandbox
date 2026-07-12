@@ -160,6 +160,14 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
         if spec.store_prefix:
             src = f"{self._conduit_host_dir}/{spec.store_prefix}"
             dst = f"{self._conduit_mount}/{spec.store_prefix}"
+            # Self-contained: create the (world-writable) mount source HERE, not in a caller, so the
+            # contract travels with the runtime. Both callers (the SubstrateBackend facade AND the
+            # engine's lane substrate) inject this same runtime; without an existing source, nerdctl
+            # auto-creates it root-owned and the guest (a different uid) can't write its own telemetry.
+            # Guarded on the conduit root existing so unit tests with a synthetic root don't touch disk.
+            if os.path.isdir(self._conduit_host_dir):
+                os.makedirs(src, exist_ok=True)
+                os.chmod(src, 0o777)
         else:
             src, dst = self._conduit_host_dir, self._conduit_mount
         argv += ["-v", f"{src}:{dst}"]

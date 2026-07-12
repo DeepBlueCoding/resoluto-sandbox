@@ -153,6 +153,18 @@ async def test_launch_without_store_prefix_mounts_whole_conduit(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_launch_precreates_world_writable_prefix_dir(monkeypatch, tmp_path):
+    # The runtime itself creates the (world-writable) scoped mount source, so the contract holds for
+    # EVERY caller (the facade AND the engine's lane substrate), not just those that stage a workspace.
+    rt = _rt(conduit_host_dir=str(tmp_path))
+    _stub_run(monkeypatch, rt, returns={"run": (0, "vm\n", "")})
+    await rt.launch(_spec())  # store_prefix = run/r1/nodes/n1/sbx-0
+    d = tmp_path / "run/r1/nodes/n1/sbx-0"
+    assert d.is_dir()
+    assert (d.stat().st_mode & 0o777) == 0o777  # guest is a different uid → must be writable
+
+
+@pytest.mark.asyncio
 async def test_deny_all_egress_uses_network_none(monkeypatch):
     # The default run has an EMPTY egress allowlist (deny-all). No NIC is needed — the store is a
     # virtiofs bind — so the guest launches with `--network none`: zero CNI, zero host iptables.
