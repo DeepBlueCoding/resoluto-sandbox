@@ -75,12 +75,13 @@ Sandbox(backend="local").run(argv, workspace, output_paths)
    → RunResult(output, exit_code, artifacts)     # no k8s, no S3
 ```
 
-Egress is enforced host-side on the CNI bridge and is default-deny (secure by default):
-a fresh sandbox reaches only DNS + its store, and you opt in to what the workload needs at
-provision time (`RESOLUTO_EGRESS_ALLOW` for specific destinations, `RESOLUTO_EGRESS_PUBLIC_HTTPS=1`
-for all outbound :443). IMDS `169.254.169.254` + RFC1918 private ranges are always rejected, so it
-is immune to in-guest root. The egress canary runs fail-closed before your workload; there is no
-trusted-local bypass.
+Egress is denied by default, and the default is absolute: a run with no allowlist gets **no network
+interface**. The store is a host bind mount, not a network endpoint, so a run works with zero network.
+Opening an allowlist attaches a NIC on the CNI bridge, enforced host-side (immune to in-guest root),
+with IMDS `169.254.169.254` + RFC1918 private ranges always rejected. Grant domains per run with
+`Sandbox.run(egress=[...])`, or set provision-time defaults (`RESOLUTO_EGRESS_ALLOW` for specific
+destinations, `RESOLUTO_EGRESS_PUBLIC_HTTPS=1` for all outbound :443). The egress canary runs
+fail-closed before your workload; there is no trusted-local bypass.
 
 ### What you need
 

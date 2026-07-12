@@ -2,9 +2,17 @@
 
 [![PyPI](https://img.shields.io/pypi/v/resoluto-sandbox)](https://pypi.org/project/resoluto-sandbox/) [![Python](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/) [![License](https://img.shields.io/badge/license-Apache--2.0-green)](https://github.com/DeepBlueCoding/resoluto-sandbox/blob/master/LICENSE) [![CI](https://github.com/DeepBlueCoding/resoluto-sandbox/actions/workflows/ci.yml/badge.svg)](https://github.com/DeepBlueCoding/resoluto-sandbox/actions/workflows/ci.yml) [![Docs](https://img.shields.io/badge/docs-latest-blue)](https://deepbluecoding.github.io/resoluto-sandbox/)
 
-Run a program in isolation and exchange data through a durable store. Your program stays plain — it
-reads `argv`, writes `stdout`/files, exits, and never imports `resoluto.sandbox`. A script that runs
-with `uv run agent.py` on your machine runs unchanged inside the sandbox.
+Run untrusted code — AI-generated, third-party, or adversarial — with a dedicated Linux kernel per
+run. `resoluto-sandbox` executes any program inside a **Kata microVM** (a hardware-virtualized guest
+with its own kernel, the isolation model serverless platforms use to run untrusted multi-tenant code)
+and moves data across the boundary through a durable store. A workload that gets root, forks a miner,
+or reaches for your credentials is confined to a VM with no host filesystem, no host network, and
+nothing you didn't hand it.
+
+The security model is **zero-trust**: the workload is assumed hostile and granted nothing by default.
+Your program stays plain — it reads `argv`, writes `stdout`/files, exits, and never imports
+`resoluto.sandbox`. A script that runs as `uv run agent.py` on your machine runs unchanged inside the
+microVM.
 
 📖 [Documentation](https://deepbluecoding.github.io/resoluto-sandbox/) · 🤖 [llms.txt](https://deepbluecoding.github.io/resoluto-sandbox/llms.txt) for AI agents
 
@@ -155,8 +163,8 @@ sandbox is a microVM next to you or a pod in a cluster, and a network blip can't
 
 ### Architecture — local vs. k8s
 
-Same isolation model on both backends — a Kata microVM with its own guest kernel, default-deny
-egress until you open exactly what you need, and a fail-closed canary that verifies isolation
+Same isolation model on both backends — a Kata microVM with its own guest kernel, egress denied by
+default until you open exactly what you need, and a fail-closed canary that verifies isolation
 *before* your program runs. Only the placement and the Conduit implementation differ:
 
 ```
@@ -174,10 +182,10 @@ LOCAL BACKEND  (single host, no cluster)
 │ ISOLATED: Kata microVM                         │
 │ (own guest kernel)                             │
 │ runner_main -> your argv                       │
-│ egress: host CNI bridge, default-deny          │
-│ (DNS + store only, until opened)               │
+│ egress: NONE by default (no network interface) │
+│ open per-run -> CNI bridge + SNI proxy         │
 └────────────────────────────────────────────────┘
-                    bind mount
+                    bind mount (its own run prefix)
                      │
                      ▼
 LocalConduit (host dir)
@@ -228,42 +236,54 @@ live connection.
 Live output still streams to `stream` (default `sys.stdout`) as it happens during **2. Run** — the
 table above is what's durable, not the only thing you see.
 
-### Security model — layers of defense
+### Security model
 
-A sandbox for untrusted code is locked down at every layer, outside-in:
+Zero-trust: the workload is assumed hostile and granted nothing by default. Every crossing of the
+boundary is explicit.
 
-| Layer | What it does |
+| Guarantee | How |
 |---|---|
-| **1. Network** | Default-deny egress — host CNI bridge (`local`) or `NetworkPolicy` (`k8s`). A fresh sandbox reaches only DNS + its own Conduit; you open exactly the domains a step needs, per `run()`. |
-| **2. Isolation** | The program runs in a Kata microVM — a real, separate guest kernel, not a namespace/cgroup container. In-guest root cannot escape it or see the host's devices. |
-| **3. Verification** | An in-guest egress canary runs fail-closed before your program does — if isolation can't be proven, the run refuses to start rather than silently running unprotected. |
-| **4. Blocked destinations** | Cloud IMDS (`169.254.169.254`) and RFC1918 private ranges are rejected even on an allowlist match — an opened domain can never pivot into the host's private network. |
+| **Own kernel** | Each run is a Kata microVM with its own Linux kernel — hardware-virtualized, not a shared-kernel namespace/cgroup container. A guest-kernel exploit stops at the VM. |
+| **Unprivileged workload** | The program runs as a non-root user with no Linux capabilities and no privilege escalation. The optional docker-in-docker mode is guest-scoped (`privileged-without-host-devices`) and still drops the workload to a non-root user. |
+| **No ambient host access** | No host filesystem, no host devices, no host kernel memory, no host control-plane sockets (containerd/Docker), and its own PID namespace. Host credentials are never forwarded — the guest gets only a scoped, short-lived store token. |
+| **Isolated per run** | Each run is keyed to its own store prefix. On `local` the guest is bind-mounted only that prefix; on `k8s` it holds only a prefix-scoped credential. Runs cannot read each other's state. |
+| **Default-deny egress** | A fresh workload has no network — on `local`, no network interface at all; on `k8s`, a default-deny `NetworkPolicy`. You grant specific domains per run. Cloud metadata (IMDS `169.254.169.254`) and RFC1918 private ranges are refused even on an allowlist match, so an opened domain can't pivot into your network. |
+| **Data in, contained out** | Inputs and outputs cross as data, never as control. The host never executes what the workload produces; output collection is scoped to the paths you declare and rejects path-traversal and symlink escapes. |
+| **No silent downgrade** | VM-grade or nothing. The Kata runtime-class guard is unconditional and egress is fail-closed; a weaker posture is only ever selected explicitly. A fail-closed canary proves isolation is in force *before* your program starts. |
 
-### Egress — DENY by default (secure)
+**Trust assumption.** The boundary is a virtual machine, so the trusted computing base is the
+hypervisor and the host kernel — the same assumption behind any virtualization or serverless
+platform. Keeping the isolation host (KVM, Kata, your kernel) patched is the residual risk, and the
+only one.
 
-A sandbox for untrusted code is **locked down by default**: a fresh sandbox can reach **only DNS and its
-object store** — no internet, no LLM, no registries. It cannot phone home. You **opt in** to exactly
-the **domains** each step needs, **per `run()`** — no re-provision between steps:
+### Egress — deny by default
+
+Untrusted code should not be able to phone home, and by default it can't.
+
+- **`local`** — the default run gets **no network interface**. There is nothing to reach: no internet,
+  no DNS, no LLM, no registries. The store is a host bind mount, not a network endpoint, so a run is
+  fully functional with zero network. Opening an allowlist attaches a NIC on an isolated bridge, routed
+  through a built-in **SNI proxy** that forwards only connections whose TLS SNI matches a domain you
+  listed.
+- **`k8s`** — the pod reaches its S3 store over the network, so it always has an interface, governed by
+  a default-deny **NetworkPolicy**: the store and DNS only, until you open specific domains.
+
+Grant egress per run, by domain:
 
 ```python
-Sandbox(backend="local").run(argv, egress=["api.anthropic.com"])                    # only Anthropic
-Sandbox(backend="local").run(argv, egress=["registry.npmjs.org", "*.openai.com"])   # npm + any OpenAI host
-Sandbox(backend="local").run(argv)                                                  # None → deny all (secure default)
+Sandbox(backend="local").run(argv)                                 # no network (default)
+Sandbox(backend="local").run(argv, egress=["api.anthropic.com"])   # only Anthropic, this run
+Sandbox(backend="local").run(argv, egress=["registry.npmjs.org", "*.openai.com"])
 ```
 
-Under the hood a built-in **SNI egress proxy** reads that step's allowlist live and forwards only
-connections whose TLS **SNI** matches — exact (`api.anthropic.com`) or `*.wildcard` (`*.openai.com`).
-It allows by **domain, not IP** (so it never goes stale for CDN-backed APIs behind rotating IPs), does
-no IP pinning and no CA/MITM, and refuses internal/IMDS destinations even on a match. `None`/`[]` →
-the secure default (DNS + object store only). One-time setup runs the proxy: `scripts/local-backend-up.sh`.
+The allowlist matches by domain (TLS SNI), not IP, so it survives the address rotation of CDN-backed
+APIs; it does no CA/MITM. Private ranges and cloud metadata are refused even on a match. `None`/`[]`
+returns to the no-network default. Open `registry.npmjs.org` and `npm install` reaches the registry and
+nothing else; drop it and the same install fails.
 
-Verified end-to-end, back-to-back with **no re-provision**: `pnpm add is-odd` installs only when
-`registry.npmjs.org` is in that step's `egress`; a real Claude agent answers only when
-`api.anthropic.com` is.
-
-> `run(egress=[...])` is enforced by the `local` backend today. On `k8s`, egress is set per-runtime via
-> a backend-neutral `EgressConfig` (renders to a default-deny `NetworkPolicy`); `public_https=True` is
-> the escape hatch to allow ALL outbound HTTPS for trusted code. Details in
+> `run(egress=[...])` is enforced by the `local` backend. On `k8s`, egress is a per-runtime
+> `EgressConfig` rendered to a default-deny `NetworkPolicy`; `public_https=True` is the explicit escape
+> hatch that allows all outbound HTTPS for trusted code. See
 > [`docs/networking.md`](https://github.com/DeepBlueCoding/resoluto-sandbox/blob/master/docs/networking.md).
 
 ---
@@ -281,7 +301,7 @@ Sandbox(backend="local").run(
     secrets=None,         # dict[str, str | SecretKeyRef] — see "Secrets" below
     output_paths=None,    # glob patterns collected back as artifacts
     stream=None,          # live output sink; None echoes to sys.stdout
-    egress=None,          # domains allowed for THIS run (local); None/[] = deny all but DNS + store
+    egress=None,          # domains allowed for THIS run (local); None/[] = no network at all
 ) -> RunResult
 ```
 

@@ -7,7 +7,7 @@ hide:
 
 # Resoluto Sandbox
 
-<p class="tagline">Run a program in isolation and exchange data through a durable store. Your program stays plain — it reads <code>argv</code>, writes <code>stdout</code>/files, exits, and never imports <code>resoluto.sandbox</code>. A script that runs with <code>uv run agent.py</code> on your machine runs unchanged inside a Kata microVM or a Kubernetes pod.</p>
+<p class="tagline">Run untrusted code — AI-generated, third-party, or adversarial — with a dedicated Linux kernel per run. <code>resoluto-sandbox</code> executes any program inside a Kata microVM and exchanges data through a durable store; the workload is assumed hostile and granted nothing by default. Your program stays plain — it reads <code>argv</code>, writes <code>stdout</code>/files, exits, and never imports <code>resoluto.sandbox</code>, so a script that runs with <code>uv run agent.py</code> on your machine runs unchanged inside the microVM.</p>
 
 [Get started](getting-started.md){ .md-button .md-button--primary }
 [API reference](api/sandbox.md){ .md-button }
@@ -26,9 +26,9 @@ print(result.ok)       # True
 
 <div class="grid cards" markdown>
 
-- :material-shield-lock-outline: **VM-grade isolation**
+- :material-shield-lock-outline: **Zero-trust, VM-grade isolation**
 
-    Every step runs in a Kata microVM — `local` via `nerdctl` on a dedicated containerd, `k8s` as a short-lived pod. Isolation never downgrades; there is no trusted-local bypass.
+    Every run is a Kata microVM with its own Linux kernel. The workload runs unprivileged with no capabilities, no host filesystem/devices/credentials, and no network by default. Isolation never downgrades; there is no trusted-local bypass.
 
 - :material-transit-connection-variant: **Store-mediated rendezvous**
 
