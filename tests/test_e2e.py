@@ -153,7 +153,7 @@ async def test_real_repo_stages_in_and_diff_comes_back_out(tmp_path, runner_imag
         aws_secret_access_key=MINIO_KEY,
     )
     await store.ensure_bucket()
-    # HOST pushes the worktree as the sandbox's single input object
+    # HOST pushes the workspace as the sandbox's single input object
     await put_dir(store, prefix, str(repo))
 
     spec = SandboxLaunchSpec(
@@ -204,7 +204,7 @@ async def test_real_repo_stages_in_and_diff_comes_back_out(tmp_path, runner_imag
 
     logs = [e.data["line"] for e in seen if e.event == "log" and e.kind == "log"]
     assert any("ref: refs/heads/" in ln for ln in logs), "guest never saw .git → repo not staged"
-    assert "ORIGINAL" in logs, "guest never read README → worktree not staged"
+    assert "ORIGINAL" in logs, "guest never read README → workspace not staged"
 
     # HOST fetches the artifact the adversarial guest produced (traversal-safe extract)
     dest = tmp_path / "out"

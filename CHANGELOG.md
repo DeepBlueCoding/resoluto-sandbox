@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0rc5] - 2026-07-12
+
+### Changed
+
+- **`local` backend defaults to `--network none`** — a deny-all run (the default; no `egress=` allowlist)
+  now launches the Kata microVM with no NIC at all. The store is a `virtiofs` bind, so the sandbox is
+  fully functional with zero network. This means the common case needs **no host firewall, no iptables,
+  no SNI-proxy provisioning, and no domains file** — it works out of the box. A non-empty `egress=`
+  allowlist still uses the bridge + SNI-proxy path. `apply_egress([])` no longer writes (or requires)
+  the egress-domains file.
+
 ## [0.1.0rc2] - 2026-07-09
 
 Initial public pre-release of the store-mediated, Kata-isolated execution sandbox.

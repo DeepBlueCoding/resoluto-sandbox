@@ -9,7 +9,7 @@ async def _seed(store):
     await store.put(
         "run/A/nodes/compete/sbx-0/checkpoint.json", b'{"next_step":"gate:project_gate"}'
     )
-    await store.put("run/A/nodes/compete/sbx-0/worktree/inbox/workspace.tar.gz", b"TARBYTES")
+    await store.put("run/A/nodes/compete/sbx-0/workspace/inbox/workspace.tar.gz", b"TARBYTES")
     await store.put("run/A/nodes/compete/sbx-0/steps/a0-agent/result.json", b'{"ok":true}')
     await store.put("run/A/nodes/compete/sbx-0/sandbox_job.json", b'{"run_id":"A"}')
 
@@ -26,7 +26,7 @@ async def test_copy_prefix_mirrors_suffixes_and_bytes(tmp_path):
     assert src == dst  # suffix-for-suffix, same sizes
     # bytes are identical
     assert (
-        await store.get("run/B/nodes/compete/sbx-0/worktree/inbox/workspace.tar.gz") == b"TARBYTES"
+        await store.get("run/B/nodes/compete/sbx-0/workspace/inbox/workspace.tar.gz") == b"TARBYTES"
     )
     assert (
         await store.get("run/B/nodes/compete/sbx-0/checkpoint.json")
@@ -56,7 +56,7 @@ async def test_copy_prefix_exclude_segments_drops_the_subtree(tmp_path):
 
     store = LocalConduit(tmp_path)
     await store.put("run/old/nodes/compete/lane-0/checkpoint.json", b"cp")
-    await store.put("run/old/nodes/compete/lane-0/worktree/f.txt", b"tree")
+    await store.put("run/old/nodes/compete/lane-0/workspace/f.txt", b"tree")
     await store.put("run/old/nodes/compete/lane-0/steps/a1-gate-x/events-000001.jsonl", b"old")
     await store.put("run/old/nodes/compete/lane-0/gate_artifacts/behavioral/plan.json", b"{}")
 

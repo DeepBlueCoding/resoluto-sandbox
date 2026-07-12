@@ -64,20 +64,30 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
         self._sudo = sudo
         # the live SNI allowlist file the persistent egress proxy reads (set per-run, see apply_egress)
         self._egress_domains_file = egress_domains_file
+        # The active egress allowlist for THIS run, set by apply_egress. None = never applied (use the
+        # configured network); [] = deny-all (launch with --network none — no NIC, no host firewall);
+        # non-empty = allowlist (needs the bridge + SNI proxy).
+        self._active_egress: list[str] | None = None
         # Base dir (on real DISK, never /run tmpfs) for a block-backed dind graph: each dind step
         # binds its own subdir at /var/lib/docker so image layers live on disk, keeping RAM free.
         self._dind_graph_dir = dind_graph_dir
         self._graph_dirs: dict[str, str] = {}  # container id → its host graph dir (for cleanup)
 
     async def apply_egress(self, domains: "list[str] | None") -> None:
-        """Set THIS run's SNI egress allowlist by writing the proxy's live domains file — per-step
-        networking with no re-provision. Empty/None = deny all (secure). Idempotent; fail-fast if the
-        proxy file dir is missing (run scripts/local-backend-up.sh once to set it up)."""
+        """Set THIS run's SNI egress allowlist. Deny-all (empty/None) provisions NOTHING host-side —
+        the guest launches with `--network none` (see `launch`), so there is no proxy to feed and no
+        domains file to write. A non-empty allowlist writes the proxy's live domains file (per-run,
+        no re-provision). Idempotent."""
+        self._active_egress = [d.strip() for d in (domains or []) if d.strip()]
         if not self._egress_domains_file:
             return
-        text = ",".join(d.strip() for d in (domains or []) if d.strip())
-        with open(self._egress_domains_file, "w", encoding="utf-8") as f:
-            f.write(text)
+        if self._active_egress:
+            with open(self._egress_domains_file, "w", encoding="utf-8") as f:
+                f.write(",".join(self._active_egress))
+        elif os.path.exists(self._egress_domains_file):
+            # Reset a stale allowlist back to deny; never CREATE the file for deny-all (no NIC needs it).
+            with open(self._egress_domains_file, "w", encoding="utf-8") as f:
+                f.write("")
 
     async def clear_egress(self) -> None:
         """Reset this run's egress allowlist to deny-all (write the domains file empty)."""
@@ -134,7 +144,10 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
         return rc, out.decode(), err.decode()
 
     async def launch(self, spec: SandboxLaunchSpec) -> SandboxHandle:
-        argv: list[str] = ["run", "-d", "--runtime", self._runtime, "--network", self._network]
+        # Deny-all (an applied, empty allowlist) needs no NIC: --network none means zero CNI and zero
+        # host firewall. Only a non-empty allowlist (or a never-applied runtime) uses the bridge.
+        network = "none" if self._active_egress == [] else self._network
+        argv: list[str] = ["run", "-d", "--runtime", self._runtime, "--network", network]
         for k, v in spec.labels.items():
             argv += ["--label", f"{k}={v}"]
         for k, v in spec.env.items():

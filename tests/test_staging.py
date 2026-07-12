@@ -20,7 +20,7 @@ def store(tmp_path):
     return LocalConduit(tmp_path / "store")
 
 
-async def test_put_then_stage_round_trips_a_worktree_including_dotgit(store, tmp_path):
+async def test_put_then_stage_round_trips_a_workspace_including_dotgit(store, tmp_path):
     src = tmp_path / "src"
     (src / ".git").mkdir(parents=True)
     (src / ".git" / "HEAD").write_text("ref: refs/heads/main\n")

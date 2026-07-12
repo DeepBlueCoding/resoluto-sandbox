@@ -138,6 +138,42 @@ def _stub_run_seq_none(monkeypatch, rt):
 
 
 @pytest.mark.asyncio
+async def test_deny_all_egress_uses_network_none(monkeypatch):
+    # The default run has an EMPTY egress allowlist (deny-all). No NIC is needed — the store is a
+    # virtiofs bind — so the guest launches with `--network none`: zero CNI, zero host iptables.
+    rt = _rt()  # constructed with a bridge network, but deny-all overrides it
+    await rt.apply_egress([])
+    calls = _stub_run(monkeypatch, rt, returns={"run": (0, "vm\n", "")})
+    await rt.launch(_spec())
+    argv = calls[0]
+    assert argv[argv.index("--network") + 1] == "none"
+
+
+@pytest.mark.asyncio
+async def test_nonempty_egress_uses_bridge_network_and_writes_domains(monkeypatch, tmp_path):
+    # A non-empty allowlist DOES need a NIC + the SNI proxy — so the bridge network is used and the
+    # live domains file is written for the proxy to read.
+    dfile = tmp_path / "egress-domains"
+    rt = _rt(egress_domains_file=str(dfile))
+    await rt.apply_egress(["api.anthropic.com", "pypi.org"])
+    calls = _stub_run(monkeypatch, rt, returns={"run": (0, "vm\n", "")})
+    await rt.launch(_spec())
+    argv = calls[0]
+    assert argv[argv.index("--network") + 1] == "bridge"
+    assert dfile.read_text() == "api.anthropic.com,pypi.org"
+
+
+@pytest.mark.asyncio
+async def test_apply_deny_all_writes_no_domains_file(tmp_path):
+    # Deny-all provisions NOTHING host-side: apply_egress([]) must not touch the domains file, even
+    # when its directory is unwritable/missing (the out-of-the-box, no-host-modification path).
+    missing = tmp_path / "does-not-exist" / "egress-domains"
+    rt = _rt(egress_domains_file=str(missing))
+    await rt.apply_egress([])  # must not raise
+    assert not missing.exists()
+
+
+@pytest.mark.asyncio
 async def test_status_maps_exit_code(monkeypatch):
     from resoluto.sandbox.contracts import SandboxHandle
 
