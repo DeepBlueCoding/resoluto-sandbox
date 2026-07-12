@@ -86,7 +86,12 @@ async def test_launch_builds_kata_run_argv(monkeypatch):
     assert argv[argv.index("--network") + 1] == "bridge"
     assert "--label" in argv and "resoluto.run_id=r1" in argv
     assert "-e" in argv and "RESOLUTO_STORE_KIND=localfs" in argv and "K=V" in argv
-    assert argv[argv.index("-v") + 1] == "/host/store:/conduit"
+    # The conduit mount is SCOPED to this run's prefix — the guest sees only its own prefix under
+    # /conduit, never sibling runs/lanes sharing the same conduit root.
+    assert (
+        argv[argv.index("-v") + 1]
+        == "/host/store/run/r1/nodes/n1/sbx-0:/conduit/run/r1/nodes/n1/sbx-0"
+    )
     img_idx = argv.index("img:0.1.0")
     assert argv[img_idx + 1 :] == ["python", "-m", "resoluto.sandbox.runner_main"]
     # plain step: no inner dockerd, default uid, no dind graph
@@ -135,6 +140,16 @@ def _stub_run_seq_none(monkeypatch, rt):
 
     monkeypatch.setattr(rt, "_run", fake_run)
     return calls
+
+
+@pytest.mark.asyncio
+async def test_launch_without_store_prefix_mounts_whole_conduit(monkeypatch):
+    # With no store_prefix there is nothing to scope to — fall back to mounting the conduit root.
+    rt = _rt()
+    calls = _stub_run(monkeypatch, rt, returns={"run": (0, "vm\n", "")})
+    await rt.launch(_spec(store_prefix=""))
+    argv = calls[0]
+    assert argv[argv.index("-v") + 1] == "/host/store:/conduit"
 
 
 @pytest.mark.asyncio

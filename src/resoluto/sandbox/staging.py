@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import glob
 import io
+import shutil
 import tarfile
+import tempfile
 from pathlib import Path
 
 from resoluto.sandbox.contracts import Conduit
@@ -126,12 +129,49 @@ async def collect_outputs(
     return key
 
 
-async def fetch_outputs(store: Conduit, prefix: str, dest_dir: str) -> list[str]:
-    """Extract every output archive under `outbox/` into `dest_dir`; returns the keys fetched."""
+def _extract_declared(data: bytes, dest: Path, allowed_paths: list[str]) -> None:
+    """Extract an archive but materialize into `dest` ONLY the members matching `allowed_paths`
+    globs. The outbox archive is guest-authored and the guest is untrusted (it has RW access to its
+    conduit prefix), so it can inject members the caller never declared — a poisoned `.git/config`
+    (deferred host RCE when the operator runs `git`), an executable, a dotfile. Declared-output
+    scoping is the host's containment boundary; `output_paths` is not merely a convenience. Extraction
+    goes through a throwaway temp dir (still traversal-safe via `_extract`'s data filter), then only
+    glob-matched files are copied out, so nothing undeclared reaches the caller's workspace."""
+    dest.mkdir(parents=True, exist_ok=True)
+    dest_resolved = dest.resolve()
+    with tempfile.TemporaryDirectory() as tmp:
+        _extract(data, Path(tmp))
+        for pattern in allowed_paths:
+            for src in glob.glob(str(Path(tmp) / pattern), recursive=True):
+                srcp = Path(src)
+                if not srcp.is_file():
+                    continue
+                target = dest / srcp.relative_to(tmp)
+                try:
+                    if not target.resolve().is_relative_to(dest_resolved):
+                        continue
+                except OSError:
+                    continue
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(srcp, target)
+
+
+async def fetch_outputs(
+    store: Conduit, prefix: str, dest_dir: str, allowed_paths: list[str] | None = None
+) -> list[str]:
+    """Extract every output archive under `outbox/` into `dest_dir`; returns the keys fetched.
+
+    `allowed_paths` (the caller's declared `output_paths`) scopes what is materialized: only members
+    matching those globs land in `dest_dir`, so an untrusted guest cannot smuggle undeclared files
+    into the caller's workspace. `None` extracts everything (low-level/legacy use)."""
     dest = Path(dest_dir)
     fetched: list[str] = []
     for info in await store.list_prefix(f"{prefix.rstrip('/')}/{OUTBOX}"):
         if info.key.endswith(_ARCHIVE_SUFFIXES):
-            _extract(await store.get(info.key), dest)
+            data = await store.get(info.key)
+            if allowed_paths is None:
+                _extract(data, dest)
+            else:
+                _extract_declared(data, dest, allowed_paths)
             fetched.append(info.key)
     return fetched

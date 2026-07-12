@@ -34,7 +34,7 @@ def _patch_local_substrate(monkeypatch, *, on_event_payload=None, captured=None,
     async def fake_put_dir(store, prefix, src):
         return []
 
-    async def fake_fetch_outputs(store, prefix, dest):
+    async def fake_fetch_outputs(store, prefix, dest, allowed_paths=None):
         return []
 
     monkeypatch.setattr(driver, "drive_node", fake_drive_node)

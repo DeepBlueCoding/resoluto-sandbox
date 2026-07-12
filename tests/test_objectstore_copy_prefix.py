@@ -49,6 +49,39 @@ async def test_copy_prefix_is_idempotent(tmp_path):
     assert len(await store.list_prefix("run/B/nodes")) == 4  # no duplication
 
 
+async def test_s3_copy_prefix_does_not_bleed_into_sibling_prefix(monkeypatch):
+    """S3 lists by STRING prefix, so `run/A` also matches `run/AB` — copy_prefix must scope to the
+    real subtree (trailing slash), or a resume would drag a sibling run's objects along."""
+    from contextlib import asynccontextmanager
+
+    from resoluto.sandbox.conduit.s3 import S3Conduit
+    from resoluto.sandbox.contracts import ObjectInfo
+
+    universe = ["run/A/x", "run/A/y", "run/AB/z"]  # run/AB is a SIBLING run, must NOT be copied
+    c = S3Conduit("bucket")
+
+    async def fake_list(prefix):
+        return [ObjectInfo(key=k, size=1) for k in universe if k.startswith(prefix)]
+
+    copied: list[str] = []
+
+    class FakeClient:
+        async def copy_object(self, **kw):
+            copied.append(kw["Key"])
+
+    @asynccontextmanager
+    async def fake_io():
+        yield FakeClient()
+
+    monkeypatch.setattr(c, "list_prefix", fake_list)
+    monkeypatch.setattr(c, "_io", fake_io)
+
+    n = await c.copy_prefix("run/A", "run/B")
+
+    assert n == 2
+    assert set(copied) == {"run/B/x", "run/B/y"}  # sibling run/AB/z excluded
+
+
 async def test_copy_prefix_exclude_segments_drops_the_subtree(tmp_path):
     """A resumed run must not inherit the prior run's step chunk indexes — the telemetry
     reader would mistake the re-run pod for substrate-silent (2026-07-11 resume incident)."""

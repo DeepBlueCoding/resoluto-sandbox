@@ -152,7 +152,17 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
             argv += ["--label", f"{k}={v}"]
         for k, v in spec.env.items():
             argv += ["-e", f"{k}={v}"]
-        argv += ["-v", f"{self._conduit_host_dir}:{self._conduit_mount}"]
+        # Scope the conduit mount to THIS run's prefix: the guest sees only `<mount>/<prefix>`, never
+        # sibling runs/lanes that share the same conduit root (the store is the guest→host seam, so an
+        # over-broad mount = cross-run read + write). The host still keys its own reads on full prefixes
+        # against conduit_host_dir, so resume/tailing/fetch are unaffected. The substrate pre-creates
+        # the (world-writable) prefix dir before launch; absent a prefix, mount the whole conduit.
+        if spec.store_prefix:
+            src = f"{self._conduit_host_dir}/{spec.store_prefix}"
+            dst = f"{self._conduit_mount}/{spec.store_prefix}"
+        else:
+            src, dst = self._conduit_host_dir, self._conduit_mount
+        argv += ["-v", f"{src}:{dst}"]
         res = spec.resources
         argv += ["--memory", str(res.memory_bytes), "--memory-swap", str(res.memory_bytes)]
         argv += ["--cpus", str(res.cpu_cores)]

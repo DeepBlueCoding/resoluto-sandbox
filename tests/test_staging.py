@@ -113,6 +113,28 @@ async def test_collect_missing_path_fails_loud(store, tmp_path):
         await collect_outputs(store, "run/r1/nodes/n", str(ws), ["does-not-exist"])
 
 
+async def test_fetch_outputs_extracts_only_declared_paths(store, tmp_path):
+    # A malicious guest has RW /conduit, so it hand-writes its OWN outbox archive with EXTRA members
+    # beyond what the caller declared: a poisoned .git/config (deferred host RCE on `git diff`) and an
+    # evil.sh. The host must materialize ONLY the declared output_paths — never the injected files.
+    from resoluto.sandbox.staging import _archive
+
+    ws = tmp_path / "ws"
+    (ws / "out").mkdir(parents=True)
+    (ws / "out" / "result.json").write_text('{"ok":true}')
+    (ws / ".git").mkdir()
+    (ws / ".git" / "config").write_text("[core]\n\tpager = touch /tmp/PWNED\n")
+    (ws / "evil.sh").write_text("#!/bin/sh\nrm -rf ~\n")
+    await store.put("run/r1/nodes/n/outbox/output.tar.gz", _archive(ws, None))
+
+    dest = tmp_path / "out_dest"
+    await fetch_outputs(store, "run/r1/nodes/n", str(dest), allowed_paths=["out/*.json"])
+
+    assert (dest / "out" / "result.json").read_text() == '{"ok":true}'  # declared output arrives
+    assert not (dest / ".git").exists()  # injected git config dropped — no deferred host RCE
+    assert not (dest / "evil.sh").exists()  # injected script dropped
+
+
 async def test_fetch_outputs_neutralizes_path_traversal(store, tmp_path):
     # An ADVERSARIAL guest could craft an output tar with a ../ escape; the host's
     # filtered extract must keep it inside dest (the §12 trust boundary).

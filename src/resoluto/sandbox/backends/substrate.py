@@ -135,6 +135,13 @@ class SubstrateBackend(Backend):
         node_id = "run"
         prefix = f"run/{run_id}"
 
+        # Pre-create this run's (world-writable) conduit prefix so the runtime's PREFIX-SCOPED bind
+        # mount has an existing source even when no workspace is staged. Without it, a workspace=None
+        # run hands nerdctl a missing mount source, nerdctl auto-creates it root-owned, and the guest
+        # (a different uid) can no longer write its own telemetry. `.keep` at the prefix root is
+        # invisible to inbox/outbox staging and the events tail (telemetry filters by chunk pattern).
+        await self._conduit.put(f"{prefix}/.keep", b"")
+
         if workspace:
             await put_dir(self._conduit, prefix, workspace)
 
@@ -184,7 +191,9 @@ class SubstrateBackend(Backend):
         artifacts: list[str] = []
         node_result: dict | None = None
         if output_paths and workspace:
-            await fetch_outputs(self._conduit, prefix, str(Path(workspace)))
+            await fetch_outputs(
+                self._conduit, prefix, str(Path(workspace)), allowed_paths=list(output_paths)
+            )
             artifacts = _collect(Path(workspace), output_paths)
             node_result = read_result_json(Path(workspace))
 

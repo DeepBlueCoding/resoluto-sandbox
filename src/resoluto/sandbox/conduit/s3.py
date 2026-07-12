@@ -195,7 +195,9 @@ class S3Conduit(Conduit):
         self, src_prefix: str, dst_prefix: str, *, exclude_segments: tuple[str, ...] = ()
     ) -> int:
         src, dst = src_prefix.rstrip("/"), dst_prefix.rstrip("/")
-        objs = await self.list_prefix(src)
+        # List the subtree with a trailing slash: S3 matches by raw string prefix, so a bare `src`
+        # ("run/A") also matches a SIBLING run ("run/AB/…") and a resume would drag it along.
+        objs = await self.list_prefix(src + "/")
         n = 0
         async with self._io() as c:
             for o in objs:

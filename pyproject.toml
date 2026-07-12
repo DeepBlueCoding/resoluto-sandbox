@@ -1,6 +1,6 @@
 [project]
 name = "resoluto-sandbox"
-version = "0.1.0rc5"
+version = "0.1.0rc6"
 description = "Resoluto sandbox: store-mediated, Kata-isolated, cloud-agnostic execution substrate"
 readme = "README.md"
 requires-python = ">=3.12"

@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0rc6] - 2026-07-12
+
+### Security
+
+Three findings from an internal red-team of the guest→host and cross-run boundaries:
+
+- **Prefix-scoped conduit mount (`local`)** — the Kata guest now bind-mounts only its **own run
+  prefix** (`<conduit>/<prefix>:/conduit/<prefix>`) instead of the whole conduit root. A guest can no
+  longer read or write sibling runs/lanes that share a conduit root (cross-run credential/artifact
+  read + prefix poisoning). The substrate pre-creates the world-writable prefix via a `.keep` sentinel
+  so a `workspace=None` run still has a writable mount source. Host-side reads/resume are unaffected
+  (they key on full prefixes against the conduit root).
+- **Declared-output containment (host ingest)** — `fetch_outputs` now materializes **only the members
+  matching the caller's declared `output_paths`** from the guest-authored outbox archive. A malicious
+  guest (which has RW on its conduit prefix) can no longer smuggle undeclared files — e.g. a poisoned
+  `.git/config` that yields deferred host code-exec on the operator's next `git` — into the caller's
+  workspace. Extraction stays traversal-safe (`filter="data"`).
+- **`copy_prefix` subtree scoping (`S3`)** — S3 lists by raw string prefix, so `run/A` also matched a
+  sibling `run/AB/…`; `copy_prefix` now scopes to the real subtree (trailing slash), so a resume never
+  drags a sibling run's objects along.
+
 ## [0.1.0rc5] - 2026-07-12
 
 ### Changed
