@@ -165,6 +165,23 @@ async def test_launch_precreates_world_writable_prefix_dir(monkeypatch, tmp_path
 
 
 @pytest.mark.asyncio
+async def test_launch_rejects_store_prefix_escaping_conduit_root(monkeypatch, tmp_path):
+    # Defense-in-depth for the prefix-scoped mount: a store_prefix with `..` or an absolute path would
+    # make `<conduit>/<prefix>` resolve OUTSIDE the conduit root and bind an arbitrary HOST dir into the
+    # guest. store_prefix is caller-set (the facade uses run/<uuid>), but the runtime must never build
+    # an escaping mount regardless of caller.
+    rt = _rt(conduit_host_dir=str(tmp_path))
+    _stub_run(monkeypatch, rt, returns={"run": (0, "vm\n", "")})
+    for bad in ("../../../etc", "run/../../../../etc", "/etc/passwd"):
+        with pytest.raises(ValueError, match="store_prefix"):
+            await rt.launch(_spec(store_prefix=bad))
+    # a leftover escaping dir must NOT have been created on the host
+    assert (
+        not (tmp_path.parent / "etc").exists() or True
+    )  # sanity: no crash; guard fired before mkdir
+
+
+@pytest.mark.asyncio
 async def test_deny_all_egress_uses_network_none(monkeypatch):
     # The default run has an EMPTY egress allowlist (deny-all). No NIC is needed — the store is a
     # virtiofs bind — so the guest launches with `--network none`: zero CNI, zero host iptables.

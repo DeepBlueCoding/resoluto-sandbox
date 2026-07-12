@@ -158,6 +158,16 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
         # against conduit_host_dir, so resume/tailing/fetch are unaffected. The substrate pre-creates
         # the (world-writable) prefix dir before launch; absent a prefix, mount the whole conduit.
         if spec.store_prefix:
+            # Defense-in-depth: never build an escaping mount. A store_prefix with `..` or an absolute
+            # component would make `<conduit>/<prefix>` resolve OUTSIDE the conduit root and bind an
+            # arbitrary HOST directory into the guest. Reject before any path/makedirs.
+            from pathlib import PurePosixPath
+
+            _pp = PurePosixPath(spec.store_prefix)
+            if _pp.is_absolute() or ".." in _pp.parts:
+                raise ValueError(
+                    f"unsafe store_prefix escapes the conduit root: {spec.store_prefix!r}"
+                )
             src = f"{self._conduit_host_dir}/{spec.store_prefix}"
             dst = f"{self._conduit_mount}/{spec.store_prefix}"
             # Self-contained: create the (world-writable) mount source HERE, not in a caller, so the

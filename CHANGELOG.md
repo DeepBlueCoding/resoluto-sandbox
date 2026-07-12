@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0rc8] - 2026-07-12
+
+### Security
+
+- **`store_prefix` mount-escape guard** — `KataNerdctlSandboxRuntime.launch` now rejects a
+  `store_prefix` containing `..` or an absolute component before building the prefix-scoped conduit
+  mount. `store_prefix` is caller-set (the facade uses `run/<uuid>`), but the runtime must never
+  construct `<conduit>/<prefix>` that resolves outside the conduit root and binds an arbitrary host
+  directory into the guest. Defense-in-depth for the scoped mount introduced in rc6/rc7.
+
 ## [0.1.0rc7] - 2026-07-12
 
 ### Security
