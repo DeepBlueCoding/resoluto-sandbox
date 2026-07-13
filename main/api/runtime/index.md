@@ -313,6 +313,8 @@ KataNerdctlSandboxRuntime(
     nerdctl="nerdctl",
     sudo=False,
     egress_domains_file=None,
+    net_subnet="10.222.0.0/24",
+    egress_proxy_port=3129,
     dind_graph_dir="/var/lib/resoluto-local/dind-graph",
 )
 ```
@@ -338,6 +340,8 @@ def __init__(
     nerdctl: str = "nerdctl",
     sudo: bool = False,
     egress_domains_file: str | None = None,
+    net_subnet: str = "10.222.0.0/24",
+    egress_proxy_port: int = 3129,
     dind_graph_dir: str = "/var/lib/resoluto-local/dind-graph",
 ) -> None:
     check_runtime_class_guard(runtime)
@@ -351,8 +355,17 @@ def __init__(
     self._network = network
     self._nerdctl = nerdctl
     self._sudo = sudo
-    # the live SNI allowlist file the persistent egress proxy reads (set per-run, see apply_egress)
-    self._egress_domains_file = egress_domains_file
+    # Runtime-managed per-run egress (e2b model): a non-empty allowlist starts a SNI proxy + scoped
+    # iptables HERE, torn down when the run ends — no setup script, nothing persistent. The SNI
+    # allowlist file the proxy reads live; defaults to a per-process temp path we can write nonroot.
+    self._egress_domains_file = egress_domains_file or os.path.join(
+        tempfile.gettempdir(), f"resoluto-egress-{os.getpid()}.domains"
+    )
+    self._net_subnet = net_subnet
+    self._egress_proxy_port = egress_proxy_port
+    self._egress_chain = "RESOLUTO-SANDBOX-EGRESS"
+    self._egress_proxy_proc: "asyncio.subprocess.Process | None" = None
+    self._egress_active = False
     # The active egress allowlist for THIS run, set by apply_egress. None = never applied (use the
     # configured network); [] = deny-all (launch with --network none — no NIC, no host firewall);
     # non-empty = allowlist (needs the bridge + SNI proxy).
@@ -369,26 +382,21 @@ def __init__(
 apply_egress(domains)
 ```
 
-Set THIS run's SNI egress allowlist. Deny-all (empty/None) provisions NOTHING host-side — the guest launches with `--network none` (see `launch`), so there is no proxy to feed and no domains file to write. A non-empty allowlist writes the proxy's live domains file (per-run, no re-provision). Idempotent.
+Set THIS run's egress. Deny-all (empty/None) provisions NOTHING host-side — the guest launches `--network none` (no NIC, no firewall). A non-empty allowlist stands up the egress enforcement HERE, per run: a SNI proxy + iptables scoped to the sandbox bridge subnet. No setup script, nothing persistent — `clear_egress`/`aclose` tears it all down.
 
 Source code in `src/resoluto/sandbox/runtime/kata_nerdctl.py`
 
 ```python
 async def apply_egress(self, domains: "list[str] | None") -> None:
-    """Set THIS run's SNI egress allowlist. Deny-all (empty/None) provisions NOTHING host-side —
-    the guest launches with `--network none` (see `launch`), so there is no proxy to feed and no
-    domains file to write. A non-empty allowlist writes the proxy's live domains file (per-run,
-    no re-provision). Idempotent."""
+    """Set THIS run's egress. Deny-all (empty/None) provisions NOTHING host-side — the guest
+    launches `--network none` (no NIC, no firewall). A non-empty allowlist stands up the egress
+    enforcement HERE, per run: a SNI proxy + iptables scoped to the sandbox bridge subnet. No setup
+    script, nothing persistent — `clear_egress`/`aclose` tears it all down."""
     self._active_egress = [d.strip() for d in (domains or []) if d.strip()]
-    if not self._egress_domains_file:
-        return
     if self._active_egress:
-        with open(self._egress_domains_file, "w", encoding="utf-8") as f:
-            f.write(",".join(self._active_egress))
-    elif os.path.exists(self._egress_domains_file):
-        # Reset a stale allowlist back to deny; never CREATE the file for deny-all (no NIC needs it).
-        with open(self._egress_domains_file, "w", encoding="utf-8") as f:
-            f.write("")
+        await self._egress_apply(self._active_egress)
+    else:
+        await self._egress_teardown()
 ```
 
 ### clear_egress
@@ -397,14 +405,31 @@ async def apply_egress(self, domains: "list[str] | None") -> None:
 clear_egress()
 ```
 
-Reset this run's egress allowlist to deny-all (write the domains file empty).
+Tear down this run's egress enforcement (proxy + iptables + domains file). Deny-all.
 
 Source code in `src/resoluto/sandbox/runtime/kata_nerdctl.py`
 
 ```python
 async def clear_egress(self) -> None:
-    """Reset this run's egress allowlist to deny-all (write the domains file empty)."""
-    await self.apply_egress([])
+    """Tear down this run's egress enforcement (proxy + iptables + domains file). Deny-all."""
+    self._active_egress = []
+    await self._egress_teardown()
+```
+
+### aclose
+
+```python
+aclose()
+```
+
+Best-effort teardown of any lingering egress state when the runtime is closed.
+
+Source code in `src/resoluto/sandbox/runtime/kata_nerdctl.py`
+
+```python
+async def aclose(self) -> None:
+    """Best-effort teardown of any lingering egress state when the runtime is closed."""
+    await self._egress_teardown()
 ```
 
 ### from_env
@@ -439,9 +464,9 @@ def from_env(
         network=os.environ.get("RESOLUTO_LOCAL_NETWORK", "resoluto-local"),
         nerdctl=os.environ.get("RESOLUTO_LOCAL_NERDCTL", "/opt/resoluto-local/bin/nerdctl"),
         sudo=_resolve_sudo(),
-        egress_domains_file=os.environ.get(
-            "RESOLUTO_LOCAL_EGRESS_DOMAINS_FILE", "/run/resoluto-local/egress-domains"
-        ),
+        egress_domains_file=os.environ.get("RESOLUTO_LOCAL_EGRESS_DOMAINS_FILE"),
+        net_subnet=os.environ.get("RESOLUTO_LOCAL_NET_SUBNET", "10.222.0.0/24"),
+        egress_proxy_port=int(os.environ.get("RESOLUTO_EGRESS_PROXY_PORT", "3129")),
         dind_graph_dir=os.environ.get(
             "RESOLUTO_LOCAL_DIND_GRAPH_DIR", "/var/lib/resoluto-local/dind-graph"
         ),

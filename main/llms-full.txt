@@ -429,7 +429,7 @@ Sandbox(backend="local").run(argv, workspace, output_paths)
    → RunResult(output, exit_code, artifacts)     # no k8s, no S3
 ```
 
-Egress is denied by default, and the default is absolute: a run with no allowlist gets **no network interface**. The store is a host bind mount, not a network endpoint, so a run works with zero network. Opening an allowlist attaches a NIC on the CNI bridge, enforced host-side (immune to in-guest root), with IMDS `169.254.169.254` + RFC1918 private ranges always rejected. Grant domains per run with `Sandbox.run(egress=[...])`, or set provision-time defaults (`RESOLUTO_EGRESS_ALLOW` for specific destinations, `RESOLUTO_EGRESS_PUBLIC_HTTPS=1` for all outbound :443). The egress canary runs fail-closed before your workload; there is no trusted-local bypass.
+Egress is denied by default, and the default is absolute: a run with no allowlist gets **no network interface**. The store is a host bind mount, not a network endpoint, so a run works with zero network. Opening an allowlist attaches a NIC on the CNI bridge, enforced host-side (immune to in-guest root), with IMDS `169.254.169.254` + RFC1918 private ranges always rejected. Grant domains per run with `Sandbox.run(egress=[...])` — the runtime starts a per-run SNI proxy + iptables for that run and tears them down when it ends (no script, nothing persistent). The egress canary runs fail-closed before your workload; there is no trusted-local bypass.
 
 ### What you need
 
@@ -674,13 +674,13 @@ No facade changes are needed — `Sandbox` holds any `Backend` instance. `Condui
 
 The local backend runs the program in a Kata microVM launched via `nerdctl` against a standalone containerd on this host — full Kata isolation, on a single host with no cluster. **Egress is denied by default, and the default is absolute: a run with no allowlist gets no network interface at all.** The store is a host bind mount rather than a network endpoint, so a run is fully functional with zero network — there is nothing for the workload to reach.
 
-Opening an allowlist attaches a NIC on an isolated CNI bridge, where egress is enforced **host-side** (immune to in-guest root): a built-in SNI proxy forwards only TLS connections whose SNI matches an allowed domain, and IMDS `169.254.169.254` + RFC1918 private ranges are always rejected. The per-run knob is `Sandbox.run(egress=["api.anthropic.com"])` (see below); the provision-time env knobs (`RESOLUTO_EGRESS_ALLOW`, `RESOLUTO_EGRESS_PUBLIC_HTTPS=1`) set the firewall/proxy defaults and drive the setup canary. The egress canary always runs fail-closed before any workload, the Kata runtime-class guard is unconditional, and host AWS creds are never forwarded (a scoped store token only).
+Opening an allowlist attaches a NIC on an isolated CNI bridge, where egress is enforced **host-side** (immune to in-guest root): a built-in SNI proxy forwards only TLS connections whose SNI matches an allowed domain, and IMDS `169.254.169.254` + RFC1918 private ranges are always rejected. The per-run knob is `Sandbox.run(egress=["api.anthropic.com"])` — the runtime stands up the proxy + iptables for that run and tears them down when it ends, so there is no setup step and nothing persistent. The egress canary always runs fail-closed before any workload, the Kata runtime-class guard is unconditional, and host AWS creds are never forwarded (a scoped store token only).
 
-Provision the local backend with `scripts/local-backend-up.sh` (ends with a green Kata-microVM canary). To open egress, set the env before running it, e.g.:
+Provision the local backend once with `scripts/local-backend-up.sh` (Kata + a dedicated containerd + the CNI bridge + the image; ends with a green no-network Kata-microVM canary). It sets up **no** egress firewall — egress is granted per run:
 
-```bash
-RESOLUTO_EGRESS_ALLOW=api.anthropic.com,registry.npmjs.org scripts/local-backend-up.sh   # least privilege
-RESOLUTO_EGRESS_PUBLIC_HTTPS=1 scripts/local-backend-up.sh             # escape hatch: all :443
+```python
+Sandbox(backend="local").run(argv)                                 # no network (default)
+Sandbox(backend="local").run(argv, egress=["api.anthropic.com"])   # only Anthropic, for this run
 ```
 
 Use `backend="local"` for single-host development. For cluster-scale placement, use `backend="k8s"`.
@@ -784,9 +784,7 @@ Sandbox(backend="local").run(argv, egress=["registry.npmjs.org"])   # this step 
 Sandbox(backend="local").run(argv)                                  # egress=None → no network at all (secure default)
 ```
 
-Each `run()` sets that step's allowed domains on the fly and clears them after — **no re-provision**. Under the hood the built-in **SNI proxy** (`resoluto.sandbox.egress_proxy`) reads the step's allowlist LIVE (from a file each run rewrites) and splices the (still-encrypted) stream to the original destination ONLY if the TLS SNI matches — exact (`api.anthropic.com`) or `*.wildcard` (`*.openai.com`). No IP pinning, no CA/MITM, works under any CNI; it refuses internal/IMDS destinations even on an SNI match (no SSRF). The mechanism is `KataNerdctlSandboxRuntime.apply_egress()` writing the proxy's live allowlist file; `SubstrateBackend.run` applies it before the sandbox and clears it after.
-
-One-time setup runs the proxy + the static `:443` redirect: `scripts/local-backend-up.sh` (it also seeds the file from `RESOLUTO_EGRESS_DOMAINS` if set — a default, overridden per run).
+Each `run()` grants that step's domains on the fly and revokes them after — **runtime-managed, nothing persistent**. `KataNerdctlSandboxRuntime.apply_egress()` starts a per-run **SNI proxy** (`resoluto.sandbox.egress_proxy`) and programs iptables scoped to the sandbox bridge (a `:443` REDIRECT to the proxy, allow DNS, deny IMDS/RFC1918, default-deny); `clear_egress()` tears both down when the run ends. The proxy splices the (still-encrypted) stream to the original destination ONLY if the TLS SNI matches — exact (`api.anthropic.com`) or `*.wildcard` (`*.openai.com`); no CA/MITM; it refuses internal/IMDS destinations even on an SNI match (no SSRF). There is **no setup script and nothing persistent** — the firewall + proxy exist only for the lifetime of the run (the e2b model: the orchestrator programs per-sandbox egress, not the operator).
 
 Verified end-to-end, back-to-back with NO re-provision: `run(egress=["registry.npmjs.org"])` → a sandbox's `pnpm add is-odd` installs from the registry; `run(egress=["api.anthropic.com"])` → the same install is blocked (ECONNRESET) while a real Claude agent answers. A URL *path* still can't be enforced at this layer (that needs a MITM proxy). DNS and the CIDR FORWARD chain handle everything else; `allow=[...]` (below) remains for non-443 ports / explicit CIDRs. NOTE: `egress=` is applied by the `local` backend today; on `k8s` use `EgressConfig` (per-runtime).
 
@@ -807,20 +805,20 @@ export RESOLUTO_EGRESS_ALLOW_PORT=22                        # default 443
 export RESOLUTO_EGRESS_PUBLIC_HTTPS=1                       # opt IN to all :443 (default 0 = deny)
 ```
 
-- **local**: `scripts/local-backend-up.sh` renders the firewall from these env knobs via the SAME renderer (`python -m resoluto.sandbox.egress local-iptables`). Set them and re-run the script; the Kata canary re-verifies enforcement.
+- **local**: egress is runtime-managed per run — pass `Sandbox.run(egress=["api.anthropic.com"])`. The runtime renders the firewall via the SAME renderer (`resoluto.sandbox.egress.local_egress_iptables`) and starts the SNI proxy for that run, then tears both down. No env knobs, no script, nothing persistent.
 - **k8s**: pass an `EgressConfig` to `K8sSandboxRuntime(egress=...)`, or `EgressConfig.from_store_env()` (which reads the same env). `egress=None` = opt OUT of isolation entirely (no NetworkPolicy, unrestricted egress) — distinct from `EgressConfig()`, which denies by default.
 
 There is no per-rule *blacklist* primitive (the model is default-deny; IMDS/RFC1918 are hardcoded denies). "Blacklist a host" = enumerate the hosts you DO want in `allow=[...]` and leave `public_https=False`. To add a NEW backend, write a renderer that maps `EgressConfig` to its mechanism (see `src/resoluto/sandbox/egress.py`).
 
 ## What you can manage
 
-| Knob             | Local backend                                                                                                                                              | k8s backend                                                                                                                                                                                     |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Egress allowlist | no NIC by default; opening an allowlist attaches a CNI bridge with host-side iptables (DNS + store + opt-in `allow`/`public_https`; REJECT IMDS + RFC1918) | `EgressConfig.from_store_env()` → default-deny NetworkPolicy (store + DNS always; opt-in `allow`/public-443; IMDS denied), enforced by the cluster's NetworkPolicy controller (k3s kube-router) |
-| IMDS block       | always on (host-side REJECT of `169.254.169.254`)                                                                                                          | always on when `EgressConfig` is passed                                                                                                                                                         |
-| Egress canary    | on by default, fail-closed                                                                                                                                 | on by default, fail-closed                                                                                                                                                                      |
-| Runtime class    | Kata (pinned, unconditional)                                                                                                                               | Kata (pinned, unconditional)                                                                                                                                                                    |
-| Kubecontext      | not applicable                                                                                                                                             | `RESOLUTO_SANDBOX_KUBECONTEXT` (fails closed if unset)                                                                                                                                          |
+| Knob             | Local backend                                                                                                                                                                                                                                       | k8s backend                                                                                                                                                                                     |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Egress allowlist | no NIC by default; a per-run `egress=[...]` makes the runtime attach a CNI bridge + start a SNI proxy + program host-side iptables (`:443`→proxy by SNI, DNS, REJECT IMDS+RFC1918), all torn down when the run ends — no script, nothing persistent | `EgressConfig.from_store_env()` → default-deny NetworkPolicy (store + DNS always; opt-in `allow`/public-443; IMDS denied), enforced by the cluster's NetworkPolicy controller (k3s kube-router) |
+| IMDS block       | always on (host-side REJECT of `169.254.169.254`)                                                                                                                                                                                                   | always on when `EgressConfig` is passed                                                                                                                                                         |
+| Egress canary    | on by default, fail-closed                                                                                                                                                                                                                          | on by default, fail-closed                                                                                                                                                                      |
+| Runtime class    | Kata (pinned, unconditional)                                                                                                                                                                                                                        | Kata (pinned, unconditional)                                                                                                                                                                    |
+| Kubecontext      | not applicable                                                                                                                                                                                                                                      | `RESOLUTO_SANDBOX_KUBECONTEXT` (fails closed if unset)                                                                                                                                          |
 
 # Concurrency & direct control
 
@@ -1845,6 +1843,8 @@ KataNerdctlSandboxRuntime(
     nerdctl="nerdctl",
     sudo=False,
     egress_domains_file=None,
+    net_subnet="10.222.0.0/24",
+    egress_proxy_port=3129,
     dind_graph_dir="/var/lib/resoluto-local/dind-graph",
 )
 ```
@@ -1870,6 +1870,8 @@ def __init__(
     nerdctl: str = "nerdctl",
     sudo: bool = False,
     egress_domains_file: str | None = None,
+    net_subnet: str = "10.222.0.0/24",
+    egress_proxy_port: int = 3129,
     dind_graph_dir: str = "/var/lib/resoluto-local/dind-graph",
 ) -> None:
     check_runtime_class_guard(runtime)
@@ -1883,8 +1885,17 @@ def __init__(
     self._network = network
     self._nerdctl = nerdctl
     self._sudo = sudo
-    # the live SNI allowlist file the persistent egress proxy reads (set per-run, see apply_egress)
-    self._egress_domains_file = egress_domains_file
+    # Runtime-managed per-run egress (e2b model): a non-empty allowlist starts a SNI proxy + scoped
+    # iptables HERE, torn down when the run ends — no setup script, nothing persistent. The SNI
+    # allowlist file the proxy reads live; defaults to a per-process temp path we can write nonroot.
+    self._egress_domains_file = egress_domains_file or os.path.join(
+        tempfile.gettempdir(), f"resoluto-egress-{os.getpid()}.domains"
+    )
+    self._net_subnet = net_subnet
+    self._egress_proxy_port = egress_proxy_port
+    self._egress_chain = "RESOLUTO-SANDBOX-EGRESS"
+    self._egress_proxy_proc: "asyncio.subprocess.Process | None" = None
+    self._egress_active = False
     # The active egress allowlist for THIS run, set by apply_egress. None = never applied (use the
     # configured network); [] = deny-all (launch with --network none — no NIC, no host firewall);
     # non-empty = allowlist (needs the bridge + SNI proxy).
@@ -1901,26 +1912,21 @@ def __init__(
 apply_egress(domains)
 ```
 
-Set THIS run's SNI egress allowlist. Deny-all (empty/None) provisions NOTHING host-side — the guest launches with `--network none` (see `launch`), so there is no proxy to feed and no domains file to write. A non-empty allowlist writes the proxy's live domains file (per-run, no re-provision). Idempotent.
+Set THIS run's egress. Deny-all (empty/None) provisions NOTHING host-side — the guest launches `--network none` (no NIC, no firewall). A non-empty allowlist stands up the egress enforcement HERE, per run: a SNI proxy + iptables scoped to the sandbox bridge subnet. No setup script, nothing persistent — `clear_egress`/`aclose` tears it all down.
 
 Source code in `src/resoluto/sandbox/runtime/kata_nerdctl.py`
 
 ```python
 async def apply_egress(self, domains: "list[str] | None") -> None:
-    """Set THIS run's SNI egress allowlist. Deny-all (empty/None) provisions NOTHING host-side —
-    the guest launches with `--network none` (see `launch`), so there is no proxy to feed and no
-    domains file to write. A non-empty allowlist writes the proxy's live domains file (per-run,
-    no re-provision). Idempotent."""
+    """Set THIS run's egress. Deny-all (empty/None) provisions NOTHING host-side — the guest
+    launches `--network none` (no NIC, no firewall). A non-empty allowlist stands up the egress
+    enforcement HERE, per run: a SNI proxy + iptables scoped to the sandbox bridge subnet. No setup
+    script, nothing persistent — `clear_egress`/`aclose` tears it all down."""
     self._active_egress = [d.strip() for d in (domains or []) if d.strip()]
-    if not self._egress_domains_file:
-        return
     if self._active_egress:
-        with open(self._egress_domains_file, "w", encoding="utf-8") as f:
-            f.write(",".join(self._active_egress))
-    elif os.path.exists(self._egress_domains_file):
-        # Reset a stale allowlist back to deny; never CREATE the file for deny-all (no NIC needs it).
-        with open(self._egress_domains_file, "w", encoding="utf-8") as f:
-            f.write("")
+        await self._egress_apply(self._active_egress)
+    else:
+        await self._egress_teardown()
 ```
 
 ### clear_egress
@@ -1929,14 +1935,31 @@ async def apply_egress(self, domains: "list[str] | None") -> None:
 clear_egress()
 ```
 
-Reset this run's egress allowlist to deny-all (write the domains file empty).
+Tear down this run's egress enforcement (proxy + iptables + domains file). Deny-all.
 
 Source code in `src/resoluto/sandbox/runtime/kata_nerdctl.py`
 
 ```python
 async def clear_egress(self) -> None:
-    """Reset this run's egress allowlist to deny-all (write the domains file empty)."""
-    await self.apply_egress([])
+    """Tear down this run's egress enforcement (proxy + iptables + domains file). Deny-all."""
+    self._active_egress = []
+    await self._egress_teardown()
+```
+
+### aclose
+
+```python
+aclose()
+```
+
+Best-effort teardown of any lingering egress state when the runtime is closed.
+
+Source code in `src/resoluto/sandbox/runtime/kata_nerdctl.py`
+
+```python
+async def aclose(self) -> None:
+    """Best-effort teardown of any lingering egress state when the runtime is closed."""
+    await self._egress_teardown()
 ```
 
 ### from_env
@@ -1971,9 +1994,9 @@ def from_env(
         network=os.environ.get("RESOLUTO_LOCAL_NETWORK", "resoluto-local"),
         nerdctl=os.environ.get("RESOLUTO_LOCAL_NERDCTL", "/opt/resoluto-local/bin/nerdctl"),
         sudo=_resolve_sudo(),
-        egress_domains_file=os.environ.get(
-            "RESOLUTO_LOCAL_EGRESS_DOMAINS_FILE", "/run/resoluto-local/egress-domains"
-        ),
+        egress_domains_file=os.environ.get("RESOLUTO_LOCAL_EGRESS_DOMAINS_FILE"),
+        net_subnet=os.environ.get("RESOLUTO_LOCAL_NET_SUBNET", "10.222.0.0/24"),
+        egress_proxy_port=int(os.environ.get("RESOLUTO_EGRESS_PROXY_PORT", "3129")),
         dind_graph_dir=os.environ.get(
             "RESOLUTO_LOCAL_DIND_GRAPH_DIR", "/var/lib/resoluto-local/dind-graph"
         ),

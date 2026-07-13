@@ -1454,15 +1454,15 @@ network — there is nothing for the workload to reach.</p>
 <p>Opening an allowlist attaches a NIC on an isolated CNI bridge, where egress is enforced <strong>host-side</strong>
 (immune to in-guest root): a built-in SNI proxy forwards only TLS connections whose SNI matches an
 allowed domain, and IMDS <code>169.254.169.254</code> + RFC1918 private ranges are always rejected. The per-run
-knob is <code>Sandbox.run(egress=["api.anthropic.com"])</code> (see below); the provision-time env knobs
-(<code>RESOLUTO_EGRESS_ALLOW</code>, <code>RESOLUTO_EGRESS_PUBLIC_HTTPS=1</code>) set the firewall/proxy defaults and drive
-the setup canary. The egress canary always runs fail-closed before any workload, the Kata
-runtime-class guard is unconditional, and host AWS creds are never forwarded (a scoped store token
-only).</p>
-<p>Provision the local backend with <code>scripts/local-backend-up.sh</code> (ends with a green Kata-microVM
-canary). To open egress, set the env before running it, e.g.:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nv">RESOLUTO_EGRESS_ALLOW</span><span class="o">=</span>api.anthropic.com,registry.npmjs.org<span class="w"> </span>scripts/local-backend-up.sh<span class="w">   </span><span class="c1"># least privilege</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nv">RESOLUTO_EGRESS_PUBLIC_HTTPS</span><span class="o">=</span><span class="m">1</span><span class="w"> </span>scripts/local-backend-up.sh<span class="w">             </span><span class="c1"># escape hatch: all :443</span>
+knob is <code>Sandbox.run(egress=["api.anthropic.com"])</code> — the runtime stands up the proxy + iptables for
+that run and tears them down when it ends, so there is no setup step and nothing persistent. The
+egress canary always runs fail-closed before any workload, the Kata runtime-class guard is
+unconditional, and host AWS creds are never forwarded (a scoped store token only).</p>
+<p>Provision the local backend once with <code>scripts/local-backend-up.sh</code> (Kata + a dedicated containerd +
+the CNI bridge + the image; ends with a green no-network Kata-microVM canary). It sets up <strong>no</strong> egress
+firewall — egress is granted per run:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="s2">&quot;local&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">argv</span><span class="p">)</span>                                 <span class="c1"># no network (default)</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="s2">&quot;local&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">argv</span><span class="p">,</span> <span class="n">egress</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;api.anthropic.com&quot;</span><span class="p">])</span>   <span class="c1"># only Anthropic, for this run</span>
 </span></code></pre></div>
 <p>Use <code>backend="local"</code> for single-host development. For cluster-scale placement, use <code>backend="k8s"</code>.</p>
 <h2 id="k8s-backend-kata-isolation-egress-networkpolicy">k8s backend — Kata isolation + egress NetworkPolicy<a class="headerlink" href="#k8s-backend-kata-isolation-egress-networkpolicy" title="Permanent link">&para;</a></h2>
@@ -1624,15 +1624,15 @@ pass <code>egress=[domains]</code> to each <code>run()</code>:</p>
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="s2">&quot;local&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">argv</span><span class="p">,</span> <span class="n">egress</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;registry.npmjs.org&quot;</span><span class="p">])</span>   <span class="c1"># this step reaches ONLY the npm registry</span>
 </span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">Sandbox</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="s2">&quot;local&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">argv</span><span class="p">)</span>                                  <span class="c1"># egress=None → no network at all (secure default)</span>
 </span></code></pre></div>
-<p>Each <code>run()</code> sets that step's allowed domains on the fly and clears them after — <strong>no re-provision</strong>.
-Under the hood the built-in <strong>SNI proxy</strong> (<code>resoluto.sandbox.egress_proxy</code>) reads the step's allowlist
-LIVE (from a file each run rewrites) and splices the (still-encrypted) stream to the original
-destination ONLY if the TLS SNI matches — exact (<code>api.anthropic.com</code>) or <code>*.wildcard</code> (<code>*.openai.com</code>).
-No IP pinning, no CA/MITM, works under any CNI; it refuses internal/IMDS destinations even on an SNI
-match (no SSRF). The mechanism is <code>KataNerdctlSandboxRuntime.apply_egress()</code> writing the proxy's live
-allowlist file; <code>SubstrateBackend.run</code> applies it before the sandbox and clears it after.</p>
-<p>One-time setup runs the proxy + the static <code>:443</code> redirect: <code>scripts/local-backend-up.sh</code> (it also
-seeds the file from <code>RESOLUTO_EGRESS_DOMAINS</code> if set — a default, overridden per run).</p>
+<p>Each <code>run()</code> grants that step's domains on the fly and revokes them after — <strong>runtime-managed, nothing
+persistent</strong>. <code>KataNerdctlSandboxRuntime.apply_egress()</code> starts a per-run <strong>SNI proxy</strong>
+(<code>resoluto.sandbox.egress_proxy</code>) and programs iptables scoped to the sandbox bridge (a <code>:443</code> REDIRECT
+to the proxy, allow DNS, deny IMDS/RFC1918, default-deny); <code>clear_egress()</code> tears both down when the
+run ends. The proxy splices the (still-encrypted) stream to the original destination ONLY if the TLS
+SNI matches — exact (<code>api.anthropic.com</code>) or <code>*.wildcard</code> (<code>*.openai.com</code>); no CA/MITM; it refuses
+internal/IMDS destinations even on an SNI match (no SSRF). There is <strong>no setup script and nothing
+persistent</strong> — the firewall + proxy exist only for the lifetime of the run (the e2b model: the
+orchestrator programs per-sandbox egress, not the operator).</p>
 <p>Verified end-to-end, back-to-back with NO re-provision: <code>run(egress=["registry.npmjs.org"])</code> → a sandbox's
 <code>pnpm add is-odd</code> installs from the registry; <code>run(egress=["api.anthropic.com"])</code> → the same install is
 blocked (ECONNRESET) while a real Claude agent answers. A URL <em>path</em> still can't be enforced at this
@@ -1652,9 +1652,9 @@ reads them too):</strong>
 </span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RESOLUTO_EGRESS_PUBLIC_HTTPS</span><span class="o">=</span><span class="m">1</span><span class="w">                       </span><span class="c1"># opt IN to all :443 (default 0 = deny)</span>
 </span></code></pre></div></p>
 <ul>
-<li><strong>local</strong>: <code>scripts/local-backend-up.sh</code> renders the firewall from these env knobs via the SAME
-  renderer (<code>python -m resoluto.sandbox.egress local-iptables</code>). Set them and re-run the script; the
-  Kata canary re-verifies enforcement.</li>
+<li><strong>local</strong>: egress is runtime-managed per run — pass <code>Sandbox.run(egress=["api.anthropic.com"])</code>. The
+  runtime renders the firewall via the SAME renderer (<code>resoluto.sandbox.egress.local_egress_iptables</code>)
+  and starts the SNI proxy for that run, then tears both down. No env knobs, no script, nothing persistent.</li>
 <li><strong>k8s</strong>: pass an <code>EgressConfig</code> to <code>K8sSandboxRuntime(egress=...)</code>, or <code>EgressConfig.from_store_env()</code>
   (which reads the same env). <code>egress=None</code> = opt OUT of isolation entirely (no NetworkPolicy,
   unrestricted egress) — distinct from <code>EgressConfig()</code>, which denies by default.</li>
@@ -1675,7 +1675,7 @@ mechanism (see <code>src/resoluto/sandbox/egress.py</code>).</p>
 <tbody>
 <tr>
 <td>Egress allowlist</td>
-<td>no NIC by default; opening an allowlist attaches a CNI bridge with host-side iptables (DNS + store + opt-in <code>allow</code>/<code>public_https</code>; REJECT IMDS + RFC1918)</td>
+<td>no NIC by default; a per-run <code>egress=[...]</code> makes the runtime attach a CNI bridge + start a SNI proxy + program host-side iptables (<code>:443</code>→proxy by SNI, DNS, REJECT IMDS+RFC1918), all torn down when the run ends — no script, nothing persistent</td>
 <td><code>EgressConfig.from_store_env()</code> → default-deny NetworkPolicy (store + DNS always; opt-in <code>allow</code>/public-443; IMDS denied), enforced by the cluster's NetworkPolicy controller (k3s kube-router)</td>
 </tr>
 <tr>
