@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
+import sys
+import tempfile
 
 from resoluto.sandbox.contracts import (
     SandboxHandle,
@@ -49,6 +52,8 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
         nerdctl: str = "nerdctl",
         sudo: bool = False,
         egress_domains_file: str | None = None,
+        net_subnet: str = "10.222.0.0/24",
+        egress_proxy_port: int = 3129,
         dind_graph_dir: str = "/var/lib/resoluto-local/dind-graph",
     ) -> None:
         check_runtime_class_guard(runtime)
@@ -62,8 +67,17 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
         self._network = network
         self._nerdctl = nerdctl
         self._sudo = sudo
-        # the live SNI allowlist file the persistent egress proxy reads (set per-run, see apply_egress)
-        self._egress_domains_file = egress_domains_file
+        # Runtime-managed per-run egress (e2b model): a non-empty allowlist starts a SNI proxy + scoped
+        # iptables HERE, torn down when the run ends — no setup script, nothing persistent. The SNI
+        # allowlist file the proxy reads live; defaults to a per-process temp path we can write nonroot.
+        self._egress_domains_file = egress_domains_file or os.path.join(
+            tempfile.gettempdir(), f"resoluto-egress-{os.getpid()}.domains"
+        )
+        self._net_subnet = net_subnet
+        self._egress_proxy_port = egress_proxy_port
+        self._egress_chain = "RESOLUTO-SANDBOX-EGRESS"
+        self._egress_proxy_proc: "asyncio.subprocess.Process | None" = None
+        self._egress_active = False
         # The active egress allowlist for THIS run, set by apply_egress. None = never applied (use the
         # configured network); [] = deny-all (launch with --network none — no NIC, no host firewall);
         # non-empty = allowlist (needs the bridge + SNI proxy).
@@ -74,24 +88,115 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
         self._graph_dirs: dict[str, str] = {}  # container id → its host graph dir (for cleanup)
 
     async def apply_egress(self, domains: "list[str] | None") -> None:
-        """Set THIS run's SNI egress allowlist. Deny-all (empty/None) provisions NOTHING host-side —
-        the guest launches with `--network none` (see `launch`), so there is no proxy to feed and no
-        domains file to write. A non-empty allowlist writes the proxy's live domains file (per-run,
-        no re-provision). Idempotent."""
+        """Set THIS run's egress. Deny-all (empty/None) provisions NOTHING host-side — the guest
+        launches `--network none` (no NIC, no firewall). A non-empty allowlist stands up the egress
+        enforcement HERE, per run: a SNI proxy + iptables scoped to the sandbox bridge subnet. No setup
+        script, nothing persistent — `clear_egress`/`aclose` tears it all down."""
         self._active_egress = [d.strip() for d in (domains or []) if d.strip()]
-        if not self._egress_domains_file:
-            return
         if self._active_egress:
-            with open(self._egress_domains_file, "w", encoding="utf-8") as f:
-                f.write(",".join(self._active_egress))
-        elif os.path.exists(self._egress_domains_file):
-            # Reset a stale allowlist back to deny; never CREATE the file for deny-all (no NIC needs it).
-            with open(self._egress_domains_file, "w", encoding="utf-8") as f:
-                f.write("")
+            await self._egress_apply(self._active_egress)
+        else:
+            await self._egress_teardown()
 
     async def clear_egress(self) -> None:
-        """Reset this run's egress allowlist to deny-all (write the domains file empty)."""
-        await self.apply_egress([])
+        """Tear down this run's egress enforcement (proxy + iptables + domains file). Deny-all."""
+        self._active_egress = []
+        await self._egress_teardown()
+
+    async def aclose(self) -> None:
+        """Best-effort teardown of any lingering egress state when the runtime is closed."""
+        await self._egress_teardown()
+
+    async def _iptables(self, *args: str, check: bool = True) -> int:
+        """Run `sudo iptables <args>`; return rc. check=False swallows a nonzero rc (for idempotent
+        `-D`/`-X` teardown that may hit an already-absent rule/chain)."""
+        argv = (["sudo", "-n"] if self._sudo else []) + ["iptables", *args]
+        proc = await asyncio.create_subprocess_exec(
+            *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        _, err = await proc.communicate()
+        rc = proc.returncode if proc.returncode is not None else -1
+        if check and rc != 0:
+            raise RuntimeError(
+                f"iptables {' '.join(args)} failed (rc={rc}): {err.decode().strip()}"
+            )
+        return rc
+
+    async def _start_egress_proxy(self) -> None:
+        """Launch the SNI proxy (nonroot; port > 1024) reading this run's live domains file."""
+        self._egress_proxy_proc = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-m",
+            "resoluto.sandbox.egress_proxy",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            str(self._egress_proxy_port),
+            "--domains-file",
+            self._egress_domains_file,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+
+    async def _stop_egress_proxy(self) -> None:
+        proc, self._egress_proxy_proc = self._egress_proxy_proc, None
+        if proc is None or proc.returncode is not None:
+            return
+        with contextlib.suppress(ProcessLookupError):
+            proc.terminate()
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=5)
+        except (asyncio.TimeoutError, Exception):  # noqa: BLE001
+            with contextlib.suppress(Exception):
+                proc.kill()
+
+    async def _egress_apply(self, domains: list[str]) -> None:
+        """Stand up per-run egress: SNI proxy + iptables (chain + FORWARD jump + NAT :443 REDIRECT +
+        INPUT accept), scoped to the sandbox bridge subnet. Sweeps any stale state first (crash-safe)."""
+        from resoluto.sandbox.egress import EgressConfig, local_egress_iptables
+
+        await self._egress_teardown(force=True)  # clean slate / stale sweep
+        with open(self._egress_domains_file, "w", encoding="utf-8") as f:
+            f.write(",".join(domains))
+        await self._start_egress_proxy()
+        self._egress_active = True
+
+        chain, sub, port = self._egress_chain, self._net_subnet, str(self._egress_proxy_port)
+        if await self._iptables("-N", chain, check=False) != 0:
+            await self._iptables("-F", chain)  # chain existed → flush to a known state
+        # The chain is DNS + denies + default-REJECT; :443 is diverted to the SNI proxy (which matches
+        # by domain) via the NAT REDIRECT below, so no per-domain allow rules live in the chain.
+        for rule in local_egress_iptables(EgressConfig(allow=()), chain=chain):
+            await self._iptables(*rule)
+        await self._iptables("-I", "FORWARD", "1", "-s", sub, "-j", chain)
+        await self._iptables(
+            "-t", "nat", "-I", "PREROUTING", "1", "-s", sub,
+            "-p", "tcp", "--dport", "443", "-j", "REDIRECT", "--to-ports", port,
+        )  # fmt: skip
+        await self._iptables(
+            "-I", "INPUT", "1", "-s", sub, "-p", "tcp", "--dport", port, "-j", "ACCEPT"
+        )
+
+    async def _egress_teardown(self, *, force: bool = False) -> None:
+        """Remove all per-run egress state. No-op unless egress was applied (or force=True for the
+        pre-apply stale sweep) — so a deny-all run never shells out to iptables."""
+        if not (self._egress_active or force):
+            return
+        self._egress_active = False
+        await self._stop_egress_proxy()
+        chain, sub, port = self._egress_chain, self._net_subnet, str(self._egress_proxy_port)
+        await self._iptables(
+            "-t", "nat", "-D", "PREROUTING", "-s", sub,
+            "-p", "tcp", "--dport", "443", "-j", "REDIRECT", "--to-ports", port, check=False,
+        )  # fmt: skip
+        await self._iptables(
+            "-D", "INPUT", "-s", sub, "-p", "tcp", "--dport", port, "-j", "ACCEPT", check=False
+        )
+        await self._iptables("-D", "FORWARD", "-s", sub, "-j", chain, check=False)
+        await self._iptables("-F", chain, check=False)
+        await self._iptables("-X", chain, check=False)
+        with contextlib.suppress(OSError):
+            os.remove(self._egress_domains_file)
 
     @classmethod
     def from_env(
@@ -114,9 +219,9 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
             network=os.environ.get("RESOLUTO_LOCAL_NETWORK", "resoluto-local"),
             nerdctl=os.environ.get("RESOLUTO_LOCAL_NERDCTL", "/opt/resoluto-local/bin/nerdctl"),
             sudo=_resolve_sudo(),
-            egress_domains_file=os.environ.get(
-                "RESOLUTO_LOCAL_EGRESS_DOMAINS_FILE", "/run/resoluto-local/egress-domains"
-            ),
+            egress_domains_file=os.environ.get("RESOLUTO_LOCAL_EGRESS_DOMAINS_FILE"),
+            net_subnet=os.environ.get("RESOLUTO_LOCAL_NET_SUBNET", "10.222.0.0/24"),
+            egress_proxy_port=int(os.environ.get("RESOLUTO_EGRESS_PROXY_PORT", "3129")),
             dind_graph_dir=os.environ.get(
                 "RESOLUTO_LOCAL_DIND_GRAPH_DIR", "/var/lib/resoluto-local/dind-graph"
             ),

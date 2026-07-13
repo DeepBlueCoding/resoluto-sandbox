@@ -87,8 +87,9 @@ def test_load_domains_file(tmp_path):
     assert load_domains_file(str(tmp_path / "missing")) == []
 
 
-async def test_kata_apply_egress_writes_live_allowlist_file(tmp_path):
-    # per-run egress on the local runtime = writing the proxy's live allowlist file (no re-provision)
+async def test_kata_apply_egress_writes_live_allowlist_file(tmp_path, monkeypatch):
+    # per-run egress on the local runtime writes the proxy's live allowlist file (no re-provision).
+    # Stub the host-mutating seams (iptables + proxy subprocess) — this test is about the allowlist file.
     from resoluto.sandbox.egress_proxy import load_domains_file
     from resoluto.sandbox.runtime.kata_nerdctl import KataNerdctlSandboxRuntime
 
@@ -100,7 +101,18 @@ async def test_kata_apply_egress_writes_live_allowlist_file(tmp_path):
         runtime="io.containerd.kata.v2",
         egress_domains_file=str(f),
     )
+
+    async def _noop_ipt(*args, check=True):
+        return 0
+
+    async def _noop():
+        return None
+
+    monkeypatch.setattr(rt, "_iptables", _noop_ipt)
+    monkeypatch.setattr(rt, "_start_egress_proxy", _noop)
+    monkeypatch.setattr(rt, "_stop_egress_proxy", _noop)
+
     await rt.apply_egress(["api.anthropic.com", " registry.npmjs.org "])
     assert load_domains_file(str(f)) == ["api.anthropic.com", "registry.npmjs.org"]
     await rt.clear_egress()
-    assert load_domains_file(str(f)) == []  # cleared => deny-all after the run
+    assert load_domains_file(str(f)) == []  # file removed on teardown => deny-all after the run

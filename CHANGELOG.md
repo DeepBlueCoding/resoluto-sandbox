@@ -7,7 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0rc8] - 2026-07-12
+## [0.1.0rc9] - 2026-07-13
+
+### Changed
+
+- **Local egress is runtime-managed per run — no setup script, nothing persistent (the e2b model).**
+  A non-empty `Sandbox.run(egress=[...])` now makes `KataNerdctlSandboxRuntime` start a per-run SNI
+  proxy and program iptables scoped to the sandbox bridge (`:443`→proxy by SNI, DNS, deny IMDS/RFC1918,
+  default-deny), and tear both down when the run ends (crash-safe stale sweep on the next run). The
+  allowlist travels as the `egress=` parameter; there is no host firewall to provision and nothing left
+  behind. `scripts/local-backend-up.sh` no longer sets up any egress firewall or persistent proxy — it
+  provisions only the base substrate (Kata + containerd + CNI bridge + image) and its canary now
+  verifies the `--network none` secure default. The deny-all default remains `--network none` (no NIC).
 
 ### Security
 

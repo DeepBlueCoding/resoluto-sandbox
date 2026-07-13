@@ -193,18 +193,82 @@ async def test_deny_all_egress_uses_network_none(monkeypatch):
     assert argv[argv.index("--network") + 1] == "none"
 
 
+def _stub_egress(monkeypatch, rt):
+    """Stub the host-mutating egress seams (iptables + proxy subprocess); record iptables calls."""
+    ipt: list[str] = []
+    ev: list[str] = []
+
+    async def fake_ipt(*args, check=True):
+        ipt.append(" ".join(args))
+        return 0
+
+    async def fake_start():
+        ev.append("proxy-start")
+
+    async def fake_stop():
+        ev.append("proxy-stop")
+
+    monkeypatch.setattr(rt, "_iptables", fake_ipt)
+    monkeypatch.setattr(rt, "_start_egress_proxy", fake_start)
+    monkeypatch.setattr(rt, "_stop_egress_proxy", fake_stop)
+    return ipt, ev
+
+
 @pytest.mark.asyncio
 async def test_nonempty_egress_uses_bridge_network_and_writes_domains(monkeypatch, tmp_path):
     # A non-empty allowlist DOES need a NIC + the SNI proxy — so the bridge network is used and the
     # live domains file is written for the proxy to read.
     dfile = tmp_path / "egress-domains"
     rt = _rt(egress_domains_file=str(dfile))
+    _stub_egress(monkeypatch, rt)
     await rt.apply_egress(["api.anthropic.com", "pypi.org"])
     calls = _stub_run(monkeypatch, rt, returns={"run": (0, "vm\n", "")})
     await rt.launch(_spec())
     argv = calls[0]
     assert argv[argv.index("--network") + 1] == "bridge"
     assert dfile.read_text() == "api.anthropic.com,pypi.org"
+
+
+@pytest.mark.asyncio
+async def test_apply_egress_programs_scoped_firewall_and_starts_proxy(monkeypatch, tmp_path):
+    # Runtime-managed egress (e2b model): a non-empty allowlist stands up the SNI proxy + iptables
+    # scoped to the sandbox bridge subnet, entirely inside apply_egress — no setup script.
+    rt = _rt(
+        egress_domains_file=str(tmp_path / "d"), net_subnet="10.9.0.0/24", egress_proxy_port=4444
+    )
+    ipt, ev = _stub_egress(monkeypatch, rt)
+    await rt.apply_egress(["example.com"])
+    assert "proxy-start" in ev
+    assert any("-I FORWARD 1 -s 10.9.0.0/24 -j RESOLUTO-SANDBOX-EGRESS" in c for c in ipt)
+    assert any(
+        "-t nat -I PREROUTING 1 -s 10.9.0.0/24 -p tcp --dport 443 -j REDIRECT --to-ports 4444" in c
+        for c in ipt
+    )
+    assert any("-I INPUT 1 -s 10.9.0.0/24 -p tcp --dport 4444 -j ACCEPT" in c for c in ipt)
+    assert any(c.endswith("-j REJECT") for c in ipt)  # default-deny chain rules applied
+
+
+@pytest.mark.asyncio
+async def test_clear_egress_tears_down_firewall_and_proxy(monkeypatch, tmp_path):
+    dfile = tmp_path / "d"
+    rt = _rt(egress_domains_file=str(dfile))
+    ipt, ev = _stub_egress(monkeypatch, rt)
+    await rt.apply_egress(["example.com"])  # up
+    ipt.clear()
+    ev.clear()
+    await rt.clear_egress()  # down
+    assert "proxy-stop" in ev
+    assert any("-D FORWARD" in c for c in ipt)
+    assert any("-X RESOLUTO-SANDBOX-EGRESS" in c for c in ipt)
+
+
+@pytest.mark.asyncio
+async def test_deny_all_never_touches_iptables(monkeypatch, tmp_path):
+    # A deny-all run (no prior egress) must NOT shell out to iptables at all — network=none needs none.
+    rt = _rt(egress_domains_file=str(tmp_path / "d"))
+    ipt, ev = _stub_egress(monkeypatch, rt)
+    await rt.apply_egress([])
+    assert ipt == [] and ev == []
 
 
 @pytest.mark.asyncio

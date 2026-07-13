@@ -487,7 +487,7 @@ On `k8s`, retag + push to your registry (`docs/backends.md`), then inject the sa
 
 | Feature | Status |
 |---|---|
-| `backend="local"` — Kata microVM via nerdctl + a dedicated containerd, host-side egress | **works today** (run `scripts/local-backend-up.sh`) |
+| `backend="local"` — Kata microVM via nerdctl + a dedicated containerd, runtime-managed per-run egress | **works today** (run `scripts/local-backend-up.sh`) |
 | `backend="k8s"` — Kata microVM pod + object-store Conduit + NetworkPolicy egress | **works today** — needs a Kata cluster + store + kube context |
 | `Conduit` + `LocalConduit`, `StdoutConduit`, `S3Conduit` (minio/S3) | **works today** |
 | `GcsConduit` | **provided, unverified** — experimental |

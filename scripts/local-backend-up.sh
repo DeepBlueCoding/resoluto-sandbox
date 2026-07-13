@@ -115,51 +115,12 @@ for stale in $(ip -o route show "$NET_SUBNET" 2>/dev/null \
   fi
 done
 
-# 4. host-side egress firewall on the sandbox bridge (immune to in-guest root)
-step "4/7 egress firewall (default-deny; allow DNS+443-public; DROP IMDS+private)"
-CHAIN="RESOLUTO-SANDBOX-EGRESS"
-# Rules come from the SHARED, backend-neutral renderer (resoluto.sandbox.egress) so the `local`
-# allowlist matches the `k8s` one. Configure via RESOLUTO_EGRESS_ALLOW (comma list of host/CIDR),
-# RESOLUTO_EGRESS_ALLOW_PORT, RESOLUTO_EGRESS_PUBLIC_HTTPS. Default: DNS + all public :443; deny
-# IMDS + RFC1918. Capture-then-apply so a render failure never leaves a half-built (deny-all) chain.
-EGRESS_RULES="$(uv run --project "$SANDBOX_DIR" python -m resoluto.sandbox.egress local-iptables --chain "$CHAIN")"
-[ -n "$EGRESS_RULES" ] || die "egress renderer produced no rules — refusing to touch the firewall"
-sudo iptables -N "$CHAIN" 2>/dev/null || sudo iptables -F "$CHAIN"
-while IFS= read -r rule; do
-  [ -n "$rule" ] && sudo iptables $rule
-done <<< "$EGRESS_RULES"
-sudo iptables -C FORWARD -s "$NET_SUBNET" -j "$CHAIN" 2>/dev/null \
-  || sudo iptables -I FORWARD 1 -s "$NET_SUBNET" -j "$CHAIN"
-green "ok: egress firewall installed on $NET_SUBNET (shared renderer; allow='${RESOLUTO_EGRESS_ALLOW:-}')"
-
-# 4b. SNI egress proxy (persistent) — reads its allowlist LIVE from a file that each Sandbox.run()
-# rewrites (PER-STEP egress on the fly, no re-provision). This is one-time infra: the proxy + the
-# static :443 redirect. Empty file = deny-all (secure). The runtime writes the file per run.
-step "4b/7 SNI egress proxy (live per-run allowlist file)"
-PROXY_PORT="${RESOLUTO_EGRESS_PROXY_PORT:-3129}"
-DOMAINS_FILE="${RESOLUTO_LOCAL_EGRESS_DOMAINS_FILE:-/run/resoluto-local/egress-domains}"
-PROXY_PID="/tmp/resoluto-egress-proxy.pid"
-sudo mkdir -p "$(dirname "$DOMAINS_FILE")"
-# Seed the SNI allowlist with the COMPLETE set every green run needs (agent LLM + the dev-env
-# `docker compose build`: registries, pip, npm, git, and apt/nodesource/playwright over HTTPS —
-# apt uses https:// mirrors so :80 stays REJECT'd and the fail-closed canary stays green).
-# Durable here so a fresh machine gets the full list; override with RESOLUTO_EGRESS_DOMAINS.
-DEFAULT_EGRESS_DOMAINS="api.anthropic.com,*.anthropic.com,registry.npmjs.org,*.npmjs.org,pypi.org,*.pypi.org,files.pythonhosted.org,github.com,*.github.com,*.githubusercontent.com,sentry.io,*.sentry.io,*.statsig.com,registry-1.docker.io,*.docker.io,auth.docker.io,*.docker.com,ghcr.io,deb.debian.org,security.debian.org,deb.nodesource.com,cdn.playwright.dev,storage.googleapis.com,*.googleapis.com,edgedl.me.gvt1.com,*.gvt1.com"
-printf '%s' "${RESOLUTO_EGRESS_DOMAINS:-$DEFAULT_EGRESS_DOMAINS}" | sudo tee "$DOMAINS_FILE" >/dev/null
-sudo chown "$(id -u):$(id -g)" "$DOMAINS_FILE"
-[ -f "$PROXY_PID" ] && kill "$(cat "$PROXY_PID")" 2>/dev/null; rm -f "$PROXY_PID"
-pkill -f 'resoluto.sandbox.egress_proxy' 2>/dev/null || true
-RESOLUTO_EGRESS_DOMAINS_FILE="$DOMAINS_FILE" setsid bash -c \
-  "cd '$SANDBOX_DIR' && exec uv run python -m resoluto.sandbox.egress_proxy --host 0.0.0.0 --port $PROXY_PORT" \
-  >/tmp/resoluto-egress-proxy.log 2>&1 &
-echo $! > "$PROXY_PID"
-sleep 2
-kill -0 "$(cat "$PROXY_PID")" 2>/dev/null || die "SNI proxy failed to start (see /tmp/resoluto-egress-proxy.log)"
-sudo iptables -C INPUT -s "$NET_SUBNET" -p tcp --dport "$PROXY_PORT" -j ACCEPT 2>/dev/null \
-  || sudo iptables -I INPUT 1 -s "$NET_SUBNET" -p tcp --dport "$PROXY_PORT" -j ACCEPT
-sudo iptables -t nat -C PREROUTING -s "$NET_SUBNET" -p tcp --dport 443 -j REDIRECT --to-port "$PROXY_PORT" 2>/dev/null \
-  || sudo iptables -t nat -I PREROUTING 1 -s "$NET_SUBNET" -p tcp --dport 443 -j REDIRECT --to-port "$PROXY_PORT"
-green "ok: SNI proxy up (:$PROXY_PORT); sandbox :443 filtered by $DOMAINS_FILE (set per-run via Sandbox.run(egress=[...]))"
+# 4. egress is RUNTIME-MANAGED, not provisioned here.
+# A non-empty `Sandbox.run(egress=[...])` makes KataNerdctlSandboxRuntime start a per-run SNI proxy +
+# scoped iptables and tear them down when the run ends — no persistent firewall, no persistent proxy,
+# nothing to set up here (and nothing to leak/collide with). The secure default is `--network none`.
+step "4/5 egress: runtime-managed per run (no host firewall provisioned)"
+green "ok: egress is granted per run via Sandbox.run(egress=[...]); default = no network"
 
 # ensure the on-box registry the image bridge uses (localhost:5000): `image build` and this script
 # push there and the backend pulls from it. Docker is a documented prereq; reuse or start a registry:2.
@@ -206,9 +167,9 @@ RESOLUTO_SANDBOX_IMAGE=$SANDBOX_IMAGE
 EOF
 green "ok: wrote $ENV_FILE"
 
-# 7. canary: a Kata microVM boots + egress is enforced
-step "7/7 canary: boot a Kata microVM and verify egress enforcement"
-OUT=$(N run --rm --network "$NET_NAME" --runtime "$KATA_RUNTIME" "$SANDBOX_IMAGE" python3 -c '
+# 7. canary: a Kata microVM boots on the SECURE DEFAULT (no network) and is fully isolated
+step "5/5 canary: boot a Kata microVM (secure default = no network) and verify isolation"
+OUT=$(N run --rm --network none --runtime "$KATA_RUNTIME" "$SANDBOX_IMAGE" python3 -c '
 import socket
 print("guest_kernel=" + __import__("os").uname().release)
 def reachable(host, port):
@@ -216,18 +177,15 @@ def reachable(host, port):
         socket.create_connection((host, port), timeout=5).close(); return True
     except Exception:
         return False
-# ALLOWED egress: DNS (:53) is always permitted, so 1.1.1.1:53 (Cloudflare answers DNS over TCP/53)
-# must SUCCEED — this proves the network is alive AND the allow path works (not a false GREEN from a
-# VM with no network at all). Everything else is DENIED by default (secure): IMDS, non-allowed ports,
-# and public :443 too (open it deliberately with RESOLUTO_EGRESS_PUBLIC_HTTPS=1 or RESOLUTO_EGRESS_ALLOW).
+# Secure default: a run with no egress allowlist gets NO network interface — nothing is reachable.
+# Per-run egress is granted by Sandbox.run(egress=[...]) and enforced by the runtime, not provisioned here.
 print("DNS53=" + ("REACHABLE" if reachable("1.1.1.1", 53) else "blocked"))
 print("IMDS=" + ("REACHABLE" if reachable("169.254.169.254", 80) else "blocked"))
-print("PORT80=" + ("REACHABLE" if reachable("1.1.1.1", 80) else "blocked"))
 print("HTTPS443=" + ("REACHABLE" if reachable("1.1.1.1", 443) else "blocked"))
 ' 2>&1) || die "canary microVM failed to run: $OUT"
 echo "$OUT" | sed "s/^/    /"
 echo "$OUT" | grep -q "guest_kernel=" || die "microVM did not boot"
-echo "$OUT" | grep -q "DNS53=REACHABLE" || die "DNS blocked — VM has no usable network (the allow path is broken)"
-echo "$OUT" | grep -q "IMDS=blocked" || die "IMDS reachable — egress firewall NOT enforced"
-echo "$OUT" | grep -q "PORT80=blocked" || die "non-allowed egress reachable — firewall NOT default-deny"
-green "GREEN: local Kata backend up — VM isolation + egress DENY-by-default enforced (443='$(echo "$OUT" | sed -n 's/HTTPS443=//p')'). Open egress with RESOLUTO_EGRESS_ALLOW / _PUBLIC_HTTPS."
+echo "$OUT" | grep -q "DNS53=blocked" || die "network reachable on the no-egress default — isolation NOT enforced"
+echo "$OUT" | grep -q "IMDS=blocked" || die "IMDS reachable — isolation NOT enforced"
+echo "$OUT" | grep -q "HTTPS443=blocked" || die "public HTTPS reachable on the no-egress default — isolation NOT enforced"
+green "GREEN: local Kata backend up — VM isolation + no-network secure default. Grant egress per run via Sandbox.run(egress=[...])."
