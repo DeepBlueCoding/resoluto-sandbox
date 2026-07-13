@@ -116,6 +116,10 @@ Sandbox(backend="local").run(argv)                                  # egress=Non
 
 Each `run()` grants that step's domains on the fly and revokes them after — **runtime-managed, nothing persistent**. `KataNerdctlSandboxRuntime.apply_egress()` starts a per-run **SNI proxy** (`resoluto.sandbox.egress_proxy`) and programs iptables scoped to the sandbox bridge (a `:443` REDIRECT to the proxy, allow DNS, deny IMDS/RFC1918, default-deny); `clear_egress()` tears both down when the run ends. The proxy splices the (still-encrypted) stream to the original destination ONLY if the TLS SNI matches — exact (`api.anthropic.com`) or `*.wildcard` (`*.openai.com`); no CA/MITM; it refuses internal/IMDS destinations even on an SNI match (no SSRF). There is **no setup script and nothing persistent** — the firewall + proxy exist only for the lifetime of the run (the e2b model: the orchestrator programs per-sandbox egress, not the operator).
 
+Concurrency (local)
+
+Per-run egress uses one shared sandbox bridge subnet and a fixed proxy port, so two `local` runs with **different** allowlists must not run egress concurrently on the same host — the second would contend for the bridge rules and the proxy port. The `local` backend serializes step-sandboxes (one alive at a time), so this holds in practice. Truly concurrent egress runs on one host want per-sandbox /30 subnets + a per-run proxy port (the e2b approach) — a future enhancement; `k8s`, where each pod carries its own NetworkPolicy, already has no such limit.
+
 Verified end-to-end, back-to-back with NO re-provision: `run(egress=["registry.npmjs.org"])` → a sandbox's `pnpm add is-odd` installs from the registry; `run(egress=["api.anthropic.com"])` → the same install is blocked (ECONNRESET) while a real Claude agent answers. A URL *path* still can't be enforced at this layer (that needs a MITM proxy). DNS and the CIDR FORWARD chain handle everything else; `allow=[...]` (below) remains for non-443 ports / explicit CIDRs. NOTE: `egress=` is applied by the `local` backend today; on `k8s` use `EgressConfig` (per-runtime).
 
 **In code (k8s):**
@@ -127,7 +131,7 @@ EgressConfig(store_cidr="10.0.0.5/32", store_port=9100,
 EgressConfig(store_cidr="10.0.0.5/32", public_https=True)  # escape hatch: all outbound :443
 ```
 
-**Via env (works for BOTH backends — k8s reads these in `from_store_env()`, the local provisioner reads them too):**
+**Via env (the `k8s` `EgressConfig` path — `from_store_env()` reads these; the `local` backend uses per-run `Sandbox.run(egress=[...])` instead):**
 
 ```bash
 export RESOLUTO_EGRESS_ALLOW="github.com,198.51.100.0/24"   # comma list of hostnames/CIDRs

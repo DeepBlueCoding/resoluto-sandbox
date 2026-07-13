@@ -1633,6 +1633,15 @@ SNI matches — exact (<code>api.anthropic.com</code>) or <code>*.wildcard</code
 internal/IMDS destinations even on an SNI match (no SSRF). There is <strong>no setup script and nothing
 persistent</strong> — the firewall + proxy exist only for the lifetime of the run (the e2b model: the
 orchestrator programs per-sandbox egress, not the operator).</p>
+<div class="admonition note">
+<p class="admonition-title">Concurrency (local)</p>
+<p>Per-run egress uses one shared sandbox bridge subnet and a fixed proxy port, so two <code>local</code> runs
+with <strong>different</strong> allowlists must not run egress concurrently on the same host — the second would
+contend for the bridge rules and the proxy port. The <code>local</code> backend serializes step-sandboxes
+(one alive at a time), so this holds in practice. Truly concurrent egress runs on one host want
+per-sandbox /30 subnets + a per-run proxy port (the e2b approach) — a future enhancement; <code>k8s</code>,
+where each pod carries its own NetworkPolicy, already has no such limit.</p>
+</div>
 <p>Verified end-to-end, back-to-back with NO re-provision: <code>run(egress=["registry.npmjs.org"])</code> → a sandbox's
 <code>pnpm add is-odd</code> installs from the registry; <code>run(egress=["api.anthropic.com"])</code> → the same install is
 blocked (ECONNRESET) while a real Claude agent answers. A URL <em>path</em> still can't be enforced at this
@@ -1645,8 +1654,8 @@ today; on <code>k8s</code> use <code>EgressConfig</code> (per-runtime).</p>
 </span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>             <span class="n">allow</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;github.com&quot;</span><span class="p">],</span> <span class="n">allow_port</span><span class="o">=</span><span class="mi">22</span><span class="p">)</span>        <span class="c1"># least privilege: + git-over-SSH</span>
 </span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">EgressConfig</span><span class="p">(</span><span class="n">store_cidr</span><span class="o">=</span><span class="s2">&quot;10.0.0.5/32&quot;</span><span class="p">,</span> <span class="n">public_https</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>  <span class="c1"># escape hatch: all outbound :443</span>
 </span></code></pre></div></p>
-<p><strong>Via env (works for BOTH backends — k8s reads these in <code>from_store_env()</code>, the local provisioner
-reads them too):</strong>
+<p><strong>Via env (the <code>k8s</code> <code>EgressConfig</code> path — <code>from_store_env()</code> reads these; the <code>local</code> backend uses
+per-run <code>Sandbox.run(egress=[...])</code> instead):</strong>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RESOLUTO_EGRESS_ALLOW</span><span class="o">=</span><span class="s2">&quot;github.com,198.51.100.0/24&quot;</span><span class="w">   </span><span class="c1"># comma list of hostnames/CIDRs</span>
 </span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RESOLUTO_EGRESS_ALLOW_PORT</span><span class="o">=</span><span class="m">22</span><span class="w">                        </span><span class="c1"># default 443</span>
 </span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RESOLUTO_EGRESS_PUBLIC_HTTPS</span><span class="o">=</span><span class="m">1</span><span class="w">                       </span><span class="c1"># opt IN to all :443 (default 0 = deny)</span>

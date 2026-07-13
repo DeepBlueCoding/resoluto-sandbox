@@ -1352,7 +1352,8 @@ backends; the only thing that varies is the injected <code>SandboxRuntime</code>
 <p><code>backend="local"</code> builds a <code>SubstrateBackend</code> wired to a <code>KataNerdctlSandboxRuntime</code> and a
 <code>LocalConduit</code>. The program runs in a Kata microVM launched via <code>nerdctl</code> against a dedicated,
 standalone containerd on this host; the host and microVM share a bind-mounted directory as the
-conduit. Single host, no cluster; egress is enforced host-side on its CNI bridge (default-deny).</p>
+conduit. Single host, no cluster; the secure default is <code>--network none</code> (no NIC), and a per-run
+<code>egress=[...]</code> is enforced host-side by a runtime-managed SNI proxy + iptables, torn down after the run.</p>
 <p>The image must contain python + the resoluto-sandbox wheel + your program's deps. Default:
 <code>resoluto-sandbox-base:&lt;installed wheel version&gt;</code> (<code>client.default_local_image()</code>) — computed from
 the running package version, never a hardcoded <code>:dev</code>/<code>:latest</code> tag; held in this host's containerd,
