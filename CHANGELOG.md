@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-14
+
+First public release — a store-mediated, Kata-isolated substrate for running untrusted code. The
+release candidates below (`0.1.0rc2`–`0.1.0rc10`) are its development history.
+
+### Added
+
+- `Sandbox(backend=...).run(argv, ...)` facade; `local` (Kata microVM via `nerdctl` + a dedicated
+  containerd) and `k8s` (Kata pod) backends; the `Conduit` exchange seam (`localfs`, `s3`/minio,
+  `stdout`; experimental `gcs`); a language-neutral wire protocol (`spec/PROTOCOL.md`); prebuilt
+  provider images + the `image build` CLI.
+
+### Security
+
+- Zero-trust isolation: every run is a Kata microVM with its own Linux kernel; the workload runs
+  non-root with no capabilities; no host filesystem, devices, credentials, or control-plane sockets
+  reach it; each run is confined to its own store prefix. Deny-by-default egress (`--network none`)
+  with runtime-managed per-run domain allowlists — no host firewall to provision, nothing persistent.
+  Output collection is scoped to declared paths and hardened against traversal/symlink escapes. See
+  `SECURITY.md` for the model and threat boundaries.
+
 ## [0.1.0rc10] - 2026-07-14
 
 ### Security

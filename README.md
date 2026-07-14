@@ -33,7 +33,6 @@ pip install resoluto-sandbox            # base — pydantic only, no cloud/k8s d
 pip install "resoluto-sandbox[s3]"      # S3 / minio Conduit           (aioboto3)
 pip install "resoluto-sandbox[k8s]"     # k8s backend                  (kubernetes-asyncio + aioboto3)
 pip install "resoluto-sandbox[gcs]"     # GCS Conduit                  (gcloud-aio-storage)
-# published wheel coming; for now: pip install -e .
 ```
 
 `uv` is recommended for running programs/examples.
