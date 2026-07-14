@@ -18,7 +18,7 @@ microVM.
 
 <p align="left">
   <img alt="python" src="https://img.shields.io/badge/python-3.12%2B-blue">
-  <img alt="status" src="https://img.shields.io/badge/status-alpha-orange">
+  <img alt="status" src="https://img.shields.io/badge/status-beta-orange">
 </p>
 
 ---
@@ -55,7 +55,8 @@ Running a sandbox needs an isolation host. **The `local` backend (Kata microVMs)
 ### `local` backend components (Linux)
 
 `scripts/local-backend-up.sh` **verifies** these, then provisions the rest (dedicated containerd, CNI
-bridge, host-side egress firewall, `local.env`, and a green Kata-microVM canary). It does **not**
+bridge, `local.env`, and a green Kata-microVM canary). Egress is **runtime-managed per run**
+(`Sandbox.run(egress=[...])`) — the script provisions no firewall. It does **not**
 install the kernel/Kata/nerdctl for you:
 
 | Component | Why | How to get it |
