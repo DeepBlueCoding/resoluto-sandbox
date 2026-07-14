@@ -166,6 +166,11 @@ class ChunkReader:
         self._last_progress = self._last_arrival = self._clock()
 
     @property
+    def armed(self) -> bool:
+        """Whether the sandbox ever reached RUNNING (the silence window only arms there)."""
+        return self._armed
+
+    @property
     def seconds_since_progress(self) -> float:
         return self._clock() - self._last_progress
 

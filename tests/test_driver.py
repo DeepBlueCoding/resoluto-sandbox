@@ -448,3 +448,51 @@ async def test_drive_node_raw_external_disposition_on_vanished_pod(tmp_path):
     assert outcome.disposition == "external"
     assert "terminated externally" in outcome.reason
     assert rt.destroyed == ["ext/1"]  # reaped even when it vanished
+
+
+class _NeverRanRuntime(SandboxRuntime):
+    """Reports 'unknown' from the very first poll — the sandbox was deleted while still
+    Pending/gated, so the watchdog never armed. Must still drive 'external'."""
+
+    def __init__(self):
+        self.destroyed: list[str] = []
+        self.polls = 0
+
+    async def launch(self, spec):
+        return SandboxHandle(id="ext/2", labels=spec.labels)
+
+    async def status(self, handle):
+        self.polls += 1
+        return SandboxStatus(phase="unknown", reason="pod not found")
+
+    async def destroy(self, handle):
+        self.destroyed.append(handle.id)
+
+    async def sweep(self, labels):
+        return 0
+
+    async def logs(self, handle, *, tail=200):
+        return ""
+
+
+async def test_drive_node_raw_external_when_deleted_before_running(tmp_path):
+    # A sandbox deleted while Pending/gated never arms the silence watchdog; the
+    # not-found streak alone must be conclusive — requiring is_dead() here waited
+    # FOREVER on a sandbox that no longer existed (RES-258 resume wedge).
+    from resoluto.sandbox.driver import drive_node_raw
+
+    store = LocalConduit(tmp_path)
+    rt = _NeverRanRuntime()
+    outcome = await drive_node_raw(
+        rt,
+        store,
+        _spec("run/r1/nodes/never-ran", ["true"]),
+        poll_interval_s=0,
+        external_gone_polls=3,
+        dead_after_s=30.0,
+        clock=lambda: 0.0,
+    )
+
+    assert outcome.disposition == "external"
+    assert rt.polls >= 3
+    assert rt.destroyed == ["ext/2"]
