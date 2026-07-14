@@ -78,6 +78,17 @@ def test_local_allow_precedes_rfc1918_reject():
     assert allow_i < rfc_i  # an explicit private allow wins over the RFC1918 deny
 
 
+def test_local_dns_accept_follows_imds_and_rfc1918_rejects():
+    # first-match-wins: the :53 ACCEPT must come AFTER the IMDS + RFC1918 REJECTs, or a guest reaches
+    # internal/link-local hosts on port 53 (playbook EGR-3 — "IMDS/RFC1918 denied even on a match").
+    rules = _joined(local_egress_iptables(EgressConfig(), chain="EG"))
+    dns_i = rules.index("-A EG -p udp --dport 53 -j ACCEPT")
+    imds_i = rules.index("-A EG -d 169.254.0.0/16 -j REJECT")
+    rfc_i = rules.index("-A EG -d 192.168.0.0/16 -j REJECT")
+    assert imds_i < dns_i, "IMDS reject must precede the :53 accept"
+    assert rfc_i < dns_i, "RFC1918 rejects must precede the :53 accept"
+
+
 def test_local_public_https_false_drops_443_accept():
     rules = _joined(local_egress_iptables(EgressConfig(public_https=False), chain="EG"))
     assert "-A EG -p tcp --dport 443 -j ACCEPT" not in rules

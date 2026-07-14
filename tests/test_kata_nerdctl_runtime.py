@@ -83,9 +83,10 @@ async def test_launch_builds_kata_run_argv(monkeypatch):
     assert argv[0] == "run" and "-d" in argv
     # VM-grade isolation: every step runs under the Kata shim.
     assert argv[argv.index("--runtime") + 1] == "io.containerd.kata.v2"
-    assert argv[argv.index("--network") + 1] == "bridge"
     assert "--label" in argv and "resoluto.run_id=r1" in argv
     assert "-e" in argv and "RESOLUTO_STORE_KIND=localfs" in argv and "K=V" in argv
+    # Fail-closed default: apply_egress was never called (_active_egress is None), so no NIC.
+    assert argv[argv.index("--network") + 1] == "none"
     # The conduit mount is SCOPED to this run's prefix — the guest sees only its own prefix under
     # /conduit, never sibling runs/lanes sharing the same conduit root.
     assert (
@@ -208,10 +209,57 @@ def _stub_egress(monkeypatch, rt):
     async def fake_stop():
         ev.append("proxy-stop")
 
+    async def fake_sweep():
+        ev.append("orphan-sweep")
+
     monkeypatch.setattr(rt, "_iptables", fake_ipt)
     monkeypatch.setattr(rt, "_start_egress_proxy", fake_start)
     monkeypatch.setattr(rt, "_stop_egress_proxy", fake_stop)
+    monkeypatch.setattr(rt, "_sweep_orphan_proxy", fake_sweep)
     return ipt, ev
+
+
+@pytest.mark.asyncio
+async def test_launch_defaults_to_no_network_when_egress_never_applied(monkeypatch):
+    # Fail-closed: a caller that never calls apply_egress (e.g. an engine lane substrate) must NOT get
+    # an unfiltered bridge — launch defaults to --network none until an allowlist is explicitly applied.
+    rt = _rt()  # _active_egress stays None
+    calls = _stub_run(monkeypatch, rt, returns={"run": (0, "vm\n", "")})
+    await rt.launch(_spec())
+    argv = calls[0]
+    assert argv[argv.index("--network") + 1] == "none"
+
+
+@pytest.mark.asyncio
+async def test_egress_apply_rolls_back_on_iptables_failure(monkeypatch, tmp_path):
+    # A mid-apply iptables failure must NOT leave egress half-up: the proxy is torn down and
+    # _egress_active stays False (so a later run isn't fooled into thinking the firewall is in place).
+    rt = _rt(egress_domains_file=str(tmp_path / "d"))
+    ev: list[str] = []
+
+    async def boom_ipt(*args, check=True):
+        if "-I FORWARD" in " ".join(args):
+            raise RuntimeError("iptables boom")
+        return 0
+
+    async def fake_start():
+        ev.append("start")
+
+    async def fake_stop():
+        ev.append("stop")
+
+    async def fake_sweep():
+        ev.append("sweep")
+
+    monkeypatch.setattr(rt, "_iptables", boom_ipt)
+    monkeypatch.setattr(rt, "_start_egress_proxy", fake_start)
+    monkeypatch.setattr(rt, "_stop_egress_proxy", fake_stop)
+    monkeypatch.setattr(rt, "_sweep_orphan_proxy", fake_sweep)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        await rt.apply_egress(["example.com"])
+    assert "stop" in ev  # proxy torn down on rollback
+    assert rt._egress_active is False  # not left half-up
 
 
 @pytest.mark.asyncio

@@ -202,13 +202,13 @@ def local_egress_iptables(cfg: EgressConfig, *, chain: str) -> list[list[str]]:
     the sandbox bridge's egress `chain`. The caller creates/flushes the chain and hooks it into
     FORWARD for the bridge subnet. The local store is a file mount, so store_cidr is not used here.
 
-    Order (first match wins): keep established, DNS, deny IMDS, then explicit `allow` (may be private,
-    so it precedes the RFC1918 denies), then deny RFC1918, then public HTTPS (if enabled), then deny.
+    Order (first match wins): keep established; deny IMDS (always, even if explicitly allowed); then
+    explicit `allow` (may be private, so it precedes the RFC1918 denies); then deny RFC1918; THEN DNS
+    (:53 must follow the IMDS/RFC1918 denies, or a guest reaches internal/link-local hosts on port 53);
+    then public HTTPS (if enabled); then deny.
     """
     rules: list[list[str]] = [
         ["-A", chain, "-m", "state", "--state", "ESTABLISHED,RELATED", "-j", "ACCEPT"],
-        ["-A", chain, "-p", "udp", "--dport", "53", "-j", "ACCEPT"],
-        ["-A", chain, "-p", "tcp", "--dport", "53", "-j", "ACCEPT"],
         ["-A", chain, "-d", IMDS_RANGE, "-j", "REJECT"],
     ]
     for c in resolve_cidrs(cfg.allow):
@@ -217,6 +217,9 @@ def local_egress_iptables(cfg: EgressConfig, *, chain: str) -> list[list[str]]:
         )
     for r in RFC1918:
         rules.append(["-A", chain, "-d", r, "-j", "REJECT"])
+    # DNS AFTER the denies: :53 now only reaches public resolvers, never IMDS/RFC1918.
+    rules.append(["-A", chain, "-p", "udp", "--dport", "53", "-j", "ACCEPT"])
+    rules.append(["-A", chain, "-p", "tcp", "--dport", "53", "-j", "ACCEPT"])
     if cfg.public_https:
         rules.append(["-A", chain, "-p", "tcp", "--dport", "443", "-j", "ACCEPT"])
     rules.append(["-A", chain, "-j", "REJECT"])

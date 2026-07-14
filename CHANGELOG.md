@@ -7,7 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0rc9] - 2026-07-13
+## [0.1.0rc10] - 2026-07-14
+
+### Security
+
+Follow-up review of the rc6–rc9 changes against the internal audit surfaced egress-layer gaps (no
+guest→host escape; the scoped-mount / declared-output / copy_prefix fixes all hold):
+
+- **Fail-closed egress default (regression fix).** `launch()` now attaches a NIC ONLY for an
+  explicitly-applied, non-empty allowlist; a never-applied egress (`_active_egress is None`) or
+  deny-all both get `--network none`. Previously a caller that skipped `apply_egress` (an engine lane
+  substrate) could land the guest on the unfiltered CNI bridge once rc9 removed the persistent firewall.
+- **DNS rule ordering.** `local_egress_iptables` now emits the IMDS + RFC1918 REJECTs *before* the
+  `:53` ACCEPT (first-match-wins), so a guest can no longer reach internal/link-local hosts on port 53.
+  Makes the "IMDS/RFC1918 refused even on a match" guarantee true on the local backend.
+- **Egress proxy lifecycle hardening.** `_egress_apply` rolls back (tears down proxy + iptables) on any
+  failure and marks egress active only after every step succeeds; `_start_egress_proxy` fails closed if
+  the proxy does not bind (bounded readiness poll); a pre-apply sweep kills an orphan proxy on the port
+  left by a crashed run — closing a stale-allowlist policy-bleed window.
+- **Provisioning.** `local-backend-up.sh` grants passwordless `iptables` (alongside `nerdctl`) so
+  runtime-managed egress works on a non-root host, and writes `RESOLUTO_LOCAL_NET_SUBNET` into
+  `local.env` so the runtime's firewall scope can't drift from the bridge subnet.
 
 ### Changed
 

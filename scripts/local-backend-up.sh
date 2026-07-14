@@ -44,14 +44,20 @@ ln -sf /opt/kata/bin/containerd-shim-kata-v2 /usr/local/bin/containerd-shim-kata
 sudo /opt/kata/bin/kata-runtime check >/dev/null 2>&1 || die "kata-runtime check failed"
 green "ok: kata + kvm + nerdctl bundle present"
 
-# scoped passwordless sudoers rule for the local-backend nerdctl binary (non-root user)
+# scoped passwordless sudoers for the non-root user: the local-backend nerdctl binary AND iptables
+# (the runtime programs per-run egress via `sudo -n iptables` — see KataNerdctlSandboxRuntime; without
+# this an egress-granted run would abort, fail-closed, on a non-root box).
 LOCAL_USER="${RESOLUTO_LOCAL_USER:-${SUDO_USER:-$USER}}"
+IPTABLES="$(command -v iptables || echo /usr/sbin/iptables)"
 if [ -n "$LOCAL_USER" ] && [ "$LOCAL_USER" != "root" ]; then
   SUDOERS=/etc/sudoers.d/resoluto-local-nerdctl
-  printf '%s ALL=(root) NOPASSWD: %s\n' "$LOCAL_USER" "$NERDCTL" | sudo tee "$SUDOERS" >/dev/null
+  {
+    printf '%s ALL=(root) NOPASSWD: %s\n' "$LOCAL_USER" "$NERDCTL"
+    printf '%s ALL=(root) NOPASSWD: %s\n' "$LOCAL_USER" "$IPTABLES"
+  } | sudo tee "$SUDOERS" >/dev/null
   sudo chmod 0440 "$SUDOERS"
   sudo visudo -cf "$SUDOERS" >/dev/null || die "invalid sudoers rule at $SUDOERS"
-  green "ok: passwordless 'sudo -n nerdctl' for user '$LOCAL_USER' ($SUDOERS)"
+  green "ok: passwordless 'sudo -n nerdctl' + 'sudo -n iptables' for user '$LOCAL_USER' ($SUDOERS)"
 else
   green "ok: running as root — no sudoers rule needed"
 fi
@@ -160,6 +166,7 @@ RESOLUTO_LOCAL_CONTAINERD_ADDRESS=$CONTAINERD_SOCK
 RESOLUTO_LOCAL_CONTAINERD_NAMESPACE=$NAMESPACE
 RESOLUTO_LOCAL_KATA_RUNTIME=$KATA_RUNTIME
 RESOLUTO_LOCAL_NETWORK=$NET_NAME
+RESOLUTO_LOCAL_NET_SUBNET=$NET_SUBNET
 RESOLUTO_LOCAL_CNI_PATH=$CNI_BIN
 RESOLUTO_LOCAL_CNI_NETCONFPATH=$CNI_NETCONF
 RESOLUTO_LOCAL_NERDCTL=$NERDCTL

@@ -123,7 +123,9 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
         return rc
 
     async def _start_egress_proxy(self) -> None:
-        """Launch the SNI proxy (nonroot; port > 1024) reading this run's live domains file."""
+        """Launch the SNI proxy (nonroot; port > 1024) reading this run's live domains file, and FAIL
+        CLOSED if it does not come up (e.g. an orphan holds the port) — a dead proxy behind the :443
+        REDIRECT would silently break the allowlist. Readiness is a bounded connect poll, not a clock."""
         self._egress_proxy_proc = await asyncio.create_subprocess_exec(
             sys.executable,
             "-m",
@@ -137,6 +139,31 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
         )
+        for _ in range(30):
+            if self._egress_proxy_proc.returncode is not None:
+                raise RuntimeError(
+                    f"egress SNI proxy exited during startup — port {self._egress_proxy_port} in use?"
+                )
+            try:
+                _r, _w = await asyncio.open_connection("127.0.0.1", self._egress_proxy_port)
+                _w.close()
+                return
+            except OSError:
+                await asyncio.sleep(0.1)
+        raise RuntimeError(f"egress SNI proxy did not bind on port {self._egress_proxy_port}")
+
+    async def _sweep_orphan_proxy(self) -> None:
+        """Best-effort: kill any stray SNI proxy left on our port by a crashed prior process, so a new
+        proxy can bind and never inherit a stale per-run allowlist. Matches only our exact invocation."""
+        with contextlib.suppress(Exception):
+            proc = await asyncio.create_subprocess_exec(
+                "pkill",
+                "-f",
+                f"resoluto.sandbox.egress_proxy --host 0.0.0.0 --port {self._egress_proxy_port}",
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await proc.wait()
 
     async def _stop_egress_proxy(self) -> None:
         proc, self._egress_proxy_proc = self._egress_proxy_proc, None
@@ -155,27 +182,33 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
         INPUT accept), scoped to the sandbox bridge subnet. Sweeps any stale state first (crash-safe)."""
         from resoluto.sandbox.egress import EgressConfig, local_egress_iptables
 
-        await self._egress_teardown(force=True)  # clean slate / stale sweep
+        await self._egress_teardown(force=True)  # clean slate / stale sweep (kills orphan proxies)
         with open(self._egress_domains_file, "w", encoding="utf-8") as f:
             f.write(",".join(domains))
-        await self._start_egress_proxy()
+        # Any failure below (proxy didn't bind, an iptables call errored) must NOT leave egress
+        # half-up: roll back and re-raise. `_egress_active` is set ONLY after every step succeeds, so a
+        # later run can never mistake a partial firewall for an enforced one.
+        try:
+            await self._start_egress_proxy()
+            chain, sub, port = self._egress_chain, self._net_subnet, str(self._egress_proxy_port)
+            if await self._iptables("-N", chain, check=False) != 0:
+                await self._iptables("-F", chain)  # chain existed → flush to a known state
+            # The chain is DNS + denies + default-REJECT; :443 is diverted to the SNI proxy (which
+            # matches by domain) via the NAT REDIRECT below, so no per-domain allow rules go in the chain.
+            for rule in local_egress_iptables(EgressConfig(allow=()), chain=chain):
+                await self._iptables(*rule)
+            await self._iptables("-I", "FORWARD", "1", "-s", sub, "-j", chain)
+            await self._iptables(
+                "-t", "nat", "-I", "PREROUTING", "1", "-s", sub,
+                "-p", "tcp", "--dport", "443", "-j", "REDIRECT", "--to-ports", port,
+            )  # fmt: skip
+            await self._iptables(
+                "-I", "INPUT", "1", "-s", sub, "-p", "tcp", "--dport", port, "-j", "ACCEPT"
+            )
+        except BaseException:
+            await self._egress_teardown(force=True)
+            raise
         self._egress_active = True
-
-        chain, sub, port = self._egress_chain, self._net_subnet, str(self._egress_proxy_port)
-        if await self._iptables("-N", chain, check=False) != 0:
-            await self._iptables("-F", chain)  # chain existed → flush to a known state
-        # The chain is DNS + denies + default-REJECT; :443 is diverted to the SNI proxy (which matches
-        # by domain) via the NAT REDIRECT below, so no per-domain allow rules live in the chain.
-        for rule in local_egress_iptables(EgressConfig(allow=()), chain=chain):
-            await self._iptables(*rule)
-        await self._iptables("-I", "FORWARD", "1", "-s", sub, "-j", chain)
-        await self._iptables(
-            "-t", "nat", "-I", "PREROUTING", "1", "-s", sub,
-            "-p", "tcp", "--dport", "443", "-j", "REDIRECT", "--to-ports", port,
-        )  # fmt: skip
-        await self._iptables(
-            "-I", "INPUT", "1", "-s", sub, "-p", "tcp", "--dport", port, "-j", "ACCEPT"
-        )
 
     async def _egress_teardown(self, *, force: bool = False) -> None:
         """Remove all per-run egress state. No-op unless egress was applied (or force=True for the
@@ -184,6 +217,10 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
             return
         self._egress_active = False
         await self._stop_egress_proxy()
+        if force:
+            await (
+                self._sweep_orphan_proxy()
+            )  # pre-apply: also clear an orphan from a crashed process
         chain, sub, port = self._egress_chain, self._net_subnet, str(self._egress_proxy_port)
         await self._iptables(
             "-t", "nat", "-D", "PREROUTING", "-s", sub,
@@ -251,7 +288,10 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
     async def launch(self, spec: SandboxLaunchSpec) -> SandboxHandle:
         # Deny-all (an applied, empty allowlist) needs no NIC: --network none means zero CNI and zero
         # host firewall. Only a non-empty allowlist (or a never-applied runtime) uses the bridge.
-        network = "none" if self._active_egress == [] else self._network
+        # Fail-CLOSED: only an explicitly-applied, non-empty allowlist attaches a NIC. A never-applied
+        # egress (`_active_egress is None` — a caller that skips apply_egress) or deny-all (`[]`) both
+        # get `--network none`, so no path can silently land the guest on an unfiltered bridge.
+        network = self._network if self._active_egress else "none"
         argv: list[str] = ["run", "-d", "--runtime", self._runtime, "--network", network]
         for k, v in spec.labels.items():
             argv += ["--label", f"{k}={v}"]
