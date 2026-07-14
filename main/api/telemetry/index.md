@@ -148,6 +148,14 @@ def __init__(
     self._armed = False
 ```
 
+### armed
+
+```python
+armed
+```
+
+Whether the sandbox ever reached RUNNING (the silence window only arms there).
+
 ### substrate_silent
 
 ```python

@@ -147,11 +147,15 @@ async def drive_node_raw(
                     reason=f"{st.reason} (sustained {unstartable_streak} polls)",
                 )
             unknown_streak = unknown_streak + 1 if phase == "unknown" else 0
-            if unknown_streak >= external_gone_polls and reader.is_dead():
+            # A never-armed reader means the sandbox never reached RUNNING — nothing can
+            # be producing telemetry, so a sustained not-found streak is conclusive on its
+            # own. Requiring is_dead() here made a sandbox deleted while Pending/gated
+            # undetectable FOREVER (is_dead is hard-false until armed).
+            if unknown_streak >= external_gone_polls and (reader.is_dead() or not reader.armed):
                 return NodeOutcome(
                     disposition="external",
                     observed_phase=phase,
-                    reason="pod terminated externally (sustained 'unknown' + telemetry silence)",
+                    reason="sandbox terminated externally (sustained 'unknown' phase)",
                 )
             if reader.is_dead():
                 try:
