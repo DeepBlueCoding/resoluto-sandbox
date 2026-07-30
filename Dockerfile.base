@@ -107,7 +107,14 @@ if [ "$(id -u)" = "0" ]; then
         dockerd >/var/log/dockerd.log 2>&1 &
         for _ in $(seq 1 30); do [ -S /var/run/docker.sock ] && break; sleep 0.5; done
     fi
-    exec runuser -u user -- "$@"
+    # Build driver must match the graph driver. BuildKit's `COPY --from` checksum step fails on
+    # the vfs/virtiofs graph ("failed to create hash: operation not supported"), so on vfs fall
+    # back to the LEGACY builder (DOCKER_BUILDKIT=0 + COMPOSE_DOCKER_CLI_BUILD=1 so compose v2
+    # honors it) — proven to build a real multi-stage COPY --from image on virtiofs. overlay2
+    # (block/tmpfs) keeps BuildKit. Injected into the gate process so its compose-build subprocess
+    # inherits it.
+    [ "$_DRIVER" = "vfs" ] && _BK=0 || _BK=1
+    exec runuser -u user -- env DOCKER_BUILDKIT="$_BK" COMPOSE_DOCKER_CLI_BUILD=1 "$@"
 fi
 exec "$@"
 EOF
