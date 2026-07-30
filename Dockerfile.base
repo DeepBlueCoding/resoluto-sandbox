@@ -78,11 +78,15 @@ COPY <<'EOF' /usr/local/bin/sandbox-entrypoint.sh
 #!/bin/sh
 set -e
 if [ "$(id -u)" = "0" ]; then
-    # Block-backed graph path (graph_backend=block): when Kata maps
-    # the emptyDir (no medium) to a virtio-blk device, /var/lib/docker is mounted
-    # on a raw block device. Format it ext4 (idempotent: skip if already ext4) and
-    # remount so overlay2 works. The findmnt/blkid check is a no-op on the default
-    # tmpfs path (source is "tmpfs", not a block device).
+    # Pick the dockerd storage driver from what the graph mount ACTUALLY is — overlay2
+    # cannot mount on virtiofs (Kata's default shared_fs), so the driver must match reality:
+    #   - block device (graph_backend=block + Kata maps the emptyDir to virtio-blk): format
+    #     ext4 (idempotent) + remount → overlay2 (fast, CoW).
+    #   - anything else (virtiofs when Kata does NOT block-map the emptyDir, or tmpfs): overlay2
+    #     fails ("driver not supported: overlay2"), so fall back to vfs — it needs no special
+    #     filesystem and costs no RAM (layers live on the disk-backed graph); slower + no CoW
+    #     but functional. This is a HARD requirement: the baked daemon.json pins overlay2, which
+    #     silently kills dockerd on virtiofs and dooms every compose gate.
     _GRAPH_DEV=$(findmnt -n -o SOURCE /var/lib/docker 2>/dev/null || true)
     if [ -n "$_GRAPH_DEV" ] && [ -b "$_GRAPH_DEV" ]; then
         _FS=$(blkid -o value -s TYPE "$_GRAPH_DEV" 2>/dev/null || true)
@@ -91,7 +95,12 @@ if [ "$(id -u)" = "0" ]; then
         fi
         umount /var/lib/docker
         mount -t ext4 "$_GRAPH_DEV" /var/lib/docker
+        _DRIVER=overlay2
+    else
+        _GRAPH_FSTYPE=$(stat -f -c %T /var/lib/docker 2>/dev/null || true)
+        _DRIVER=$([ "$_GRAPH_FSTYPE" = "tmpfs" ] && echo overlay2 || echo vfs)
     fi
+    printf '{"storage-driver":"%s"}\n' "$_DRIVER" > /etc/docker/daemon.json
     if ! pgrep -x dockerd >/dev/null 2>&1; then
         # dockerd self-raises its own fd limit to the hard ceiling; the user-side
         # compose limit is handled by the pam_limits drop-in (see above).
