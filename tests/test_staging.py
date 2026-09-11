@@ -173,3 +173,27 @@ async def test_restage_overwrites_readonly_files(store, tmp_path):
 
     assert staged  # second pass extracted cleanly over the read-only tree
     assert staged_blob.read_bytes() == b"blob-v1"
+
+
+async def test_stage_overwrites_files_inside_a_readonly_dir_the_gate_built(store, tmp_path):
+    """Staging must survive a read-only PARENT DIR in the live workspace: replacing a file
+    needs write permission on its directory, not on the file. A gate's own build creates such
+    dirs — setuptools extracts build eggs at 0o555 — so the NEXT step's stage_inputs died with
+    PermissionError: '.eggs/README.txt', which the lane reports as infra_error and burns the
+    whole lane on (real failure, SWE-bench astropy__astropy-8707)."""
+    src = tmp_path / "src"
+    (src / ".eggs").mkdir(parents=True)
+    (src / ".eggs" / "README.txt").write_text("v1")
+    await put_dir(store, "run/r1/nodes/n", str(src))
+
+    ws = tmp_path / "ws"
+    eggs = ws / ".eggs"
+    eggs.mkdir(parents=True)
+    (eggs / "README.txt").write_text("built-by-setup.py")
+    eggs.chmod(0o555)  # what setuptools leaves behind in the live workspace
+
+    staged = await stage_inputs(store, "run/r1/nodes/n", str(ws))
+
+    assert staged  # staged through the 0o555 dir instead of raising EACCES
+    assert (eggs / "README.txt").read_text() == "v1"
+    eggs.chmod(0o755)  # let tmp_path teardown remove the tree

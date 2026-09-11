@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import glob
 import io
+import os
 import shutil
+import stat
 import tarfile
 import tempfile
 from pathlib import Path
@@ -67,11 +69,45 @@ def _archive(
     return buf.getvalue()
 
 
+def _ensure_writable_dir(directory: Path) -> None:
+    """Restore the owner-write bit on an existing directory so staging can replace files
+    inside it. Input: a target member's parent dir (absent → no-op). Output: None.
+
+    Removing or replacing a file requires write permission on its PARENT DIRECTORY, not on
+    the file. A gate's own build legitimately creates read-only dirs in the live workspace —
+    setuptools extracts build eggs at 0o555 (`.eggs/`) — and the next step's stage_inputs
+    then fails EACCES on a file we own, which the lane reports as infra_error and burns the
+    lane on. Only the owner bit, only inside the workspace being extracted into."""
+    try:
+        mode = directory.stat().st_mode
+    except OSError:
+        return
+    if not mode & stat.S_IWUSR:
+        directory.chmod(mode | stat.S_IWUSR)
+
+
+def _ownership_hint(target: Path) -> str:
+    """Explain WHY a path we own the workspace of cannot be replaced.
+
+    Input: the un-replaceable target. Output: a one-line cause naming the blocking uid.
+    A bare EACCES on a build artifact is unattributable; the owning uid of the file and of its
+    parent directory is the whole diagnosis (a container run without a user mapping writes as
+    root, and the parent dir's owner is what actually denies the unlink)."""
+    try:
+        return (
+            f"it is owned by uid {target.lstat().st_uid} and its directory by uid "
+            f"{target.parent.stat().st_uid}"
+        )
+    except OSError:
+        return "its owner could not be read"
+
+
 def _extract(data: bytes, dest: Path) -> None:
     """Extract an archive into `dest`, overwriting collisions. Re-staging into a
     persistent workspace must behave like a fresh overwrite: existing read-only
     files (git objects are 0444) would otherwise fail tarfile's open('wb') with
-    EACCES, so colliding file members are unlinked first (contained paths only)."""
+    EACCES, so colliding file members are unlinked first (contained paths only) —
+    and read-only parent dirs are made writable first (see _ensure_writable_dir)."""
     dest.mkdir(parents=True, exist_ok=True)
     dest_resolved = dest.resolve()
     with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
@@ -84,8 +120,15 @@ def _extract(data: bytes, dest: Path) -> None:
                     continue
             except OSError:
                 continue
+            _ensure_writable_dir(target.parent)
             if target.is_symlink() or target.is_file():
-                target.unlink(missing_ok=True)
+                try:
+                    target.unlink(missing_ok=True)
+                except PermissionError as exc:
+                    raise PermissionError(
+                        f"cannot replace {target}: {_ownership_hint(target)}. Staging runs as "
+                        f"uid {os.geteuid()} and cannot modify it."
+                    ) from exc
         tar.extractall(dest, filter="data")
 
 
