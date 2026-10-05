@@ -14,10 +14,9 @@ def test_dind_manifest_uses_declared_graph_backend_and_exact_capacity():
     spec = SandboxLaunchSpec(
         image="img:0.1.0", store_prefix="run/r/n", flavor="dind", resources=resources
     )
-    env = {
-        entry["name"]: entry["value"]
-        for entry in K8sSandboxRuntime()._manifest(spec, "sbx")["spec"]["containers"][0]["env"]
-    }
+    manifest = K8sSandboxRuntime()._manifest(spec, "sbx-graph-identity")
+    assert manifest["metadata"]["name"] == "sbx-graph-identity"
+    env = {entry["name"]: entry["value"] for entry in manifest["spec"]["containers"][0]["env"]}
     assert env["RESOLUTO_DIND_GRAPH_BACKEND"] == "block"
     assert env["RESOLUTO_DIND_GRAPH_BYTES"] == "21474836480"
 
