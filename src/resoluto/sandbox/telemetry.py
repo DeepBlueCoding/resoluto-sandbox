@@ -57,10 +57,13 @@ class ChunkShipper:
         self._index = 0
         self._last_flush = clock()
         self._closed = False
+        self._closing = False
         self._flush_lock = asyncio.Lock()
 
     async def emit_line(self, line: str) -> None:
         """Buffer one JSONL record, flushing if the byte threshold is reached."""
+        if self._closing or self._closed:
+            raise RuntimeError("telemetry shipper is closing or closed")
         self._buf.append(line)
         self._buf_bytes += len(line) + 1
         if self._buf_bytes >= self._flush_bytes:
@@ -95,7 +98,11 @@ class ChunkShipper:
         """Final flush plus a manifest naming the highest chunk index."""
         if self._closed:
             return
-        await self.flush()
+        if self._closing:
+            raise RuntimeError("telemetry shipper is closing or closed")
+        while self._buf:
+            await self.flush()
+        self._closing = True
         manifest = json.dumps({"total_chunks": self._index}).encode("utf-8")
         await self._store.put(f"{self._prefix}/{_MANIFEST}", manifest)
         self._closed = True

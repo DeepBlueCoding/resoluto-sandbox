@@ -282,3 +282,36 @@ async def test_events_emitted_during_flush_survive_in_next_contiguous_chunk(tmp_
         "run/own/step/events-000001.jsonl",
         "run/own/step/events-000002.jsonl",
     ]
+
+
+@pytest.mark.asyncio
+async def test_close_drains_events_emitted_during_durable_write(tmp_path):
+    import asyncio
+
+    class SlowFirstWrite(LocalConduit):
+        def __init__(self, root):
+            super().__init__(root)
+            self.started = asyncio.Event()
+            self.proceed = asyncio.Event()
+
+        async def put(self, key, data):
+            if key.endswith("events-000001.jsonl"):
+                self.started.set()
+                await self.proceed.wait()
+            await super().put(key, data)
+
+    store = SlowFirstWrite(tmp_path)
+    shipper = ChunkShipper(store, "run/own/step")
+    reader = ChunkReader(store, "run/own/step")
+    await shipper.emit(_ev("author"))
+    closing = asyncio.create_task(shipper.close())
+    await store.started.wait()
+    await shipper.emit(_ev("completed-tool"))
+    store.proceed.set()
+    await closing
+
+    assert [event.name for event in await reader.poll()] == ["author", "completed-tool"]
+    assert reader.finished is True
+    assert await store.get("run/own/step/_manifest.json") == b'{"total_chunks": 2}'
+    with pytest.raises(RuntimeError, match="closing or closed"):
+        await shipper.emit(_ev("too-late"))
