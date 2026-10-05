@@ -215,3 +215,33 @@ async def test_terminal_gap_surfaces_as_dead(tmp_path):
     clock["t"] = 100.0
     await reader.poll()
     assert reader.is_dead() is True  # past the window, never finished → dead (single signal)
+
+
+@pytest.mark.asyncio
+async def test_failed_chunk_write_does_not_create_sequence_hole(tmp_path):
+    from resoluto.sandbox.contracts import ConduitError
+
+    class RejectFirstWrite(LocalConduit):
+        def __init__(self, root):
+            super().__init__(root)
+            self.rejected = False
+
+        async def put(self, key, data):
+            if key.endswith("events-000001.jsonl") and not self.rejected:
+                self.rejected = True
+                raise ConduitError("storage threshold reached")
+            await super().put(key, data)
+
+    store = RejectFirstWrite(tmp_path)
+    shipper = ChunkShipper(store, "run/own/step")
+    reader = ChunkReader(store, "run/own/step")
+    await shipper.emit(_ev("provider-tool"))
+
+    with pytest.raises(ConduitError, match="storage threshold"):
+        await shipper.flush()
+    await shipper.flush()
+
+    assert [event.name for event in await reader.poll()] == ["provider-tool"]
+    assert [obj.key for obj in await store.list_prefix("run/own/step")] == [
+        "run/own/step/events-000001.jsonl"
+    ]

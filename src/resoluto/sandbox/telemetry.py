@@ -82,9 +82,10 @@ class ChunkShipper:
         async with self._flush_lock:
             if not self._buf:
                 return
-            self._index += 1
+            index = self._index + 1
             body = ("\n".join(self._buf) + "\n").encode("utf-8")
-            await self._store.put(_chunk_key(self._prefix, self._index), body)
+            await self._store.put(_chunk_key(self._prefix, index), body)
+            self._index = index
             self._buf.clear()
             self._buf_bytes = 0
             self._last_flush = self._clock()
