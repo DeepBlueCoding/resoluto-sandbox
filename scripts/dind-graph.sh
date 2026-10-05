@@ -4,6 +4,28 @@ graph=$1
 backend=$2
 capacity=$3
 fail() { printf '%s\n' "$1" >&2; exit 1; }
+visible_mount() {
+    exec 9< "$graph"
+    mount_id=$(awk '$1 == "mnt_id:" { print $2 }' /proc/self/fdinfo/9)
+    exec 9<&-
+    [ -n "$mount_id" ] || fail "graph mount identity unavailable"
+    record=$(awk -v id="$mount_id" -v column="$1" '
+        $1 == id {
+            if (column == "TARGET") print $5
+            else for (i = 7; i <= NF; i++) if ($i == "-") {
+                if (column == "FSTYPE") print $(i + 1)
+                else if (column == "SOURCE") print $(i + 2)
+                else exit 1
+                break
+            }
+            found = 1
+            exit
+        }
+        END { if (!found) exit 1 }
+    ' /proc/self/mountinfo) || fail "graph mount record unavailable"
+    [ -n "$record" ] || fail "graph mount field unavailable"
+    printf '%b\n' "$record"
+}
 validate_overlay() {
     check=$graph/.overlay-validation-$$
     mkdir "$check"
@@ -24,7 +46,7 @@ case "$backend" in
     *) fail "unsupported graph backend: $backend" ;;
 esac
 if [ "$backend" = tmpfs ]; then
-    [ "$(findmnt -n -o FSTYPE -T "$graph")" = tmpfs ] || fail "tmpfs graph requires tmpfs"
+    [ "$(visible_mount FSTYPE)" = tmpfs ] || fail "tmpfs graph requires tmpfs"
     printf 'overlay2\n'
     exit 0
 fi
@@ -32,7 +54,7 @@ case "$capacity" in
     ''|*[!0-9]*) fail "positive graph capacity required" ;;
 esac
 [ "$capacity" -ge 67108864 ] || fail "positive graph capacity required (minimum 64MiB)"
-[ "$(findmnt -n -o FSTYPE -T "$graph")" != tmpfs ] || fail "block graph cannot use tmpfs"
+[ "$(visible_mount FSTYPE)" != tmpfs ] || fail "block graph cannot use tmpfs"
 image=$graph/.resoluto-graph.ext4
 created_image=0
 mounted=0
@@ -49,9 +71,9 @@ cleanup() {
     for node in $created_nodes; do rm "$node"; done
 }
 trap cleanup EXIT
-source=$(findmnt -n -o SOURCE -T "$graph")
-if [ -b "$source" ] && [ "$(findmnt -n -o TARGET -T "$graph")" = "$graph" ]; then
-    [ "$(findmnt -n -o FSTYPE -T "$graph")" = ext4 ] || fail "existing block graph is not ext4"
+source=$(visible_mount SOURCE)
+if [ -b "$source" ] && [ "$(visible_mount TARGET)" = "$graph" ]; then
+    [ "$(visible_mount FSTYPE)" = ext4 ] || fail "existing block graph is not ext4"
     [ "$(blockdev --getsize64 "$source")" = "$capacity" ] || fail "existing block capacity differs"
     validate_overlay
     trap - EXIT
@@ -87,7 +109,7 @@ done
 loop=$(losetup --find --show "$image")
 mount -t ext4 "$loop" "$graph"
 mounted=1
-[ "$(findmnt -n -o FSTYPE -T "$graph")" = ext4 ] || fail "guest graph is not ext4"
+[ "$(visible_mount FSTYPE)" = ext4 ] || fail "guest graph is not ext4"
 validate_overlay
 losetup -d "$loop"
 trap - EXIT

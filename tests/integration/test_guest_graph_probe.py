@@ -202,3 +202,90 @@ printf 'helper=overlay2 retained=retained-runtime-payload UUID=unchanged capacit
         result.stdout.strip()
         == "helper=overlay2 retained=retained-runtime-payload UUID=unchanged capacity_mismatch=rejected autoclear=verified BuildKitCOPY=payload-buildkit-loop network=isolated main_network=unchanged"
     )
+
+
+@pytest.mark.integration
+def test_owned_guest_graph_helper_stacks_ext4_over_existing_graph_mount():
+    pod = os.environ["RES58_GRAPH_PROBE_POD"]
+    run_id = os.environ["RES58_GRAPH_PROBE_RUN"]
+    namespace = "resoluto-sandboxes"
+    metadata = json.loads(
+        subprocess.check_output(
+            ["kubectl", "get", "pod", "-n", namespace, pod, "-o", "json"], text=True
+        )
+    )
+    assert metadata["metadata"]["labels"]["resoluto.run_id"] == run_id
+    assert metadata["metadata"]["labels"]["res58-diagnostic"] == "graph-mount"
+    assert metadata["metadata"]["uid"] == os.environ["RES58_GRAPH_PROBE_UID"]
+    helper = Path(__file__).resolve().parents[2] / "scripts/dind-graph.sh"
+    payload = base64.b64encode(helper.read_bytes()).decode()
+    token = uuid.uuid4().hex
+    script = r"""
+set -eu
+mount --make-rprivate /
+probe=/var/lib/docker/.res58-graph-probe-$1
+target=/tmp/res58-stacked-graph-$1
+before_nodes=$(find /dev -maxdepth 1 -name 'loop*' -print)
+bound=0
+mounted=0
+cleanup() {
+    if [ "$mounted" = 1 ]; then umount "$target/graph" || return 1; fi
+    if [ "$bound" = 1 ]; then umount "$target/graph" || return 1; fi
+    rm -rf "$probe" "$target"
+    for node in /dev/loop*; do
+        [ -e "$node" ] || continue
+        if ! printf '%s\n' "$before_nodes" | grep -Fxq "$node"; then rm "$node"; fi
+    done
+}
+trap cleanup EXIT
+mkdir "$probe" "$target" "$target/graph"
+printf '%s' "$2" | base64 -d > "$target/helper.sh"
+mount --bind "$probe" "$target/graph"
+bound=1
+printf 'before mountinfo: ' >&2
+cat /proc/self/mountinfo >&2
+if driver=$(sh "$target/helper.sh" "$target/graph" block 134217728); then
+    mounted=1
+else
+    printf 'failed mountinfo: ' >&2
+    cat /proc/self/mountinfo >&2
+    exit 1
+fi
+test "$driver" = overlay2
+test "$(stat -f -c %T "$target/graph")" = ext2/ext3
+printf 'after: ' >&2
+findmnt -n -o SOURCE,FSTYPE,TARGET -T "$target/graph" >&2
+cat /proc/self/mountinfo >&2
+printf 'actual-top-ext4\n' > "$target/graph/sentinel"
+test "$(sh "$target/helper.sh" "$target/graph" block 134217728)" = overlay2
+test "$(cat "$target/graph/sentinel")" = actual-top-ext4
+umount "$target/graph"
+mounted=0
+test -z "$(losetup -j "$probe/.resoluto-graph.ext4")"
+printf 'stacked_graph=ext4 driver=overlay2 retained=actual-top-ext4 autoclear=verified\n'
+"""
+    result = subprocess.run(
+        [
+            "kubectl",
+            "exec",
+            "-n",
+            namespace,
+            pod,
+            "--",
+            "unshare",
+            "--mount",
+            "sh",
+            "-c",
+            script,
+            "--",
+            token,
+            payload,
+        ],
+        text=True,
+        capture_output=True,
+        timeout=180,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == (
+        "stacked_graph=ext4 driver=overlay2 retained=actual-top-ext4 autoclear=verified"
+    )
