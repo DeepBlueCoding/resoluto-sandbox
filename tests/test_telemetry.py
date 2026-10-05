@@ -245,3 +245,40 @@ async def test_failed_chunk_write_does_not_create_sequence_hole(tmp_path):
     assert [obj.key for obj in await store.list_prefix("run/own/step")] == [
         "run/own/step/events-000001.jsonl"
     ]
+
+
+@pytest.mark.asyncio
+async def test_events_emitted_during_flush_survive_in_next_contiguous_chunk(tmp_path):
+    import asyncio
+
+    class SlowFirstWrite(LocalConduit):
+        def __init__(self, root):
+            super().__init__(root)
+            self.started = asyncio.Event()
+            self.proceed = asyncio.Event()
+
+        async def put(self, key, data):
+            if key.endswith("events-000001.jsonl"):
+                self.started.set()
+                await self.proceed.wait()
+            await super().put(key, data)
+
+    store = SlowFirstWrite(tmp_path)
+    shipper = ChunkShipper(store, "run/own/step")
+    reader = ChunkReader(store, "run/own/step")
+    await shipper.emit(_ev("author-started"))
+    flush = asyncio.create_task(shipper.flush())
+    await store.started.wait()
+    await shipper.emit(_ev("provider-tool-completed"))
+    store.proceed.set()
+    await flush
+    await shipper.flush()
+
+    assert [event.name for event in await reader.poll()] == [
+        "author-started",
+        "provider-tool-completed",
+    ]
+    assert [obj.key for obj in await store.list_prefix("run/own/step")] == [
+        "run/own/step/events-000001.jsonl",
+        "run/own/step/events-000002.jsonl",
+    ]

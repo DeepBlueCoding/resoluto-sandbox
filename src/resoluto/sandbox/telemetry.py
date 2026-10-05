@@ -83,11 +83,12 @@ class ChunkShipper:
             if not self._buf:
                 return
             index = self._index + 1
+            count = len(self._buf)
             body = ("\n".join(self._buf) + "\n").encode("utf-8")
             await self._store.put(_chunk_key(self._prefix, index), body)
             self._index = index
-            self._buf.clear()
-            self._buf_bytes = 0
+            del self._buf[:count]
+            self._buf_bytes = sum(len(line) + 1 for line in self._buf)
             self._last_flush = self._clock()
 
     async def close(self) -> None:
