@@ -74,32 +74,14 @@ RUN printf 'user soft nofile 524288\nuser hard nofile 1048576\n' \
 RUN git config --system safe.directory "*"
 
 # entrypoint: dind brings up dockerd as root then drops to the sandbox user
+COPY scripts/dind-graph.sh /usr/local/bin/resoluto-dind-graph
+RUN chmod +x /usr/local/bin/resoluto-dind-graph
+
 COPY <<'EOF' /usr/local/bin/sandbox-entrypoint.sh
 #!/bin/sh
 set -e
 if [ "$(id -u)" = "0" ]; then
-    # Pick the dockerd storage driver from what the graph mount ACTUALLY is — overlay2
-    # cannot mount on virtiofs (Kata's default shared_fs), so the driver must match reality:
-    #   - block device (graph_backend=block + Kata maps the emptyDir to virtio-blk): format
-    #     ext4 (idempotent) + remount → overlay2 (fast, CoW).
-    #   - anything else (virtiofs when Kata does NOT block-map the emptyDir, or tmpfs): overlay2
-    #     fails ("driver not supported: overlay2"), so fall back to vfs — it needs no special
-    #     filesystem and costs no RAM (layers live on the disk-backed graph); slower + no CoW
-    #     but functional. This is a HARD requirement: the baked daemon.json pins overlay2, which
-    #     silently kills dockerd on virtiofs and dooms every compose gate.
-    _GRAPH_DEV=$(findmnt -n -o SOURCE /var/lib/docker 2>/dev/null || true)
-    if [ -n "$_GRAPH_DEV" ] && [ -b "$_GRAPH_DEV" ]; then
-        _FS=$(blkid -o value -s TYPE "$_GRAPH_DEV" 2>/dev/null || true)
-        if [ "$_FS" != "ext4" ]; then
-            mkfs.ext4 -F "$_GRAPH_DEV"
-        fi
-        umount /var/lib/docker
-        mount -t ext4 "$_GRAPH_DEV" /var/lib/docker
-        _DRIVER=overlay2
-    else
-        _GRAPH_FSTYPE=$(stat -f -c %T /var/lib/docker 2>/dev/null || true)
-        _DRIVER=$([ "$_GRAPH_FSTYPE" = "tmpfs" ] && echo overlay2 || echo vfs)
-    fi
+    _DRIVER=$(resoluto-dind-graph /var/lib/docker "${RESOLUTO_DIND_GRAPH_BACKEND:?}" "${RESOLUTO_DIND_GRAPH_BYTES:-}")
     printf '{"storage-driver":"%s"}\n' "$_DRIVER" > /etc/docker/daemon.json
     if ! pgrep -x dockerd >/dev/null 2>&1; then
         # dockerd self-raises its own fd limit to the hard ceiling; the user-side
@@ -107,14 +89,8 @@ if [ "$(id -u)" = "0" ]; then
         dockerd >/var/log/dockerd.log 2>&1 &
         for _ in $(seq 1 30); do [ -S /var/run/docker.sock ] && break; sleep 0.5; done
     fi
-    # Build driver must match the graph driver. BuildKit's `COPY --from` checksum step fails on
-    # the vfs/virtiofs graph ("failed to create hash: operation not supported"), so on vfs fall
-    # back to the LEGACY builder (DOCKER_BUILDKIT=0 + COMPOSE_DOCKER_CLI_BUILD=1 so compose v2
-    # honors it) — proven to build a real multi-stage COPY --from image on virtiofs. overlay2
-    # (block/tmpfs) keeps BuildKit. Injected into the gate process so its compose-build subprocess
-    # inherits it.
-    [ "$_DRIVER" = "vfs" ] && _BK=0 || _BK=1
-    exec runuser -u user -- env DOCKER_BUILDKIT="$_BK" COMPOSE_DOCKER_CLI_BUILD=1 "$@"
+    [ "$(docker info --format '{{.Driver}}')" = overlay2 ]
+    exec runuser -u user -- env DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 "$@"
 fi
 exec "$@"
 EOF

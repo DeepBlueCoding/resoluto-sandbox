@@ -43,7 +43,17 @@ class Resources(BaseModel):
     # (disk-backed volume — image layers stay off RAM). Deliberately a NEUTRAL field: both
     # runtimes (k8s emptyDir, local nerdctl volume) now honor it, so it is no longer a
     # k8s-private concern. Ignored by non-dind steps.
-    graph_backend: str = "tmpfs"
+    graph_backend: Literal["tmpfs", "block"] = "tmpfs"
+
+    def dind_environment(self) -> dict[str, str]:
+        if self.graph_backend == "block" and self.dind_graph_bytes is None:
+            raise ValueError("block graph requires an explicit capacity")
+        result = {"RESOLUTO_DIND_GRAPH_BACKEND": self.graph_backend}
+        if self.dind_graph_bytes is not None:
+            if self.dind_graph_bytes <= 0:
+                raise ValueError("graph capacity must be positive")
+            result["RESOLUTO_DIND_GRAPH_BYTES"] = str(self.dind_graph_bytes)
+        return result
 
     @classmethod
     def from_quantities(

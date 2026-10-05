@@ -5,6 +5,36 @@ import pytest
 from resoluto.sandbox.contracts import SandboxLaunchSpec
 from resoluto.sandbox.runtime.kata_nerdctl import KataNerdctlSandboxRuntime
 
+
+@pytest.mark.asyncio
+async def test_local_dind_carries_exact_declared_graph_capacity(monkeypatch):
+    from resoluto.sandbox.contracts import Resources
+
+    rt = _rt()
+    calls = _stub_run(monkeypatch, rt, returns={"run": (0, "owned-id\n", "")})
+    await rt.launch(
+        _spec(
+            flavor="dind",
+            privileged=True,
+            resources=Resources.from_quantities(
+                memory="8Gi", dind_graph="20Gi", graph_backend="block"
+            ),
+        )
+    )
+    assert "RESOLUTO_DIND_GRAPH_BACKEND=block" in calls[0]
+    assert "RESOLUTO_DIND_GRAPH_BYTES=21474836480" in calls[0]
+
+
+@pytest.mark.asyncio
+async def test_default_tmpfs_dind_mounts_memory_graph(monkeypatch):
+    rt = _rt()
+    calls = _stub_run(monkeypatch, rt, returns={"run": (0, "owned-id\n", "")})
+    await rt.launch(_spec(flavor="dind", privileged=True))
+    position = calls[0].index("--tmpfs")
+    assert calls[0][position + 1] == "/var/lib/docker"
+    assert "RESOLUTO_DIND_GRAPH_BACKEND=tmpfs" in calls[0]
+
+
 _ADDR = "/run/resoluto-local/containerd/containerd.sock"
 _NS = "resoluto-local"
 

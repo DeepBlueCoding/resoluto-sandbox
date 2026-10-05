@@ -9,6 +9,19 @@ from resoluto.sandbox.contracts import Resources, SandboxLaunchSpec, parse_quant
 from resoluto.sandbox.runtime.k8s import EgressConfig, K8sSandboxRuntime
 
 
+def test_dind_manifest_uses_declared_graph_backend_and_exact_capacity():
+    resources = Resources.from_quantities(memory="8Gi", dind_graph="20Gi", graph_backend="block")
+    spec = SandboxLaunchSpec(
+        image="img:0.1.0", store_prefix="run/r/n", flavor="dind", resources=resources
+    )
+    env = {
+        entry["name"]: entry["value"]
+        for entry in K8sSandboxRuntime()._manifest(spec, "sbx")["spec"]["containers"][0]["env"]
+    }
+    assert env["RESOLUTO_DIND_GRAPH_BACKEND"] == "block"
+    assert env["RESOLUTO_DIND_GRAPH_BYTES"] == "21474836480"
+
+
 @pytest.fixture(autouse=True)
 def _never_touch_a_real_cluster(monkeypatch):
     """These are UNIT tests of manifest/guard/preflight logic — they must never reach a

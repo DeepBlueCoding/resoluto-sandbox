@@ -297,6 +297,11 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
             argv += ["--label", f"{k}={v}"]
         for k, v in spec.env.items():
             argv += ["-e", f"{k}={v}"]
+        if spec.flavor == "dind":
+            for name, value in spec.resources.dind_environment().items():
+                if name in spec.env:
+                    raise ValueError(f"graph environment is runtime-owned: {name}")
+                argv += ["-e", f"{name}={value}"]
         # Scope the conduit mount to THIS run's prefix: the guest sees only `<mount>/<prefix>`, never
         # sibling runs/lanes that share the same conduit root (the store is the guest→host seam, so an
         # over-broad mount = cross-run read + write). The host still keys its own reads on full prefixes
@@ -349,6 +354,8 @@ class KataNerdctlSandboxRuntime(SandboxRuntime):
                 argv += ["-v", f"{graph_dir}:/var/lib/docker"]
             elif res.dind_graph_bytes is not None:
                 argv += ["--tmpfs", f"/var/lib/docker:size={res.dind_graph_bytes}"]
+            elif spec.flavor == "dind":
+                argv += ["--tmpfs", "/var/lib/docker"]
         argv += [spec.image]
         argv += list(spec.args or spec.command or [])
 

@@ -154,6 +154,11 @@ class K8sSandboxRuntime(SandboxRuntime):
         owner_uid: str | None = None,
     ) -> dict:
         env = [{"name": k, "value": v} for k, v in spec.env.items()]
+        if spec.flavor == "dind":
+            for name, value in spec.resources.dind_environment().items():
+                if name in spec.env or name in spec.k8s_secret_refs:
+                    raise ValueError(f"graph environment is runtime-owned: {name}")
+                env.append({"name": name, "value": value})
         for var_name, (secret_name, secret_key) in spec.k8s_secret_refs.items():
             env.append(
                 {
