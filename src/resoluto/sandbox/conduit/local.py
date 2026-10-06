@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import fcntl
 import os
 from pathlib import Path
 
@@ -70,6 +72,32 @@ class LocalConduit(Conduit):
         except OSError as exc:
             raise self._wrap_os_error(exc) from exc
 
+    async def _conditional_put(self, key: str, expected: bytes | None, data: bytes) -> bool:
+        path = self._path(key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lock = path.with_name(path.name + ".conditional-lock")
+        with lock.open("ab") as handle:
+            while True:
+                try:
+                    fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    await asyncio.sleep(0.01)
+            try:
+                actual = path.read_bytes() if path.exists() else None
+                if actual != expected:
+                    return False
+                await self.put(key, data)
+                return True
+            finally:
+                fcntl.flock(handle, fcntl.LOCK_UN)
+
+    async def put_if_absent(self, key: str, data: bytes) -> bool:
+        return await self._conditional_put(key, None, data)
+
+    async def compare_and_swap(self, key: str, expected: bytes, data: bytes) -> bool:
+        return await self._conditional_put(key, expected, data)
+
     async def list_prefix(self, prefix: str) -> list[ObjectInfo]:
         base = self._path(prefix)
         if not base.exists():
@@ -77,7 +105,7 @@ class LocalConduit(Conduit):
         out: list[ObjectInfo] = []
         root = self._root.resolve()
         for p in sorted(base.rglob("*")):
-            if p.is_file() and not p.name.endswith(_TMP_SUFFIX):
+            if p.is_file() and not p.name.endswith((_TMP_SUFFIX, ".conditional-lock")):
                 out.append(
                     ObjectInfo(key=str(p.resolve().relative_to(root)), size=p.stat().st_size)
                 )

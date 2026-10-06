@@ -172,6 +172,12 @@ class Conduit(ABC):
     @abstractmethod
     async def get(self, key: str) -> bytes: ...
 
+    async def put_if_absent(self, key: str, data: bytes) -> bool:
+        raise NotImplementedError("Conduit backend requires atomic conditional writes")
+
+    async def compare_and_swap(self, key: str, expected: bytes, data: bytes) -> bool:
+        raise NotImplementedError("Conduit backend requires atomic conditional writes")
+
     @abstractmethod
     async def list_prefix(self, prefix: str) -> list[ObjectInfo]: ...
 

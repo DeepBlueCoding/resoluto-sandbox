@@ -161,6 +161,42 @@ class S3Conduit(Conduit):
         async with self._io() as c:
             await c.put_object(Bucket=self._bucket, Key=key, Body=data)
 
+    async def put_if_absent(self, key: str, data: bytes) -> bool:
+        async with self._io() as c:
+            try:
+                await c.put_object(Bucket=self._bucket, Key=key, Body=data, IfNoneMatch="*")
+            except Exception as exc:
+                if getattr(exc, "response", {}).get("Error", {}).get("Code") in (
+                    "PreconditionFailed",
+                    "412",
+                    "ConditionalRequestConflict",
+                    "409",
+                ):
+                    return False
+                raise
+        return True
+
+    async def compare_and_swap(self, key: str, expected: bytes, data: bytes) -> bool:
+        async with self._io() as c:
+            try:
+                current = await c.get_object(Bucket=self._bucket, Key=key)
+                async with current["Body"] as body:
+                    if await body.read() != expected:
+                        return False
+                await c.put_object(Bucket=self._bucket, Key=key, Body=data, IfMatch=current["ETag"])
+            except Exception as exc:
+                if getattr(exc, "response", {}).get("Error", {}).get("Code") in (
+                    "NoSuchKey",
+                    "404",
+                    "PreconditionFailed",
+                    "412",
+                    "ConditionalRequestConflict",
+                    "409",
+                ):
+                    return False
+                raise
+        return True
+
     async def get(self, key: str) -> bytes:
         try:
             async with self._io() as c:
