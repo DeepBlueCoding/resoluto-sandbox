@@ -12,7 +12,7 @@
 # with --full before you tag.
 set -euo pipefail
 
-RED=$'\e[31m'; GRN=$'\e[32m'; YEL=$'\e[33m'; RST=$'\e[0m'
+RED=$'\e[31m'; GRN=$'\e[32m'; RST=$'\e[0m'
 fail() { echo "${RED}✗ release blocked:${RST} $*" >&2; exit 1; }
 ok()   { echo "${GRN}✓${RST} $*"; }
 
@@ -24,16 +24,17 @@ root="$(git rev-parse --show-toplevel)"
 cd "$root"
 [ -f pyproject.toml ] || fail "no pyproject.toml at repo root ($root)"
 
-# 1. tag format — vX.Y.Z, optional -rcN / .devN pre-release suffix
+# 1. tag format — vX.Y.Z with an optional pre-release suffix. ONLY a bare vX.Y.Z is a final
+#    release (→ PyPI); every other shape (v0.2.0-rc1, v0.2.0rc1, v0.2.0.dev3) is a pre-release
+#    (→ TestPyPI). Same rule as the route step in publish.yml.
 tag="${raw#refs/tags/}"
 case "$tag" in
   v[0-9]*.[0-9]*.[0-9]*) : ;;
   *) fail "tag '$tag' is not vX.Y.Z (e.g. v0.1.0, v0.2.0-rc1)";;
 esac
-ver="${tag#v}"                                   # 0.1.0  or  0.1.0-rc1
-prerelease=false
-case "$ver" in *-*|*.dev*) prerelease=true;; esac
-base="${ver%%-*}"                                # 0.1.0 (drop pre-release suffix)
+ver="${tag#v}"                                   # 0.1.0  or  0.1.0-rc1  or  0.1.0rc1
+base="$(printf '%s' "$ver" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
+if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then prerelease=false; else prerelease=true; fi
 ok "tag $tag → $([ $prerelease = true ] && echo 'TestPyPI (pre-release)' || echo 'PyPI (final)')"
 
 # 2. pyproject version must equal the tag (PEP440-normalized: -rcN→rcN, -devN→.devN)
@@ -48,16 +49,14 @@ if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; the
 fi
 ok "$tag is a fresh release (not on origin)"
 
-# 4. changelog has a real section for this version (not just 'Unreleased')
+# 4. changelog has a real section for this version (not just 'Unreleased'): '## <pyproject version>'
+#    (e.g. '## 0.2.0rc1') or, for a pre-release, the base '## <X.Y.Z>' it leads up to.
 cl="docs/changelog.md"; [ -f "$cl" ] || cl="CHANGELOG.md"
-if [ -f "$cl" ]; then
-  if grep -qiE "^##[[:space:]]+\[?${base}([[:space:]]|\]|$)" "$cl"; then
-    ok "changelog has an entry for $base ($cl)"
-  else
-    fail "no changelog entry for $base in $cl — promote the 'Unreleased' section to '## $base'."
-  fi
+[ -f "$cl" ] || fail "no changelog (docs/changelog.md or CHANGELOG.md) — add one with a '## $norm' section."
+if grep -qiE "^##[[:space:]]+\[?(${norm}|${base})([[:space:]]|\]|$)" "$cl"; then
+  ok "changelog has an entry for $norm ($cl)"
 else
-  echo "${YEL}!${RST} no changelog file ($cl) — skipping changelog check"
+  fail "no changelog entry for $norm in $cl — promote the 'Unreleased' section to '## $norm'."
 fi
 
 # 5. clean working tree — release from a committed state

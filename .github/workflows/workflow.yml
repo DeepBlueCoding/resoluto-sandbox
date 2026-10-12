@@ -1,8 +1,8 @@
 name: Publish Package
 
 # Version-routed release via PyPI Trusted Publishing (OIDC — no stored API tokens).
-#   Tag  vX.Y.Z            → PyPI            (final release)
-#   Tag  vX.Y.Z(-rcN|.devN|-*) → TestPyPI    (pre-release / dev)
+#   Tag  vX.Y.Z (bare)                                  → PyPI       (final release)
+#   Any other v* tag (v0.2.0-rc1, v0.2.0rc1, v0.2.0.dev3) → TestPyPI   (pre-release / dev)
 # One-time setup (per package, done on the PyPI websites — see the
 # `publishing-and-docs` skill): register this repo+workflow as a Trusted
 # Publisher on pypi.org AND test.pypi.org, and create GitHub environments
@@ -15,7 +15,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write   # REQUIRED for OIDC trusted publishing
 
 jobs:
   test:
@@ -33,7 +32,19 @@ jobs:
   build:
     needs: test
     runs-on: ubuntu-latest
+    outputs:
+      index: ${{ steps.route.outputs.index }}
     steps:
+      - name: Route by tag (only a bare vX.Y.Z is a final release)
+        id: route
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [[ "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "index=pypi" >> "$GITHUB_OUTPUT"
+          else
+            echo "index=testpypi" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
         with:
@@ -50,8 +61,10 @@ jobs:
   publish-testpypi:
     name: Publish to TestPyPI
     needs: build
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && (contains(github.ref, '-') || contains(github.ref, '.dev'))
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && needs.build.outputs.index == 'testpypi'
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
     environment:
       name: testpypi
       url: https://test.pypi.org/p/resoluto-sandbox
@@ -68,8 +81,10 @@ jobs:
   publish-pypi:
     name: Publish to PyPI
     needs: build
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') && !contains(github.ref, '.dev')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && needs.build.outputs.index == 'pypi'
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
     environment:
       name: pypi
       url: https://pypi.org/p/resoluto-sandbox
