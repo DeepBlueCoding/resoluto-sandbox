@@ -5,6 +5,18 @@ All notable changes to `resoluto-sandbox` are documented here. The format follow
 
 ## Unreleased
 
+## 0.2.0rc1 — 2026-10-12
+
+- `Conduit.put_if_absent` / `Conduit.compare_and_swap`: conditional writes for durable ownership
+  records — atomic on `LocalConduit`, S3 conditional requests on `S3Conduit`.
+- dind on Kata: bounded guest ext4 graphs for overlay2, the visible guest graph mount inspected by
+  kernel identity, and DIND pod identity preserved when the graph environment is added.
+- Telemetry: the sequence advances only after durable chunk writes, events arriving while chunks
+  are written are retained, and the stream drains before the closing manifest is committed.
+- `stage_inputs` restores the owner-write bit on staged directories.
+- Release tooling: only a bare `vX.Y.Z` tag routes to PyPI; OIDC `id-token` scoped to the publish
+  jobs; explicit sdist allowlist (local caches no longer leak into the sdist).
+
 ## 0.1.0 — 2026-07-08
 
 - Store-mediated, Kata-isolated execution substrate: `Sandbox(backend=...).run(argv, ...)` over a

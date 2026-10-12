@@ -1,6 +1,6 @@
 [project]
 name = "resoluto-sandbox"
-version = "0.1.0"
+version = "0.2.0rc1"
 description = "Resoluto sandbox: store-mediated, Kata-isolated, cloud-agnostic execution substrate"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -44,6 +44,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/resoluto"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/README.md", "/LICENSE", "/CHANGELOG.md"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
