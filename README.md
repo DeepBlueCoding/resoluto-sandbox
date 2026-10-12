@@ -95,11 +95,9 @@ Then, in your own code:
 ```python
 from resoluto.sandbox import Sandbox
 
-result = Sandbox(backend="local").run(
-    ["python", "-c", "print('hello from the sandbox')"]
-)
-print(result.output)   # hello from the sandbox
-print(result.ok)       # True
+result = Sandbox(backend="local").run(["python", "-c", "print('hello from the sandbox')"])
+print(result.output)  # hello from the sandbox
+print(result.ok)  # True
 ```
 
 The result captures the output, the exit code, and any files you asked to collect (`output_paths`).
@@ -271,8 +269,8 @@ Untrusted code should not be able to phone home, and by default it can't.
 Grant egress per run, by domain:
 
 ```python
-Sandbox(backend="local").run(argv)                                 # no network (default)
-Sandbox(backend="local").run(argv, egress=["api.anthropic.com"])   # only Anthropic, this run
+Sandbox(backend="local").run(argv)  # no network (default)
+Sandbox(backend="local").run(argv, egress=["api.anthropic.com"])  # only Anthropic, this run
 Sandbox(backend="local").run(argv, egress=["registry.npmjs.org", "*.openai.com"])
 ```
 
@@ -328,10 +326,14 @@ from resoluto.sandbox.secrets import SecretKeyRef
 Sandbox(backend="local").run(argv, env_file=".env")
 
 # SecretKeyRef — k8s-native, zero fetch code, ignored on the local backend
-Sandbox(backend="k8s", image=...).run(argv, secrets={"ANTHROPIC_API_KEY": SecretKeyRef("anthropic-key", "api_key")})
+Sandbox(backend="k8s", image=...).run(
+    argv, secrets={"ANTHROPIC_API_KEY": SecretKeyRef("anthropic-key", "api_key")}
+)
 
 # SecretProvider ref — guest resolves it itself; host only holds a scoped RESOLUTO_SECRETS_* credential
-Sandbox(backend="local").run(argv, secrets={"ANTHROPIC_API_KEY": "vault:secret/data/anthropic#api_key"})
+Sandbox(backend="local").run(
+    argv, secrets={"ANTHROPIC_API_KEY": "vault:secret/data/anthropic#api_key"}
+)
 ```
 
 The host **never mints credentials** for the `SecretProvider` path — same posture as the Conduit's
@@ -462,11 +464,13 @@ Swap the `image=` tag + example script + env var to switch providers — everyth
 
 ```python
 Sandbox(backend="local", image="resoluto-sandbox:claude-agent-sdk-0.2.110").run(
-    ["python3", "claude_agent.py", "Say hello in five words"], workspace="examples/payloads",
-    env={"CLAUDE_CODE_OAUTH_TOKEN": "..."},   # never set ANTHROPIC_API_KEY alongside this
+    ["python3", "claude_agent.py", "Say hello in five words"],
+    workspace="examples/payloads",
+    env={"CLAUDE_CODE_OAUTH_TOKEN": "..."},  # never set ANTHROPIC_API_KEY alongside this
 )
 Sandbox(backend="local", image="resoluto-sandbox:openai-agents-0.17.7").run(
-    ["python3", "openai_agent.py", "Say hello in five words"], workspace="examples/payloads",
+    ["python3", "openai_agent.py", "Say hello in five words"],
+    workspace="examples/payloads",
     env={"OPENAI_API_KEY": "..."},
 )
 ```

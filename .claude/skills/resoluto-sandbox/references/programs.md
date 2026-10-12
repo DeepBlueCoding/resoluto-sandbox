@@ -29,11 +29,12 @@ Minimal program — read prompt from argv, print the answer, exit 0:
 ```python
 #!/usr/bin/env python3
 import sys
+
 prompt = " ".join(sys.argv[1:]).strip()
 if not prompt:
     print("usage: agent.py <prompt>", file=sys.stderr)
     raise SystemExit(2)
-print(do_work(prompt))          # whatever your agent does
+print(do_work(prompt))  # whatever your agent does
 ```
 
 ### Optional `result.json`
@@ -70,12 +71,13 @@ Sandbox(*, backend: Backend | str = "local")    # "local" | "k8s" | injected Bac
 class RunResult(BaseModel):
     exit_code: int
     output: str
-    errors: str                # always "" by design (output carries merged stdout+stderr)
-    artifacts: list[str] = []   # filesystem paths under workspace
+    errors: str  # always "" by design (output carries merged stdout+stderr)
+    artifacts: list[str] = []  # filesystem paths under workspace
     result: dict | None = None  # parsed result.json, else None
-    reason: str = ""            # substrate forensics (e.g. OOMKilled/evicted pod); empty for local
+    reason: str = ""  # substrate forensics (e.g. OOMKilled/evicted pod); empty for local
+
     @property
-    def ok(self) -> bool: ...    # exit_code == 0
+    def ok(self) -> bool: ...  # exit_code == 0
 ```
 
 Dependencies are your program's concern — put `uv run`/`pip install` in your argv, or use a prebuilt image.
@@ -85,10 +87,10 @@ Dependencies are your program's concern — put `uv run`/`pip install` in your a
 `argv[0]` is just an executable. None of these touch the sandbox SDK:
 
 ```python
-Sandbox().run(["uv", "run", "agent.py", "Say hi"], workspace="examples/payloads")   # python
-Sandbox().run(["node", "agent.js", "Say hi"], workspace="examples/payloads")        # node
-Sandbox().run(["./agent", "Say hi"], workspace="examples/payloads")                 # compiled binary
-Sandbox().run(["bash", "-c", "echo hi && ls"], workspace="examples/payloads")       # shell
+Sandbox().run(["uv", "run", "agent.py", "Say hi"], workspace="examples/payloads")  # python
+Sandbox().run(["node", "agent.js", "Say hi"], workspace="examples/payloads")  # node
+Sandbox().run(["./agent", "Say hi"], workspace="examples/payloads")  # compiled binary
+Sandbox().run(["bash", "-c", "echo hi && ls"], workspace="examples/payloads")  # shell
 ```
 
 LangChain / LangGraph / OpenAI-Agents are libraries your program imports — there is
@@ -135,7 +137,8 @@ The guest does NOT inherit your host env — deliver it explicitly. `env=` is th
 
 ```python
 Sandbox(backend="local", image="<provider-image>").run(
-    ["python", "openai_agent.py", "Say hi"], workspace="examples/payloads",
+    ["python", "openai_agent.py", "Say hi"],
+    workspace="examples/payloads",
     env={"OPENAI_API_KEY": os.environ["OPENAI_API_KEY"]},
 )
 ```
@@ -192,30 +195,41 @@ from resoluto.sandbox.conduit.s3 import mint_scoped_credential
 from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
 from resoluto.sandbox.egress import EgressConfig
 
-token = asyncio.run(mint_scoped_credential(
-    bucket=os.environ["RESOLUTO_STORE_BUCKET"], prefix="run",
-    endpoint_url=os.environ["RESOLUTO_STORE_ENDPOINT"],
-    region=os.environ.get("RESOLUTO_STORE_REGION", "us-east-1"),
-    access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-    secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
-    sts_role_arn=os.environ["RESOLUTO_STORE_STS_ROLE_ARN"],
-))
+token = asyncio.run(
+    mint_scoped_credential(
+        bucket=os.environ["RESOLUTO_STORE_BUCKET"],
+        prefix="run",
+        endpoint_url=os.environ["RESOLUTO_STORE_ENDPOINT"],
+        region=os.environ.get("RESOLUTO_STORE_REGION", "us-east-1"),
+        access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+        secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+        sts_role_arn=os.environ["RESOLUTO_STORE_STS_ROLE_ARN"],
+    )
+)
 store_env = {k: v for k, v in os.environ.items() if k.startswith("RESOLUTO_STORE_")}
-store_env["RESOLUTO_STORE_WRITE_TOKEN"] = json.dumps(token)   # pod authenticates with THIS only
+store_env["RESOLUTO_STORE_WRITE_TOKEN"] = json.dumps(token)  # pod authenticates with THIS only
 
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
-    context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),   # pin the cluster; ambient is refused
-    egress=EgressConfig.from_store_env(),                     # default-deny egress (or None = unrestricted)
+    context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),  # pin the cluster; ambient is refused
+    egress=EgressConfig.from_store_env(),  # default-deny egress (or None = unrestricted)
 )
-sb = Sandbox(backend=SubstrateBackend(
-    runtime=runtime,
-    conduit=store_from_env(),              # host keeps full creds for staging; needs RESOLUTO_STORE_KIND
-    image=os.environ["RESOLUTO_SANDBOX_IMAGE"],   # REQUIRED, and present in the cluster's containerd
-    store_env=store_env,
-))
-res = sb.run(["python", "echo_agent.py", "ping-42"], workspace="tests/smoke",
-             output_paths=["result.json"], env={"SMOKE_TAG": "x"})
+sb = Sandbox(
+    backend=SubstrateBackend(
+        runtime=runtime,
+        conduit=store_from_env(),  # host keeps full creds for staging; needs RESOLUTO_STORE_KIND
+        image=os.environ[
+            "RESOLUTO_SANDBOX_IMAGE"
+        ],  # REQUIRED, and present in the cluster's containerd
+        store_env=store_env,
+    )
+)
+res = sb.run(
+    ["python", "echo_agent.py", "ping-42"],
+    workspace="tests/smoke",
+    output_paths=["result.json"],
+    env={"SMOKE_TAG": "x"},
+)
 ```
 
 Requires `RESOLUTO_STORE_KIND` (the conduit is how the pod's workspace/artifacts travel).
@@ -272,11 +286,15 @@ store + DNS; there is NO `llm_cidr`/`git_cidrs`, you open HTTPS via `allow=[...]
 
 ```python
 EgressConfig(
-    store_cidr="10.0.0.5/32",              # k8s object store CIDR (REQUIRED for k8s; local ignores it — file mount)
-    store_port=9100,                       # the store's port (default 443)
-    allow=["api.anthropic.com", "registry.npmjs.org", "pypi.org"],    # open specific destinations — hostnames OR CIDRs — on allow_port
-    allow_port=443,                        # port for `allow` (default 443; e.g. 22 for git-over-SSH)
-    public_https=False,                    # DEFAULT deny all :443; True = allow ALL public :443 (escape hatch)
+    store_cidr="10.0.0.5/32",  # k8s object store CIDR (REQUIRED for k8s; local ignores it — file mount)
+    store_port=9100,  # the store's port (default 443)
+    allow=[
+        "api.anthropic.com",
+        "registry.npmjs.org",
+        "pypi.org",
+    ],  # open specific destinations — hostnames OR CIDRs — on allow_port
+    allow_port=443,  # port for `allow` (default 443; e.g. 22 for git-over-SSH)
+    public_https=False,  # DEFAULT deny all :443; True = allow ALL public :443 (escape hatch)
 )
 # or: EgressConfig.from_store_env()   # store_cidr:port + RESOLUTO_EGRESS_* knobs, from env
 ```

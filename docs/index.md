@@ -17,11 +17,9 @@ hide:
 ```python
 from resoluto.sandbox import Sandbox
 
-result = Sandbox(backend="local").run(
-    ["python", "-c", "print('hello from the sandbox')"]
-)
-print(result.output)   # hello from the sandbox
-print(result.ok)       # True
+result = Sandbox(backend="local").run(["python", "-c", "print('hello from the sandbox')"])
+print(result.output)  # hello from the sandbox
+print(result.ok)  # True
 ```
 
 <div class="grid cards" markdown>

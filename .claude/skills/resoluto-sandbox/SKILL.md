@@ -9,8 +9,10 @@ Run any program — script, CLI, or AI agent in any language — in an isolated 
 
 ```python
 from resoluto.sandbox import Sandbox
-r = Sandbox(backend="local").run(["python", "agent.py"], workspace="./work",
-                                 output_paths=["out/*.json"])
+
+r = Sandbox(backend="local").run(
+    ["python", "agent.py"], workspace="./work", output_paths=["out/*.json"]
+)
 # RunResult(pydantic): exit_code:int output/errors:str artifacts:list[str] result:dict|None reason:str ok(prop ==exit0)
 ```
 

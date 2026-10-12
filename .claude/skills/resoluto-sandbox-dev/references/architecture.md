@@ -12,27 +12,33 @@ ONE `SubstrateBackend` drives both backends. The only thing that varies is the i
 from resoluto.sandbox.client import Sandbox
 
 # select by name (backend shortcuts)
-sb = Sandbox(backend="local")          # SubstrateBackend(KataNerdctlSandboxRuntime + LocalConduit)
-sb = Sandbox(backend="k8s")            # SubstrateBackend(K8sSandboxRuntime + store_from_env()) — needs RESOLUTO_SANDBOX_IMAGE
+sb = Sandbox(backend="local")  # SubstrateBackend(KataNerdctlSandboxRuntime + LocalConduit)
+sb = Sandbox(
+    backend="k8s"
+)  # SubstrateBackend(K8sSandboxRuntime + store_from_env()) — needs RESOLUTO_SANDBOX_IMAGE
 
 # or inject a configured SubstrateBackend (the real k8s path with egress/conduit config)
 import os
 from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
 from resoluto.sandbox.conduit.factory import store_from_env
 from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
-from resoluto.sandbox.egress import EgressConfig   # backend-neutral; re-exported from runtime.k8s
+from resoluto.sandbox.egress import EgressConfig  # backend-neutral; re-exported from runtime.k8s
 
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
-    egress=EgressConfig(store_cidr="10.0.0.5/32", store_port=443),   # SECURE BY DEFAULT: store + DNS only; add allow=[...] (least privilege) or public_https=True (escape hatch, all :443). IMDS denied
+    egress=EgressConfig(
+        store_cidr="10.0.0.5/32", store_port=443
+    ),  # SECURE BY DEFAULT: store + DNS only; add allow=[...] (least privilege) or public_https=True (escape hatch, all :443). IMDS denied
 )
-sb = Sandbox(backend=SubstrateBackend(
-    runtime=runtime,
-    conduit=store_from_env(),
-    image="ghcr.io/you/sandbox:tag",
-    store_env=store_env_for_pod(os.environ),
-))
+sb = Sandbox(
+    backend=SubstrateBackend(
+        runtime=runtime,
+        conduit=store_from_env(),
+        image="ghcr.io/you/sandbox:tag",
+        store_env=store_env_for_pod(os.environ),
+    )
+)
 ```
 
 `Sandbox.__init__(*, backend: Backend | str = "local", image: str | None = None)`:
@@ -80,8 +86,9 @@ The substrate seam. One abstract method; inputs/outputs identical across impleme
 ```python
 class Backend(ABC):
     @abstractmethod
-    def run(self, argv, *, workspace=None, stdin=None, env=None,
-            output_paths=None, stream=None) -> RunResult: ...
+    def run(
+        self, argv, *, workspace=None, stdin=None, env=None, output_paths=None, stream=None
+    ) -> RunResult: ...
 ```
 
 One implementation drives both backends:
@@ -136,8 +143,8 @@ class SandboxRuntime(ABC):
     @abstractmethod
     async def destroy(self, handle: SandboxHandle) -> None: ...
     @abstractmethod
-    async def sweep(self, labels: dict[str, str]) -> int: ...   # leak backstop
-    async def logs(self, handle, *, tail=200) -> str: ...        # forensic only; untrusted
+    async def sweep(self, labels: dict[str, str]) -> int: ...  # leak backstop
+    async def logs(self, handle, *, tail=200) -> str: ...  # forensic only; untrusted
 ```
 
 Implementations:
@@ -180,21 +187,30 @@ from resoluto.sandbox.egress import EgressConfig
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
-    egress=EgressConfig(                         # egress=None = opt OUT (no NetworkPolicy, unrestricted); EgressConfig() = SECURE BY DEFAULT
-        store_cidr="10.0.0.5/32",                # object store endpoint (k8s only)
-        store_port=443,                          # store port; store + DNS auto-allowed; IMDS denied. Nothing else until you opt in
-        allow=["api.anthropic.com", "registry.npmjs.org", "pypi.org"],      # open only what's needed (least privilege); allow_port= for a non-443 dest
+    egress=EgressConfig(  # egress=None = opt OUT (no NetworkPolicy, unrestricted); EgressConfig() = SECURE BY DEFAULT
+        store_cidr="10.0.0.5/32",  # object store endpoint (k8s only)
+        store_port=443,  # store port; store + DNS auto-allowed; IMDS denied. Nothing else until you opt in
+        allow=[
+            "api.anthropic.com",
+            "registry.npmjs.org",
+            "pypi.org",
+        ],  # open only what's needed (least privilege); allow_port= for a non-443 dest
         # public_https=True,                     # escape hatch: allow ALL :443 (trusted code)
     ),
 )
 backend = SubstrateBackend(
     runtime=runtime,
-    conduit=S3Conduit("my-bucket", endpoint_url="http://minio:9000",
-                      aws_access_key_id="...", aws_secret_access_key="..."),
+    conduit=S3Conduit(
+        "my-bucket",
+        endpoint_url="http://minio:9000",
+        aws_access_key_id="...",
+        aws_secret_access_key="...",
+    ),
     image="ghcr.io/you/sandbox:tag",
     store_env=store_env_for_pod(os.environ),
 )
 from resoluto.sandbox.client import Sandbox
+
 sb = Sandbox(backend=backend)
 res = sb.run(["agent.py"], workspace="/work", output_paths=["out/*.json"])
 ```
@@ -206,13 +222,20 @@ res = sb.run(["agent.py"], workspace="/work", output_paths=["out/*.json"])
 **Primary path:** implement `SandboxRuntime` (the isolation/placement seam) and wire it into `SubstrateBackend`. This reuses the entire store-mediated wire (runner_main, ChunkShipper/ChunkReader, staging, telemetry) and only adds the placement mechanism:
 
 ```python
-from resoluto.sandbox.contracts import SandboxRuntime, SandboxLaunchSpec, SandboxHandle, SandboxStatus
+from resoluto.sandbox.contracts import (
+    SandboxRuntime,
+    SandboxLaunchSpec,
+    SandboxHandle,
+    SandboxStatus,
+)
+
 
 class EcsRuntime(SandboxRuntime):
     async def launch(self, spec: SandboxLaunchSpec) -> SandboxHandle: ...
     async def status(self, handle: SandboxHandle) -> SandboxStatus: ...
     async def destroy(self, handle: SandboxHandle) -> None: ...
     async def sweep(self, labels: dict[str, str]) -> int: ...
+
 
 # Wire it in:
 SubstrateBackend(runtime=EcsRuntime(...), conduit=store_from_env(), image="...", store_env=...)
@@ -223,12 +246,14 @@ SubstrateBackend(runtime=EcsRuntime(...), conduit=store_from_env(), image="...",
 ```python
 from resoluto.sandbox.backends.base import Backend, RunResult
 
-class MyBackend(Backend):
-    def run(self, argv, *, workspace=None, stdin=None, env=None,
-            output_paths=None, stream=None) -> RunResult:
-        ...
 
-Sandbox(backend=MyBackend(...))   # no facade change needed
+class MyBackend(Backend):
+    def run(
+        self, argv, *, workspace=None, stdin=None, env=None, output_paths=None, stream=None
+    ) -> RunResult: ...
+
+
+Sandbox(backend=MyBackend(...))  # no facade change needed
 ```
 
 Reuse `Conduit` for the host↔sandbox exchange — don't invent a new transport. Keep heavy SDK imports lazy/inside methods to preserve the import-light litmus.

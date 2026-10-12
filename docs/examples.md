@@ -30,13 +30,13 @@ Paths in `argv` are relative to the staged `workspace`, never host absolute path
 from resoluto.sandbox import Sandbox
 
 result = Sandbox(backend="local").run(
-    ["python", "hello.py", "sandbox"],   # guest python; path relative to the workspace
-    workspace="/path/to/project",        # staged into the guest as cwd
-    env={"GREETING": "hi"},              # overlaid on the guest environment
+    ["python", "hello.py", "sandbox"],  # guest python; path relative to the workspace
+    workspace="/path/to/project",  # staged into the guest as cwd
+    env={"GREETING": "hi"},  # overlaid on the guest environment
 )
 
-print(result.output)     # hi, sandbox
-print(result.ok)         # True  → exit_code == 0
+print(result.output)  # hi, sandbox
+print(result.ok)  # True  → exit_code == 0
 print(result.exit_code)  # 0
 ```
 
@@ -49,7 +49,7 @@ after the program exits. If the program writes a `result.json`, it is parsed int
 result = Sandbox(backend="local").run(
     ["python", "run_task.py", "--mode", "fast"],
     workspace="/path/to/project",
-    output_paths=["out/*.json"],         # collected into result.artifacts
+    output_paths=["out/*.json"],  # collected into result.artifacts
 )
 
 for name, data in result.artifacts.items():

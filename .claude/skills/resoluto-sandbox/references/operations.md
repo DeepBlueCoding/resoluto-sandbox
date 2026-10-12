@@ -184,7 +184,8 @@ image tag in lockstep — rebuild the image after any wheel bump that changes ma
 
 ```python
 from resoluto.sandbox.conduit.factory import store_from_env
-conduit = store_from_env(env=None)   # defaults to os.environ
+
+conduit = store_from_env(env=None)  # defaults to os.environ
 ```
 Switches on `RESOLUTO_STORE_KIND` (KeyError if unset; unknown value → RuntimeError):
 
@@ -236,19 +237,21 @@ from resoluto.sandbox.client import Sandbox
 from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
 from resoluto.sandbox.conduit.factory import store_from_env
 from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
-from resoluto.sandbox.egress import EgressConfig   # backend-neutral; re-exported from runtime.k8s
+from resoluto.sandbox.egress import EgressConfig  # backend-neutral; re-exported from runtime.k8s
 
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
-    egress=None,                    # None = opt OUT (unrestricted); EgressConfig(...) = secure by default
+    egress=None,  # None = opt OUT (unrestricted); EgressConfig(...) = secure by default
 )
-sb = Sandbox(backend=SubstrateBackend(
-    runtime=runtime,
-    conduit=store_from_env(),       # needs RESOLUTO_STORE_KIND
-    image="<registry>/resoluto-sandbox-base:0.1.0",
-    store_env=store_env_for_pod(os.environ),
-))
+sb = Sandbox(
+    backend=SubstrateBackend(
+        runtime=runtime,
+        conduit=store_from_env(),  # needs RESOLUTO_STORE_KIND
+        image="<registry>/resoluto-sandbox-base:0.1.0",
+        store_env=store_env_for_pod(os.environ),
+    )
+)
 result = sb.run(["python", "agent.py"], workspace="/path/to/ws", output_paths=["out/*.json"])
 ```
 

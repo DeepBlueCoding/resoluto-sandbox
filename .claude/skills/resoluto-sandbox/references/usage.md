@@ -13,11 +13,11 @@ Cross-links (don't duplicate these):
 ## The single entrypoint
 
 ```python
-from resoluto.sandbox import Sandbox   # re-exported; canonical: resoluto.sandbox.client
+from resoluto.sandbox import Sandbox  # re-exported; canonical: resoluto.sandbox.client
 
 result = Sandbox(backend="local").run(["agent.py", "--task", "fix the bug"], workspace="/abs/repo")
-print(result.output)      # the program's answer
-assert result.ok          # exit_code == 0
+print(result.output)  # the program's answer
+assert result.ok  # exit_code == 0
 ```
 
 There is exactly ONE public call shape. `Sandbox(...)` holds a `Backend`; `.run(...)`
@@ -86,7 +86,7 @@ class RunResult(BaseModel):
     reason: str = ""
 
     @property
-    def ok(self) -> bool:        # exit_code == 0
+    def ok(self) -> bool:  # exit_code == 0
         return self.exit_code == 0
 ```
 
@@ -112,32 +112,40 @@ Two ways to pick a backend. Strings are for the trivial cases; **inject a config
 
 ```python
 # By string (no config knobs)
-Sandbox(backend="local")                     # Kata microVM via nerdctl, default image
-Sandbox(backend="local", image="my:img")     # Kata microVM via nerdctl, custom image
-Sandbox(backend="k8s", image="<tag>")        # k8s backend — reads RESOLUTO_STORE_KIND from env
+Sandbox(backend="local")  # Kata microVM via nerdctl, default image
+Sandbox(backend="local", image="my:img")  # Kata microVM via nerdctl, custom image
+Sandbox(backend="k8s", image="<tag>")  # k8s backend — reads RESOLUTO_STORE_KIND from env
 
 # By injection (DI) — the supported path for k8s config with egress/custom conduit
 import os
 from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
 from resoluto.sandbox.conduit.factory import store_from_env
 from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
-from resoluto.sandbox.egress import EgressConfig   # backend-neutral allowlist (k8s + local); re-exported from runtime.k8s
+from resoluto.sandbox.egress import (
+    EgressConfig,
+)  # backend-neutral allowlist (k8s + local); re-exported from runtime.k8s
 
-Sandbox(backend=SubstrateBackend(
-    runtime=K8sSandboxRuntime(
-        namespace="resoluto-sandboxes",
-        context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
-        egress=EgressConfig(                # None → opt OUT (no NetworkPolicy, unrestricted egress)
-            store_cidr="10.0.0.5/32",       # object store (k8s only); store + DNS auto-allowed; IMDS denied. SECURE BY DEFAULT
-            store_port=443,                 # default 443
-            allow=["api.anthropic.com", "registry.npmjs.org", "pypi.org"],    # open only what's needed (least privilege)
-            # public_https=True,                    # escape hatch: allow ALL :443 (trusted code)
+Sandbox(
+    backend=SubstrateBackend(
+        runtime=K8sSandboxRuntime(
+            namespace="resoluto-sandboxes",
+            context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
+            egress=EgressConfig(  # None → opt OUT (no NetworkPolicy, unrestricted egress)
+                store_cidr="10.0.0.5/32",  # object store (k8s only); store + DNS auto-allowed; IMDS denied. SECURE BY DEFAULT
+                store_port=443,  # default 443
+                allow=[
+                    "api.anthropic.com",
+                    "registry.npmjs.org",
+                    "pypi.org",
+                ],  # open only what's needed (least privilege)
+                # public_https=True,                    # escape hatch: allow ALL :443 (trusted code)
+            ),
         ),
-    ),
-    conduit=store_from_env(),               # or inject a Conduit instance
-    image="registry.example/resoluto-sandbox-base:0.1.0",
-    store_env=store_env_for_pod(os.environ),
-))
+        conduit=store_from_env(),  # or inject a Conduit instance
+        image="registry.example/resoluto-sandbox-base:0.1.0",
+        store_env=store_env_for_pod(os.environ),
+    )
+)
 ```
 
 You can also inject your own `Backend` subclass (implement `run(...) -> RunResult`); the
@@ -203,7 +211,9 @@ r = Sandbox(backend="local").run(
     workspace="/abs/job",
     output_paths=["report.md", "out/*.json"],
 )
-print(r.output); print(r.artifacts); print(r.result)   # result.json parsed if written
+print(r.output)
+print(r.artifacts)
+print(r.result)  # result.json parsed if written
 ```
 
 Untrusted run in a Kata pod, with egress lockdown:
@@ -218,15 +228,19 @@ from resoluto.sandbox.egress import EgressConfig
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
-    egress=EgressConfig(store_cidr="10.0.0.5/32", store_port=443),   # SECURE BY DEFAULT: store + DNS only; add allow=[...] or public_https=True to open egress
+    egress=EgressConfig(
+        store_cidr="10.0.0.5/32", store_port=443
+    ),  # SECURE BY DEFAULT: store + DNS only; add allow=[...] or public_https=True to open egress
 )
-sb = Sandbox(backend=SubstrateBackend(
-    runtime=runtime,
-    conduit=store_from_env(),
-    image="registry.example/resoluto-sandbox-base:0.1.0",
-    store_env=store_env_for_pod(os.environ),
-))
+sb = Sandbox(
+    backend=SubstrateBackend(
+        runtime=runtime,
+        conduit=store_from_env(),
+        image="registry.example/resoluto-sandbox-base:0.1.0",
+        store_env=store_env_for_pod(os.environ),
+    )
+)
 r = sb.run(["agent.py", "--task", "..."], workspace="/abs/repo", output_paths=["**/*.patch"])
 if not r.ok:
-    print("FAILED", r.exit_code, r.reason)   # reason = pod forensics
+    print("FAILED", r.exit_code, r.reason)  # reason = pod forensics
 ```

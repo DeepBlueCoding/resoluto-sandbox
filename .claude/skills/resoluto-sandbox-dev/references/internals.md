@@ -16,19 +16,23 @@ host tails + reaps. Liveness = monotonic chunk-arrival + heartbeats. **No wall-c
 ```python
 from resoluto.sandbox import Sandbox, RunResult
 
-sb = Sandbox(backend="local")             # default: Kata microVM (via nerdctl + a dedicated containerd) on this host
-res = sb.run(["python", "agent.py", "--x"],
-            workspace="/abs/dir",         # program cwd, staged into the sandbox
-            env={"FOO": "1"},             # overlays the sandbox environment
-            output_paths=["out/*.json"],  # globs collected into res.artifacts
-            stream=sys.stdout)            # live output sink; None = sys.stdout
-res.ok          # bool == (exit_code == 0)
-res.exit_code   # int
-res.output      # str   stdout+stderr, merged by the in-sandbox runner
-res.errors      # str   ALWAYS "" — merged into output, by design
-res.artifacts   # list[str]  collected output_paths (absolute paths)
-res.result      # dict | None  parsed result.json if the program wrote one
-res.reason      # str  substrate forensics (evicted/OOMKilled/observed_phase)
+sb = Sandbox(
+    backend="local"
+)  # default: Kata microVM (via nerdctl + a dedicated containerd) on this host
+res = sb.run(
+    ["python", "agent.py", "--x"],
+    workspace="/abs/dir",  # program cwd, staged into the sandbox
+    env={"FOO": "1"},  # overlays the sandbox environment
+    output_paths=["out/*.json"],  # globs collected into res.artifacts
+    stream=sys.stdout,
+)  # live output sink; None = sys.stdout
+res.ok  # bool == (exit_code == 0)
+res.exit_code  # int
+res.output  # str   stdout+stderr, merged by the in-sandbox runner
+res.errors  # str   ALWAYS "" — merged into output, by design
+res.artifacts  # list[str]  collected output_paths (absolute paths)
+res.result  # dict | None  parsed result.json if the program wrote one
+res.reason  # str  substrate forensics (evicted/OOMKilled/observed_phase)
 ```
 
 `Sandbox(backend=...)` accepts `"local"`, `"k8s"`, or a `Backend` instance.
@@ -53,8 +57,10 @@ container/pod stages inputs, runs the workload, ships span events, writes result
 fails loud:
 
 ```python
-if stdin is not None: raise NotImplementedError("stdin is not supported on the substrate backend")
-if self._image is None: raise ValueError("SubstrateBackend requires image=")
+if stdin is not None:
+    raise NotImplementedError("stdin is not supported on the substrate backend")
+if self._image is None:
+    raise ValueError("SubstrateBackend requires image=")
 ```
 
 ### Configuring a backend (inject the runtime)
@@ -65,24 +71,32 @@ from resoluto.sandbox import Sandbox
 from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
 from resoluto.sandbox.conduit.factory import store_from_env
 from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
-from resoluto.sandbox.egress import EgressConfig   # canonical home (pure stdlib); re-exported from runtime.k8s
+from resoluto.sandbox.egress import (
+    EgressConfig,
+)  # canonical home (pure stdlib); re-exported from runtime.k8s
 
 runtime = K8sSandboxRuntime(
     namespace=os.environ.get("RESOLUTO_SANDBOX_NAMESPACE", "resoluto-sandboxes"),
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
-    egress=EgressConfig(                         # egress=None = opt OUT (no NetworkPolicy, unrestricted); EgressConfig() = SECURE BY DEFAULT
-        store_cidr="10.0.0.5/32",                # store_cidr must be CIDR; FQDNs rejected in __post_init__
-        store_port=443,                          # default 443; store + DNS auto-allowed; IMDS denied. Nothing else until you opt in
-        allow=["api.anthropic.com", "registry.npmjs.org", "pypi.org"],      # open only what's needed (least privilege); allow_port= for a non-443 dest
+    egress=EgressConfig(  # egress=None = opt OUT (no NetworkPolicy, unrestricted); EgressConfig() = SECURE BY DEFAULT
+        store_cidr="10.0.0.5/32",  # store_cidr must be CIDR; FQDNs rejected in __post_init__
+        store_port=443,  # default 443; store + DNS auto-allowed; IMDS denied. Nothing else until you opt in
+        allow=[
+            "api.anthropic.com",
+            "registry.npmjs.org",
+            "pypi.org",
+        ],  # open only what's needed (least privilege); allow_port= for a non-443 dest
         # public_https=True,                     # escape hatch: allow ALL :443 (trusted code)
     ),
 )
-sb = Sandbox(backend=SubstrateBackend(
-    runtime=runtime,
-    conduit=store_from_env(),                    # needs RESOLUTO_STORE_KIND
-    image="registry.local/resoluto-sandbox-base:0.1.0",   # REQUIRED — no default
-    store_env=store_env_for_pod(os.environ),
-))
+sb = Sandbox(
+    backend=SubstrateBackend(
+        runtime=runtime,
+        conduit=store_from_env(),  # needs RESOLUTO_STORE_KIND
+        image="registry.local/resoluto-sandbox-base:0.1.0",  # REQUIRED — no default
+        store_env=store_env_for_pod(os.environ),
+    )
+)
 ```
 
 The `"local"` / `"k8s"` string shortcuts (`client.py`) build the same `SubstrateBackend` with the right
@@ -128,7 +142,7 @@ async def drive_node_raw(runtime, store, spec, *, admit=None, on_event=None,
 ```python
 @dataclass(frozen=True)
 class NodeOutcome:
-    disposition: str        # 'completed' | 'unstartable' | 'external' | 'silent'
+    disposition: str  # 'completed' | 'unstartable' | 'external' | 'silent'
     observed_phase: str
     reason: str = ""
     substrate_logs: str = ""

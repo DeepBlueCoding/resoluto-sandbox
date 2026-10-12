@@ -18,26 +18,34 @@ from resoluto.sandbox import Sandbox
 from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
 from resoluto.sandbox.conduit.factory import store_from_env
 from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
-from resoluto.sandbox.egress import EgressConfig   # backend-neutral allowlist; re-exported from runtime.k8s
+from resoluto.sandbox.egress import (
+    EgressConfig,
+)  # backend-neutral allowlist; re-exported from runtime.k8s
 import os
 
 # local: Kata microVM (via nerdctl + a dedicated containerd) on this host
 r = Sandbox(backend="local").run(["agent.py"], workspace="/work")
-print(r.output, r.ok)   # RunResult(exit_code, output, errors, artifacts, result, reason, ok)
+print(r.output, r.ok)  # RunResult(exit_code, output, errors, artifacts, result, reason, ok)
 
 # k8s: Kata pod — inject SubstrateBackend
-egress = EgressConfig(store_cidr="10.0.0.5/32", store_port=443, allow=["api.anthropic.com","registry.npmjs.org","pypi.org"])   # SECURE BY DEFAULT: EgressConfig() = store + DNS only; allow=[...] opens dests (least privilege); public_https=True = escape hatch (all :443). IMDS denied
+egress = EgressConfig(
+    store_cidr="10.0.0.5/32",
+    store_port=443,
+    allow=["api.anthropic.com", "registry.npmjs.org", "pypi.org"],
+)  # SECURE BY DEFAULT: EgressConfig() = store + DNS only; allow=[...] opens dests (least privilege); public_https=True = escape hatch (all :443). IMDS denied
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
     egress=egress,
 )
-Sandbox(backend=SubstrateBackend(
-    runtime=runtime,
-    conduit=store_from_env(),
-    image="ghcr.io/...:TAG",
-    store_env=store_env_for_pod(os.environ),
-)).run(["python", "agent.py"], workspace="/work", output_paths=["out/*.json"])
+Sandbox(
+    backend=SubstrateBackend(
+        runtime=runtime,
+        conduit=store_from_env(),
+        image="ghcr.io/...:TAG",
+        store_env=store_env_for_pod(os.environ),
+    )
+).run(["python", "agent.py"], workspace="/work", output_paths=["out/*.json"])
 ```
 
 `Sandbox(backend="local"|"k8s"|<Backend instance>)` (default `"local"`). `.run(argv, *, workspace, stdin, env, output_paths, stream, egress) -> RunResult` (`egress=[domains]` opens those domains for THAT run on `local` via the SNI proxy, cleared after; `None`/`[]` = deny all but DNS+store). On both backends: `stdin` raises `NotImplementedError`; `RunResult.errors` is empty (output carries merged stdout+stderr). `k8s` also needs `RESOLUTO_STORE_KIND` in env.

@@ -36,11 +36,13 @@ class RunResult(BaseModel):
     exit_code: int
     output: str
     errors: str
-    artifacts: list[str] = []     # resolved output_paths
-    result: dict | None = None    # parsed result.json if the program wrote one
-    reason: str = ""              # substrate forensics (e.g. OOMKilled pod); "" for local
+    artifacts: list[str] = []  # resolved output_paths
+    result: dict | None = None  # parsed result.json if the program wrote one
+    reason: str = ""  # substrate forensics (e.g. OOMKilled pod); "" for local
+
     @property
-    def ok(self) -> bool: return self.exit_code == 0
+    def ok(self) -> bool:
+        return self.exit_code == 0
 ```
 
 `Sandbox.__init__` accepts a `Backend` instance OR the strings `"local"` / `"k8s"` (default `"local"`). A
@@ -79,8 +81,8 @@ class SandboxRuntime(ABC):
     @abstractmethod
     async def destroy(self, handle: SandboxHandle) -> None: ...
     @abstractmethod
-    async def sweep(self, labels: dict[str, str]) -> int: ...   # leak backstop
-    async def logs(self, handle, *, tail=200) -> str: ...        # forensic only; optional override
+    async def sweep(self, labels: dict[str, str]) -> int: ...  # leak backstop
+    async def logs(self, handle, *, tail=200) -> str: ...  # forensic only; optional override
 ```
 
 `SandboxLaunchSpec` (pydantic): `image`, `flavor`, `env`, `args`, `store_prefix`, `labels`, plus
@@ -98,7 +100,7 @@ string (`"pending"` / `"running"` / `"succeeded"` / `"failed"` / `"unknown"`), o
 
    backend = SubstrateBackend(
        runtime=MyRuntime(...),
-       conduit=store_from_env(),   # or inject a Conduit directly
+       conduit=store_from_env(),  # or inject a Conduit directly
        image="my-image:tag",
        store_env=store_env_for_pod(os.environ),  # or {"RESOLUTO_STORE_KIND": "localfs", ...}
    )
@@ -142,21 +144,21 @@ class SimpleDockerBackend(Backend):
         env: dict[str, str] | None = None,
         output_paths: Sequence[str] | None = None,
         stream: IO[str] | None = None,
-        egress: Sequence[str] | None = None,   # per-run domain allowlist (None/[] = deny)
+        egress: Sequence[str] | None = None,  # per-run domain allowlist (None/[] = deny)
     ) -> RunResult:
         cwd = Path(workspace).resolve() if workspace else Path.cwd()
         if not cwd.is_dir():
             raise NotADirectoryError(f"workspace is not a directory: {cwd}")
 
-        docker_argv = ["docker", "run", "--rm", "-w", "/workspace",
-                       "-v", f"{cwd}:/workspace"]
+        docker_argv = ["docker", "run", "--rm", "-w", "/workspace", "-v", f"{cwd}:/workspace"]
         for k, v in (env or {}).items():
             docker_argv += ["-e", f"{k}={v}"]
         docker_argv += [self._image, *argv]
 
         sink = stream if stream is not None else sys.stdout
         proc = subprocess.run(docker_argv, capture_output=True, text=True)
-        sink.write(proc.stdout); sink.flush()
+        sink.write(proc.stdout)
+        sink.flush()
 
         return RunResult(
             exit_code=proc.returncode,
@@ -285,6 +287,7 @@ class RedisConduit(Conduit):
 
     def __init__(self, url: str) -> None:
         import redis.asyncio as redis  # lazy — keep the import off module top
+
         self._r = redis.from_url(url)
 
     async def put(self, key: str, data: bytes) -> None:
@@ -312,9 +315,10 @@ class RedisConduit(Conduit):
 Register the kind (`conduit/factory.py::store_from_env`):
 
 ```python
-    if kind == "redis":
-        from resoluto.sandbox.conduit.redis import RedisConduit
-        return RedisConduit(env["RESOLUTO_STORE_URL"])
+if kind == "redis":
+    from resoluto.sandbox.conduit.redis import RedisConduit
+
+    return RedisConduit(env["RESOLUTO_STORE_URL"])
 ```
 
 Then `RESOLUTO_STORE_KIND=redis RESOLUTO_STORE_URL=redis://...` selects it for
@@ -334,13 +338,13 @@ from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
-    egress=None,                 # None → unrestricted egress (Kata kernel isolation only)
-                                 # EgressConfig(...) → default-deny, allow declared CIDRs on TCP/443 + kube-dns
+    egress=None,  # None → unrestricted egress (Kata kernel isolation only)
+    # EgressConfig(...) → default-deny, allow declared CIDRs on TCP/443 + kube-dns
 )
 backend = SubstrateBackend(
     runtime=runtime,
-    conduit=store_from_env(),    # needs RESOLUTO_STORE_KIND
-    image="registry/sandbox:tag",   # REQUIRED
+    conduit=store_from_env(),  # needs RESOLUTO_STORE_KIND
+    image="registry/sandbox:tag",  # REQUIRED
     store_env=store_env_for_pod(os.environ),
 )
 ```

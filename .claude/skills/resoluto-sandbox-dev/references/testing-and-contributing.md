@@ -52,12 +52,16 @@ from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_
 from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
 from resoluto.sandbox.conduit.factory import store_from_env
 
-sb = Sandbox(backend=SubstrateBackend(
-    runtime=K8sSandboxRuntime(context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"), egress=None),
-    conduit=store_from_env(),      # needs RESOLUTO_STORE_KIND
-    image="<sandbox-image>",          # REQUIRED; .run() raises ValueError if None
-    store_env=store_env_for_pod(os.environ),
-))
+sb = Sandbox(
+    backend=SubstrateBackend(
+        runtime=K8sSandboxRuntime(
+            context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"), egress=None
+        ),
+        conduit=store_from_env(),  # needs RESOLUTO_STORE_KIND
+        image="<sandbox-image>",  # REQUIRED; .run() raises ValueError if None
+        store_env=store_env_for_pod(os.environ),
+    )
+)
 ```
 
 `EgressConfig` (a frozen dataclass, `egress.py`, re-exported from `runtime/k8s.py`) — five fields: `allow: Sequence[str] = ()`, `allow_port: int = 443`, `public_https: bool = False`, `store_cidr: str | None = None`, `store_port: int = 443`. SECURE BY DEFAULT: `EgressConfig()` denies all egress except DNS + the object store (`store_cidr:store_port`). Public HTTPS (any `:443`) is allowed ONLY when `public_https=True` (the "let it reach the internet" escape hatch); otherwise open specific destinations via `allow=[...]` (hostnames or CIDRs, least privilege). IMDS is always denied. To tighten/blacklist further, edit `K8sSandboxRuntime._network_policy`. **`store_cidr` is CIDR notation only; no FQDNs** (resolve hostnames to IPs yourself):

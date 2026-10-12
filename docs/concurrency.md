@@ -44,17 +44,22 @@ from resoluto.sandbox.driver import drive_node
 
 spec = SandboxLaunchSpec(
     image="<registry>/resoluto-sandbox-base:0.1.0",
-    flavor="dind", privileged=True,                       # docker-in-docker under Kata
+    flavor="dind",
+    privileged=True,  # docker-in-docker under Kata
     store_prefix="run/demo/nodes/build/sandbox-0",
     resources=Resources.from_quantities(
-        memory="8Gi", cpu="4",
-        dind_graph="30Gi", graph_backend="block",         # image graph on a 30 GiB disk-backed volume, not RAM
+        memory="8Gi",
+        cpu="4",
+        dind_graph="30Gi",
+        graph_backend="block",  # image graph on a 30 GiB disk-backed volume, not RAM
     ),
-    egress_allow=["registry.npmjs.org"],                  # this launch reaches only npm (+ DNS + store)
+    egress_allow=["registry.npmjs.org"],  # this launch reaches only npm (+ DNS + store)
     egress_public_https=False,
     args=["python", "-m", "resoluto.sandbox.runner_main"],
 )
-result = asyncio.run(drive_node(runtime, conduit, spec))  # NodeResult; tails chunks, reaps the sandbox
+result = asyncio.run(
+    drive_node(runtime, conduit, spec)
+)  # NodeResult; tails chunks, reaps the sandbox
 ```
 
 `drive_node(runtime, store, spec, *, admit=None, on_event=None, dead_after_s=120.0)` launches, tails

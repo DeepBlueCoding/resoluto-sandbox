@@ -21,8 +21,8 @@ the CNI bridge + the image; ends with a green no-network Kata-microVM canary). I
 firewall — egress is granted per run:
 
 ```python
-Sandbox(backend="local").run(argv)                                 # no network (default)
-Sandbox(backend="local").run(argv, egress=["api.anthropic.com"])   # only Anthropic, for this run
+Sandbox(backend="local").run(argv)  # no network (default)
+Sandbox(backend="local").run(argv, egress=["api.anthropic.com"])  # only Anthropic, for this run
 ```
 
 Use `backend="local"` for single-host development. For cluster-scale placement, use `backend="k8s"`.
@@ -56,19 +56,24 @@ from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
 # RESOLUTO_STORE_EGRESS_CIDR/PORT override for a DNAT'd store; NetworkPolicy is evaluated POST-DNAT).
 egress = EgressConfig.from_store_env()
 # ...or construct it explicitly (deny-by-default; open what you need):
-egress = EgressConfig(store_cidr="10.0.0.5/32", store_port=9000,
-                      allow=["api.anthropic.com", "registry.npmjs.org", "pypi.org"])  # least privilege; store port default 443
+egress = EgressConfig(
+    store_cidr="10.0.0.5/32",
+    store_port=9000,
+    allow=["api.anthropic.com", "registry.npmjs.org", "pypi.org"],
+)  # least privilege; store port default 443
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
     egress=egress,
 )
-sb = Sandbox(backend=SubstrateBackend(
-    runtime=runtime,
-    conduit=store_from_env(),
-    image="<registry>/resoluto-sandbox-base:0.1.0",
-    store_env=store_env_for_pod(os.environ),
-))
+sb = Sandbox(
+    backend=SubstrateBackend(
+        runtime=runtime,
+        conduit=store_from_env(),
+        image="<registry>/resoluto-sandbox-base:0.1.0",
+        store_env=store_env_for_pod(os.environ),
+    )
+)
 ```
 
 `EgressConfig` is imported from `resoluto.sandbox.runtime.k8s`. Do not add it to the top-level
@@ -164,9 +169,11 @@ destination IP:port and the **SNI** hostname. For a domain allowlist that scales
 pass `egress=[domains]` to each `run()`:
 
 ```python
-Sandbox(backend="local").run(argv, egress=["api.anthropic.com"])    # this step reaches ONLY Anthropic
-Sandbox(backend="local").run(argv, egress=["registry.npmjs.org"])   # this step reaches ONLY the npm registry
-Sandbox(backend="local").run(argv)                                  # egress=None → no network at all (secure default)
+Sandbox(backend="local").run(argv, egress=["api.anthropic.com"])  # this step reaches ONLY Anthropic
+Sandbox(backend="local").run(
+    argv, egress=["registry.npmjs.org"]
+)  # this step reaches ONLY the npm registry
+Sandbox(backend="local").run(argv)  # egress=None → no network at all (secure default)
 ```
 
 Each `run()` grants that step's domains on the fly and revokes them after — **runtime-managed, nothing
@@ -197,8 +204,10 @@ today; on `k8s` use `EgressConfig` (per-runtime).
 **In code (k8s):**
 ```python
 from resoluto.sandbox.egress import EgressConfig
-EgressConfig(store_cidr="10.0.0.5/32", store_port=9100,
-             allow=["github.com"], allow_port=22)        # least privilege: + git-over-SSH
+
+EgressConfig(
+    store_cidr="10.0.0.5/32", store_port=9100, allow=["github.com"], allow_port=22
+)  # least privilege: + git-over-SSH
 EgressConfig(store_cidr="10.0.0.5/32", public_https=True)  # escape hatch: all outbound :443
 ```
 

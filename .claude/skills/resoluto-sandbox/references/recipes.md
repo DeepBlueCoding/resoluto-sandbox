@@ -26,13 +26,14 @@ sb.run(
 ```python
 class RunResult(BaseModel):
     exit_code: int
-    output: str                 # MERGED stdout+stderr; errors stays ""
-    errors: str                 # "" by design on both backends
-    artifacts: list[str] = []   # collected output_paths (absolute paths)
+    output: str  # MERGED stdout+stderr; errors stays ""
+    errors: str  # "" by design on both backends
+    artifacts: list[str] = []  # collected output_paths (absolute paths)
     result: dict | None = None  # parsed result.json if the program wrote one, else None
-    reason: str = ""            # substrate forensics (evicted/OOMKilled/canary fail); "" for local
+    reason: str = ""  # substrate forensics (evicted/OOMKilled/canary fail); "" for local
+
     @property
-    def ok(self) -> bool: ...   # exit_code == 0
+    def ok(self) -> bool: ...  # exit_code == 0
 ```
 
 The program is PLAIN: reads argv, writes stdout/files. It never imports
@@ -54,7 +55,12 @@ the dedicated containerd + an image with `claude` CLI baked in.
 from resoluto.sandbox import Sandbox
 
 r = Sandbox(backend="local").run(
-    ["uv", "run", "claude_agent.py", "Say hello in five words"],   # relative to workspace, NOT "examples/..."
+    [
+        "uv",
+        "run",
+        "claude_agent.py",
+        "Say hello in five words",
+    ],  # relative to workspace, NOT "examples/..."
     workspace="examples/payloads",
     env={"CLAUDE_CODE_OAUTH_TOKEN": "..."},  # or bake credentials into the image
 )
@@ -81,15 +87,17 @@ runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
 )
-sb = Sandbox(backend=SubstrateBackend(
-    runtime=runtime,
-    conduit=store_from_env(),
-    image="<registry>/resoluto-sandbox-base:0.1.0",
-    store_env=store_env_for_pod(os.environ),
-))
+sb = Sandbox(
+    backend=SubstrateBackend(
+        runtime=runtime,
+        conduit=store_from_env(),
+        image="<registry>/resoluto-sandbox-base:0.1.0",
+        store_env=store_env_for_pod(os.environ),
+    )
+)
 r = sb.run(
     ["python", "claude_agent.py", "Say hello in five words"],
-    workspace="/abs/path/to/examples/payloads",     # staged into the pod at /workspace
+    workspace="/abs/path/to/examples/payloads",  # staged into the pod at /workspace
 )
 print(r.output, r.reason)
 ```
@@ -109,8 +117,8 @@ r = sb.run(
     workspace="/abs/work",
     output_paths=["dist/*.whl", "report.json"],
 )
-print(r.artifacts)          # e.g. ["/abs/work/dist/app-1.0.whl", "/abs/work/report.json"]
-print(r.result)             # parsed work/result.json if the program wrote one
+print(r.artifacts)  # e.g. ["/abs/work/dist/app-1.0.whl", "/abs/work/report.json"]
+print(r.result)  # parsed work/result.json if the program wrote one
 ```
 
 ### 4. Configure egress (one backend-neutral `EgressConfig` — k8s + local)
@@ -129,13 +137,19 @@ import os
 from resoluto.sandbox import Sandbox
 from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod
 from resoluto.sandbox.conduit.factory import store_from_env
-from resoluto.sandbox.egress import EgressConfig                    # canonical home (also re-exported from runtime.k8s)
+from resoluto.sandbox.egress import (
+    EgressConfig,
+)  # canonical home (also re-exported from runtime.k8s)
 from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
 
 egress = EgressConfig(
-    store_cidr="192.168.1.197/32",      # object store (k8s only; local store is a file mount)
-    store_port=9100,                    # store port (minio); store + DNS auto-allowed. SECURE BY DEFAULT
-    allow=["api.anthropic.com", "registry.npmjs.org", "pypi.org"],     # open only what's needed (least privilege); allow_port= for a non-443 dest
+    store_cidr="192.168.1.197/32",  # object store (k8s only; local store is a file mount)
+    store_port=9100,  # store port (minio); store + DNS auto-allowed. SECURE BY DEFAULT
+    allow=[
+        "api.anthropic.com",
+        "registry.npmjs.org",
+        "pypi.org",
+    ],  # open only what's needed (least privilege); allow_port= for a non-443 dest
     # public_https=True,                    # escape hatch: allow ALL :443 (trusted code)
 )
 runtime = K8sSandboxRuntime(
@@ -143,12 +157,14 @@ runtime = K8sSandboxRuntime(
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
     egress=egress,
 )
-sb = Sandbox(backend=SubstrateBackend(
-    runtime=runtime,
-    conduit=store_from_env(),
-    image="<registry>/resoluto-sandbox-base:0.1.0",
-    store_env=store_env_for_pod(os.environ),
-))
+sb = Sandbox(
+    backend=SubstrateBackend(
+        runtime=runtime,
+        conduit=store_from_env(),
+        image="<registry>/resoluto-sandbox-base:0.1.0",
+        store_env=store_env_for_pod(os.environ),
+    )
+)
 ```
 
 `store_cidr`/CIDR `allow` entries must be CIDR; hostname `allow` entries resolve at render time. Env
@@ -174,12 +190,14 @@ runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
 )
-sb = Sandbox(backend=SubstrateBackend(
-    runtime=runtime,
-    conduit=store_from_env(),
-    image="myregistry/my-sandbox-base:0.1.0",
-    store_env=store_env_for_pod(os.environ),
-))
+sb = Sandbox(
+    backend=SubstrateBackend(
+        runtime=runtime,
+        conduit=store_from_env(),
+        image="myregistry/my-sandbox-base:0.1.0",
+        store_env=store_env_for_pod(os.environ),
+    )
+)
 ```
 
 For local, `Sandbox(backend="local", image="myregistry/my-base:tag")` runs your image
@@ -192,7 +210,9 @@ Three mechanisms, not interchangeable — see `resoluto/sandbox/secrets.py` + `e
 **`env_file` — host-side convenience, NOT security** (same plaintext exposure as `env=`):
 
 ```python
-sb.run(["uv", "run", "agent.py", "prompt"], env_file=".env")   # dotenv parsed host-side, merged under env=
+sb.run(
+    ["uv", "run", "agent.py", "prompt"], env_file=".env"
+)  # dotenv parsed host-side, merged under env=
 ```
 
 **`SecretKeyRef` — k8s-native, zero fetch code.** References an existing `Secret` object (created by
@@ -226,10 +246,11 @@ sb.run(argv, secrets={"ANTHROPIC_API_KEY": "vault:secret/data/anthropic#api_key"
 
 ```python
 import io
+
 buf = io.StringIO()
 r = sb.run(["uv", "run", "agent.py", "prompt"], stream=buf)
-captured_live = buf.getvalue()    # streamed lines
-full = r.output                   # same content, fully captured
+captured_live = buf.getvalue()  # streamed lines
+full = r.output  # same content, fully captured
 ```
 
 Both backends merge stdout→`output` (errors stays `""`).

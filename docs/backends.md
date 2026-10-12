@@ -44,11 +44,17 @@ from resoluto.sandbox import Sandbox
 from resoluto.sandbox.contracts import Resources
 from resoluto.sandbox.backends.substrate import SubstrateBackend
 
-sb = Sandbox(backend=SubstrateBackend(
-    runtime=runtime, conduit=conduit, image="<registry>/resoluto-sandbox-base:0.1.0",
-    store_env=store_env,
-    resources=Resources.from_quantities(memory="16Gi", cpu="4", disk="40Gi"),  # default: 4Gi / 2 cpu
-))
+sb = Sandbox(
+    backend=SubstrateBackend(
+        runtime=runtime,
+        conduit=conduit,
+        image="<registry>/resoluto-sandbox-base:0.1.0",
+        store_env=store_env,
+        resources=Resources.from_quantities(
+            memory="16Gi", cpu="4", disk="40Gi"
+        ),  # default: 4Gi / 2 cpu
+    )
+)
 ```
 
 `Resources.from_quantities` takes human quantity strings (`"16Gi"`, `"4"`, `"40Gi"`). The disk-backed
@@ -136,15 +142,17 @@ runtime = K8sSandboxRuntime(
     namespace=os.environ.get("RESOLUTO_SANDBOX_NAMESPACE", "resoluto-sandboxes"),
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
 )
-sb = Sandbox(backend=SubstrateBackend(
-    runtime=runtime,
-    conduit=store_from_env(),
-    image="<registry>/resoluto-sandbox-base:0.1.0",
-    store_env=store_env_for_pod(os.environ),
-))
+sb = Sandbox(
+    backend=SubstrateBackend(
+        runtime=runtime,
+        conduit=store_from_env(),
+        image="<registry>/resoluto-sandbox-base:0.1.0",
+        store_env=store_env_for_pod(os.environ),
+    )
+)
 result = sb.run(["bash", "-lc", "echo hi"], workspace="./proj", output_paths=["*.txt"])
-print(result.output)   # "hi"
-print(result.ok)       # True
+print(result.output)  # "hi"
+print(result.ok)  # True
 ```
 
 Or use the convenience shortcut (reads `RESOLUTO_SANDBOX_IMAGE` and `RESOLUTO_STORE_KIND` from env):
@@ -321,7 +329,7 @@ Wire `sb` exactly as in [Usage](#usage) (here reading `image=os.environ["RESOLUT
 
 ```python
 result = sb.run(["bash", "-lc", "echo hi from kata"])
-print(result.output)   # "hi from kata"
+print(result.output)  # "hi from kata"
 assert result.ok
 ```
 
@@ -338,12 +346,14 @@ and wire it into `SubstrateBackend`:
 from resoluto.sandbox.backends.substrate import SubstrateBackend
 from resoluto.sandbox.conduit import LocalConduit
 
-sb = Sandbox(backend=SubstrateBackend(
-    runtime=MyRuntime(...),
-    conduit=LocalConduit("/tmp/conduit"),
-    image="my-image:tag",
-    store_env={"RESOLUTO_STORE_KIND": "localfs", "RESOLUTO_STORE_ROOT": "/conduit"},
-))
+sb = Sandbox(
+    backend=SubstrateBackend(
+        runtime=MyRuntime(...),
+        conduit=LocalConduit("/tmp/conduit"),
+        image="my-image:tag",
+        store_env={"RESOLUTO_STORE_KIND": "localfs", "RESOLUTO_STORE_ROOT": "/conduit"},
+    )
+)
 ```
 
 For a completely new run approach (not store-mediated), implement the `Backend` ABC
@@ -352,10 +362,22 @@ For a completely new run approach (not store-mediated), implement the `Backend` 
 ```python
 from resoluto.sandbox.backends.base import Backend, RunResult
 
+
 class MyBackend(Backend):
-    def run(self, argv, *, workspace=None, stdin=None, env=None, env_file=None,
-            secrets=None, output_paths=None, stream=None, egress=None) -> RunResult:
-        ...
+    def run(
+        self,
+        argv,
+        *,
+        workspace=None,
+        stdin=None,
+        env=None,
+        env_file=None,
+        secrets=None,
+        output_paths=None,
+        stream=None,
+        egress=None,
+    ) -> RunResult: ...
+
 
 Sandbox(backend=MyBackend(...)).run(argv, ...)
 ```

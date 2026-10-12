@@ -18,11 +18,16 @@ Footgun: `egress=None` is an explicit opt-OUT of isolation — no NetworkPolicy,
 ## API surface (verbatim)
 
 ```python
-from resoluto.sandbox import Sandbox                                              # facade
-from resoluto.sandbox.backends.substrate import SubstrateBackend, store_env_for_pod  # ONE backend impl
-from resoluto.sandbox.conduit.factory import store_from_env                      # conduit from env
-from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime                       # k8s runtime
-from resoluto.sandbox.egress import EgressConfig                                 # backend-neutral allowlist (also re-exported from runtime.k8s)
+from resoluto.sandbox import Sandbox  # facade
+from resoluto.sandbox.backends.substrate import (
+    SubstrateBackend,
+    store_env_for_pod,
+)  # ONE backend impl
+from resoluto.sandbox.conduit.factory import store_from_env  # conduit from env
+from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime  # k8s runtime
+from resoluto.sandbox.egress import (
+    EgressConfig,
+)  # backend-neutral allowlist (also re-exported from runtime.k8s)
 ```
 
 `Sandbox(backend="local" | "k8s" | <Backend instance>)` then:
@@ -60,11 +65,12 @@ ok -> bool           # property: exit_code == 0
 k8s config is a backend concern — inject a configured `SubstrateBackend`:
 ```python
 import os
+
 SubstrateBackend(
     runtime=K8sSandboxRuntime(
         namespace="resoluto-sandboxes",
         context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
-        egress=None,   # or EgressConfig(...)
+        egress=None,  # or EgressConfig(...)
     ),
     conduit=store_from_env(),
     image="<sandbox-image>",
@@ -102,11 +108,11 @@ change. There is NO `llm_cidr`/`git_cidrs` — you open HTTPS via `allow=[...]` 
 
 ```python
 EgressConfig(
-    allow=(),                 # extra destinations — hostnames OR CIDRs — allowed on allow_port
-    allow_port=443,           # port for `allow` (e.g. 22 for git-over-SSH, or a private service port)
-    public_https=False,       # DEFAULT deny all :443; True = allow ALL public :443 (escape hatch, trusted)
-    store_cidr=None,          # k8s object-store CIDR (REQUIRED for k8s; local ignores it — file mount)
-    store_port=443,           # the store's port (minio is often 9000/9100)
+    allow=(),  # extra destinations — hostnames OR CIDRs — allowed on allow_port
+    allow_port=443,  # port for `allow` (e.g. 22 for git-over-SSH, or a private service port)
+    public_https=False,  # DEFAULT deny all :443; True = allow ALL public :443 (escape hatch, trusted)
+    store_cidr=None,  # k8s object-store CIDR (REQUIRED for k8s; local ignores it — file mount)
+    store_port=443,  # the store's port (minio is often 9000/9100)
 )
 ```
 
@@ -157,9 +163,15 @@ The env knobs are honored by BOTH backends (k8s via `from_store_env()`; local vi
 **In code (k8s):**
 ```python
 from resoluto.sandbox.egress import EgressConfig
-EgressConfig(store_cidr="10.0.0.5/32", store_port=9100,
-             allow=["api.anthropic.com", "registry.npmjs.org", "pypi.org"])   # least privilege: LLM + these registries
-EgressConfig(store_cidr="10.0.0.5/32", public_https=True)    # escape hatch: all outbound :443 (trusted)
+
+EgressConfig(
+    store_cidr="10.0.0.5/32",
+    store_port=9100,
+    allow=["api.anthropic.com", "registry.npmjs.org", "pypi.org"],
+)  # least privilege: LLM + these registries
+EgressConfig(
+    store_cidr="10.0.0.5/32", public_https=True
+)  # escape hatch: all outbound :443 (trusted)
 ```
 
 **Via env (both backends):**
@@ -218,25 +230,31 @@ from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime
 from resoluto.sandbox.egress import EgressConfig
 
 egress = EgressConfig(
-    store_cidr="192.168.1.197/32",     # your object store (minio / S3-compatible) — k8s only
-    store_port=9100,                   # the store's port (default 443)
-    allow=["api.anthropic.com", "registry.npmjs.org", "pypi.org"],    # least privilege: open only what the workload needs
+    store_cidr="192.168.1.197/32",  # your object store (minio / S3-compatible) — k8s only
+    store_port=9100,  # the store's port (default 443)
+    allow=[
+        "api.anthropic.com",
+        "registry.npmjs.org",
+        "pypi.org",
+    ],  # least privilege: open only what the workload needs
     # public_https=True,                     # escape hatch: allow ALL :443 (trusted code)
-)                                      # secure by default: nothing else reachable (store + DNS only)
+)  # secure by default: nothing else reachable (store + DNS only)
 # or: egress = EgressConfig.from_store_env()   # store_cidr:port + RESOLUTO_EGRESS_* knobs, from env
 
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
-    egress=egress,                     # None => opt OUT (no NetworkPolicy, UNRESTRICTED egress)
+    egress=egress,  # None => opt OUT (no NetworkPolicy, UNRESTRICTED egress)
 )
 
-sb = Sandbox(backend=SubstrateBackend(
-    runtime=runtime,
-    conduit=store_from_env(),
-    image="<registry>/resoluto-sandbox-base:0.1.0",
-    store_env=store_env_for_pod(os.environ),
-))
+sb = Sandbox(
+    backend=SubstrateBackend(
+        runtime=runtime,
+        conduit=store_from_env(),
+        image="<registry>/resoluto-sandbox-base:0.1.0",
+        store_env=store_env_for_pod(os.environ),
+    )
+)
 
 result = sb.run(
     ["python", "agent.py"],
@@ -245,14 +263,15 @@ result = sb.run(
     output_paths=["out/**"],
 )
 assert result.ok, result.reason
-print(result.output)            # merged stdout+stderr
-print(result.artifacts)         # collected output_paths
+print(result.output)  # merged stdout+stderr
+print(result.artifacts)  # collected output_paths
 ```
 
 ## Copy-paste: local (Kata microVM via nerdctl, egress enforced host-side)
 
 ```python
 from resoluto.sandbox import Sandbox
+
 result = Sandbox(backend="local").run(["python", "agent.py"], workspace=".")
 ```
 Kata microVM (hardware-virtualized) via nerdctl + a dedicated containerd on the host. Egress is
