@@ -7,11 +7,9 @@
 ```python
 from resoluto.sandbox import Sandbox
 
-result = Sandbox(backend="local").run(
-    ["python", "-c", "print('hello from the sandbox')"]
-)
-print(result.output)   # hello from the sandbox
-print(result.ok)       # True → exit_code == 0
+result = Sandbox(backend="local").run(["python", "-c", "print('hello from the sandbox')"])
+print(result.output)  # hello from the sandbox
+print(result.ok)  # True → exit_code == 0
 print(result.exit_code)
 ```
 
@@ -22,9 +20,9 @@ The [`RunResult`](https://deepbluecoding.github.io/resoluto-sandbox/main/api/san
 ```python
 result = Sandbox(backend="local").run(
     ["python", "run_task.py", "--mode", "fast"],
-    workspace="/path/to/project",         # staged into the sandbox as cwd
-    env={"GREETING": "hello"},            # overlaid on the guest environment
-    output_paths=["out/*.json"],          # globs collected into result.artifacts
+    workspace="/path/to/project",  # staged into the sandbox as cwd
+    env={"GREETING": "hello"},  # overlaid on the guest environment
+    output_paths=["out/*.json"],  # globs collected into result.artifacts
 )
 ```
 
@@ -37,7 +35,7 @@ result = Sandbox(backend="local").run(
 ```python
 from resoluto.sandbox.client import default_local_image
 
-Sandbox(backend="local", image=default_local_image())   # explicit; the default
+Sandbox(backend="local", image=default_local_image())  # explicit; the default
 ```
 
 Build it from `Dockerfile.base` (or `resoluto-sandbox image build`) and load it into the local containerd. Run argv with the **guest's** `python` and paths relative to `workspace`.
@@ -57,12 +55,14 @@ runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
 )
-sb = Sandbox(backend=SubstrateBackend(
-    runtime=runtime,
-    conduit=store_from_env(),
-    image="<registry>/resoluto-sandbox-base:0.1.0",
-    store_env=store_env_for_pod(os.environ),
-))
+sb = Sandbox(
+    backend=SubstrateBackend(
+        runtime=runtime,
+        conduit=store_from_env(),
+        image="<registry>/resoluto-sandbox-base:0.1.0",
+        store_env=store_env_for_pod(os.environ),
+    )
+)
 ```
 
 Requirements: a Kubernetes cluster with Kata Containers, `RESOLUTO_STORE_KIND` (plus the matching store env vars), and a pinned `RESOLUTO_SANDBOX_KUBECONTEXT` (fails closed otherwise).

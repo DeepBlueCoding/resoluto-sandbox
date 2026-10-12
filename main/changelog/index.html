@@ -1109,6 +1109,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#020rc1-2026-10-12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.2.0rc1 — 2026-10-12
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#010-2026-07-08" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1192,6 +1203,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#020rc1-2026-10-12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.2.0rc1 — 2026-10-12
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#010-2026-07-08" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1226,6 +1248,18 @@
 <p>All notable changes to <code>resoluto-sandbox</code> are documented here. The format follows
 <a href="https://keepachangelog.com/">Keep a Changelog</a>; versions follow <a href="https://semver.org/">SemVer</a>.</p>
 <h2 id="unreleased">Unreleased<a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="020rc1-2026-10-12">0.2.0rc1 — 2026-10-12<a class="headerlink" href="#020rc1-2026-10-12" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>Conduit.put_if_absent</code> / <code>Conduit.compare_and_swap</code>: conditional writes for durable ownership
+  records — atomic on <code>LocalConduit</code>, S3 conditional requests on <code>S3Conduit</code>.</li>
+<li>dind on Kata: bounded guest ext4 graphs for overlay2, the visible guest graph mount inspected by
+  kernel identity, and DIND pod identity preserved when the graph environment is added.</li>
+<li>Telemetry: the sequence advances only after durable chunk writes, events arriving while chunks
+  are written are retained, and the stream drains before the closing manifest is committed.</li>
+<li><code>stage_inputs</code> restores the owner-write bit on staged directories.</li>
+<li>Release tooling: only a bare <code>vX.Y.Z</code> tag routes to PyPI; OIDC <code>id-token</code> scoped to the publish
+  jobs; explicit sdist allowlist (local caches no longer leak into the sdist).</li>
+</ul>
 <h2 id="010-2026-07-08">0.1.0 — 2026-07-08<a class="headerlink" href="#010-2026-07-08" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Store-mediated, Kata-isolated execution substrate: <code>Sandbox(backend=...).run(argv, ...)</code> over a

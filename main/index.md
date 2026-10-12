@@ -7,11 +7,9 @@ Run untrusted code — AI-generated, third-party, or adversarial — with a dedi
 ```python
 from resoluto.sandbox import Sandbox
 
-result = Sandbox(backend="local").run(
-    ["python", "-c", "print('hello from the sandbox')"]
-)
-print(result.output)   # hello from the sandbox
-print(result.ok)       # True
+result = Sandbox(backend="local").run(["python", "-c", "print('hello from the sandbox')"])
+print(result.output)  # hello from the sandbox
+print(result.ok)  # True
 ```
 
 - **Zero-trust, VM-grade isolation**

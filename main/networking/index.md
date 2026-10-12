@@ -9,8 +9,8 @@ Opening an allowlist attaches a NIC on an isolated CNI bridge, where egress is e
 Provision the local backend once with `scripts/local-backend-up.sh` (Kata + a dedicated containerd + the CNI bridge + the image; ends with a green no-network Kata-microVM canary). It sets up **no** egress firewall — egress is granted per run:
 
 ```python
-Sandbox(backend="local").run(argv)                                 # no network (default)
-Sandbox(backend="local").run(argv, egress=["api.anthropic.com"])   # only Anthropic, for this run
+Sandbox(backend="local").run(argv)  # no network (default)
+Sandbox(backend="local").run(argv, egress=["api.anthropic.com"])  # only Anthropic, for this run
 ```
 
 Use `backend="local"` for single-host development. For cluster-scale placement, use `backend="k8s"`.
@@ -36,19 +36,24 @@ from resoluto.sandbox.runtime.k8s import K8sSandboxRuntime, EgressConfig
 # RESOLUTO_STORE_EGRESS_CIDR/PORT override for a DNAT'd store; NetworkPolicy is evaluated POST-DNAT).
 egress = EgressConfig.from_store_env()
 # ...or construct it explicitly (deny-by-default; open what you need):
-egress = EgressConfig(store_cidr="10.0.0.5/32", store_port=9000,
-                      allow=["api.anthropic.com", "registry.npmjs.org", "pypi.org"])  # least privilege; store port default 443
+egress = EgressConfig(
+    store_cidr="10.0.0.5/32",
+    store_port=9000,
+    allow=["api.anthropic.com", "registry.npmjs.org", "pypi.org"],
+)  # least privilege; store port default 443
 runtime = K8sSandboxRuntime(
     namespace="resoluto-sandboxes",
     context=os.environ.get("RESOLUTO_SANDBOX_KUBECONTEXT"),
     egress=egress,
 )
-sb = Sandbox(backend=SubstrateBackend(
-    runtime=runtime,
-    conduit=store_from_env(),
-    image="<registry>/resoluto-sandbox-base:0.1.0",
-    store_env=store_env_for_pod(os.environ),
-))
+sb = Sandbox(
+    backend=SubstrateBackend(
+        runtime=runtime,
+        conduit=store_from_env(),
+        image="<registry>/resoluto-sandbox-base:0.1.0",
+        store_env=store_env_for_pod(os.environ),
+    )
+)
 ```
 
 `EgressConfig` is imported from `resoluto.sandbox.runtime.k8s`. Do not add it to the top-level `resoluto.sandbox` import — that would pull in `kubernetes_asyncio` eagerly.
@@ -109,9 +114,11 @@ So a sandbox that needs the LLM + npm/pypi reads `EgressConfig(allow=["api.anthr
 `allow=[...]` (below) is CIDR-based (resolves hostnames to IPs at render time), so it goes stale for CDN-backed APIs (rotating IPs) and can never match a URL path — TLS encrypts everything but the destination IP:port and the **SNI** hostname. For a domain allowlist that scales AND is set per step, pass `egress=[domains]` to each `run()`:
 
 ```python
-Sandbox(backend="local").run(argv, egress=["api.anthropic.com"])    # this step reaches ONLY Anthropic
-Sandbox(backend="local").run(argv, egress=["registry.npmjs.org"])   # this step reaches ONLY the npm registry
-Sandbox(backend="local").run(argv)                                  # egress=None → no network at all (secure default)
+Sandbox(backend="local").run(argv, egress=["api.anthropic.com"])  # this step reaches ONLY Anthropic
+Sandbox(backend="local").run(
+    argv, egress=["registry.npmjs.org"]
+)  # this step reaches ONLY the npm registry
+Sandbox(backend="local").run(argv)  # egress=None → no network at all (secure default)
 ```
 
 Each `run()` grants that step's domains on the fly and revokes them after — **runtime-managed, nothing persistent**. `KataNerdctlSandboxRuntime.apply_egress()` starts a per-run **SNI proxy** (`resoluto.sandbox.egress_proxy`) and programs iptables scoped to the sandbox bridge (a `:443` REDIRECT to the proxy, allow DNS, deny IMDS/RFC1918, default-deny); `clear_egress()` tears both down when the run ends. The proxy splices the (still-encrypted) stream to the original destination ONLY if the TLS SNI matches — exact (`api.anthropic.com`) or `*.wildcard` (`*.openai.com`); no CA/MITM; it refuses internal/IMDS destinations even on an SNI match (no SSRF). There is **no setup script and nothing persistent** — the firewall + proxy exist only for the lifetime of the run (the e2b model: the orchestrator programs per-sandbox egress, not the operator).
@@ -126,8 +133,10 @@ Verified end-to-end, back-to-back with NO re-provision: `run(egress=["registry.n
 
 ```python
 from resoluto.sandbox.egress import EgressConfig
-EgressConfig(store_cidr="10.0.0.5/32", store_port=9100,
-             allow=["github.com"], allow_port=22)        # least privilege: + git-over-SSH
+
+EgressConfig(
+    store_cidr="10.0.0.5/32", store_port=9100, allow=["github.com"], allow_port=22
+)  # least privilege: + git-over-SSH
 EgressConfig(store_cidr="10.0.0.5/32", public_https=True)  # escape hatch: all outbound :443
 ```
 
